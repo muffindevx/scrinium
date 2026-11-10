@@ -1,0 +1,91 @@
+[project]
+name = "scrinium"
+version = "0.1.0"
+description = "Inteligencia de cambios de software, Local-first."
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.14",
+    "cryptography>=44",
+    "fastapi>=0.115",
+    "keyring>=25",
+    "lancedb>=0.41",
+    "platformdirs>=4.3",
+    "pydantic>=2.9",
+    # Scrinium's window. On Linux it needs Qt, which is heavy: it goes in the `window` extra.
+    "pywebview>=6; sys_platform == 'win32' or sys_platform == 'darwin'",
+    "sqlalchemy>=2.0",
+    "sqlglot>=25",
+    # Structural map of the code (functions, classes, calls) for rule extraction.
+    # Pinned: 0.26.1 is from today (2026-11-09); upgrade after a few weeks.
+    "tree-sitter==0.26.0",
+    "tree-sitter-c-sharp>=0.23",
+    "tree-sitter-go>=0.23",
+    "tree-sitter-java>=0.23",
+    "tree-sitter-javascript>=0.23",
+    "tree-sitter-kotlin>=1.0",
+    "tree-sitter-php>=0.23",
+    "tree-sitter-python>=0.23",
+    "tree-sitter-ruby>=0.23",
+    "tree-sitter-rust>=0.23",
+    "tree-sitter-typescript>=0.23",
+    "uvicorn>=0.32",
+]
+
+[project.optional-dependencies]
+window = ["pywebview[qt]>=6; sys_platform == 'linux'"]
+
+[project.scripts]
+scrinium = "scrinium.cli.main:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scrinium"]
+artifacts = ["src/scrinium/web_dist/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+    "real_keyring: usa el keyring real del sistema; solo con SCRINIUM_TEST_REAL_KEYRING=1",
+    "network: descarga de Internet; solo con SCRINIUM_TEST_NETWORK=1",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106", "S603", "S607"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
+# keyring does not annotate its constructors: allow calling them without relaxing the rest.
+untyped_calls_exclude = ["keyring"]
+
+[[tool.mypy.overrides]]
+# pyarrow ships no types; it is only used to declare the LanceDB schema.
+module = ["pyarrow", "pyarrow.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# pywebview is only installed on Windows, macOS or with the `window` extra.
+module = ["webview", "webview.*"]
+ignore_missing_imports = true

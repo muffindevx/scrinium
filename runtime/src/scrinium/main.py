@@ -1,0 +1,179 @@
+"""Building the local runtime's ASGI application."""
+
+import contextlib
+from collections.abc import Callable
+from concurrent.futures import Executor
+
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
+
+from scrinium import __version__
+from scrinium.api.analyses import build_analyses_router
+from scrinium.api.control import build_control_router
+from scrinium.api.errors import install_error_handlers
+from scrinium.api.knowledge import build_knowledge_router
+from scrinium.api.middleware import (
+    BodyLimitMiddleware,
+    LocalGuardMiddleware,
+    RequestContextMiddleware,
+)
+from scrinium.api.privacy import build_privacy_router
+from scrinium.api.routes import build_router
+from scrinium.api.static import InterfaceFiles
+from scrinium.application.ai.answering import QuestionRunner, mark_interrupted_questions
+from scrinium.application.ai.memory_guard import MemoryGuard
+from scrinium.application.ai.service import LlmService
+from scrinium.application.analysis import extraction
+from scrinium.application.analysis.runs import AnalysisRunner
+from scrinium.application.environment import LocalEnvironment
+from scrinium.application.ingestion.sources import IngestionRunner, mark_interrupted_runs
+from scrinium.application.retrieval.indexing import Indexer
+from scrinium.application.workspaces import ensure_local_workspace
+from scrinium.core.config import ModelProvider, RuntimeConfig
+from scrinium.core.data_dir import prepare_data_dir
+from scrinium.core.disk_encryption import check_disk_encryption
+from scrinium.core.session import LocalSessionManager
+from scrinium.infrastructure.embeddings.base import EmbeddingProvider
+from scrinium.infrastructure.embeddings.ollama import OllamaEmbeddings
+from scrinium.infrastructure.embeddings.openai_compatible import OpenAICompatibleEmbeddings
+from scrinium.infrastructure.llm.base import LLMProvider
+from scrinium.infrastructure.llm.load_order import ChatFirst
+from scrinium.infrastructure.llm.ollama import OllamaChat
+from scrinium.infrastructure.llm.openai_compatible import OpenAICompatibleChat
+from scrinium.infrastructure.local_http import LocalHttpClient, ModelError
+from scrinium.infrastructure.secret_store import KeyringSecretStore, SecretStore
+from scrinium.infrastructure.sqlite.database import Database
+from scrinium.infrastructure.tools.manifest import CHAT_MODEL, EMBEDDING_MODEL
+from scrinium.infrastructure.vector_index.lance import LanceVectorIndex
+
+
+def open_runtime(
+    config: RuntimeConfig, secret_store: SecretStore | None = None
+) -> tuple[Database, LocalEnvironment]:
+    """Prepares the data directory, opens SQLite and checks the machine.
+
+    Raises `UnsafeDataDirError` before writing anything if the directory cannot be private.
+    """
+    permissions = prepare_data_dir(config.data_dir)
+    database = Database.open(config.data_dir)
+    with database.session() as session:
+        ensure_local_workspace(session)
+        mark_interrupted_runs(session)
+        mark_interrupted_questions(session)
+    environment = LocalEnvironment(
+        data_dir_permissions=permissions,
+        disk_encryption=check_disk_encryption(config.data_dir),
+        secret_store=secret_store or KeyringSecretStore.from_system(),
+    )
+    return database, environment
+
+
+def local_models(config: RuntimeConfig) -> tuple[EmbeddingProvider, LLMProvider]:
+    if config.model_provider == ModelProvider.OLLAMA:
+        return (
+            OllamaEmbeddings(config.ollama_url, config.embedding_model),
+            OllamaChat(config.ollama_url, config.llm_model),
+        )
+    url, key = config.llama_url, config.llama_api_key
+    if url is None:
+        return (
+            OpenAICompatibleEmbeddings(url, EMBEDDING_MODEL.name, key),
+            OpenAICompatibleChat(url, CHAT_MODEL.name, key),
+        )
+    order = ChatFirst(LocalHttpClient(url, key), CHAT_MODEL.name, EMBEDDING_MODEL.name)
+    return (
+        OpenAICompatibleEmbeddings(
+            url, EMBEDDING_MODEL.name, key, before_request=order.before_embeddings
+        ),
+        OpenAICompatibleChat(url, CHAT_MODEL.name, key, before_request=order.before_chat),
+    )
+
+
+_RELEASE_TIMEOUT_SECONDS = 10
+
+
+def model_releaser(config: RuntimeConfig) -> Callable[[], None]:
+    """Unloads the models to give their memory back. They reload with the next
+    request that uses them: llama-server in router mode and Ollama do it by themselves."""
+
+    def release() -> None:
+        if config.model_provider == ModelProvider.OLLAMA:
+            client = LocalHttpClient(config.ollama_url)
+            calls = [
+                ("/api/generate", {"model": config.llm_model, "keep_alive": 0}),
+                ("/api/embed", {"model": config.embedding_model, "input": [], "keep_alive": 0}),
+            ]
+        elif config.llama_url:
+            client = LocalHttpClient(config.llama_url, config.llama_api_key)
+            calls = [("/models/unload", {"model": m.name}) for m in (CHAT_MODEL, EMBEDDING_MODEL)]
+        else:
+            return
+        for path, body in calls:
+            # A model that was no longer loaded answers with an error: it does not matter.
+            with contextlib.suppress(ModelError):
+                client.request(path, body, _RELEASE_TIMEOUT_SECONDS)
+
+    return release
+
+
+def create_app(
+    config: RuntimeConfig,
+    sessions: LocalSessionManager,
+    database: Database,
+    environment: LocalEnvironment,
+    runner: IngestionRunner | None = None,
+    llm: LLMProvider | None = None,
+    question_executor: Executor | None = None,
+    memory: MemoryGuard | None = None,
+) -> FastAPI:
+    """`runner`, `llm` and `memory` exist for tests; by default, this machine's models
+    and the memory guard with real memory. With a test `llm` and no `memory`,
+    the guard holds nothing back: tests do not depend on the machine's free memory."""
+    # No /docs or /openapi.json: nobody else consumes this API and it need not be described.
+    app = FastAPI(
+        title="Scrinium", version=__version__, docs_url=None, redoc_url=None, openapi_url=None
+    )
+    # The limit sits inside the guard: a request without a session is rejected unread.
+    app.add_middleware(BodyLimitMiddleware)
+    app.add_middleware(LocalGuardMiddleware, config=config, sessions=sessions)
+    # The last one added is the outermost: it also covers the guard's rejections.
+    app.add_middleware(RequestContextMiddleware)
+    embeddings, local_llm = local_models(config)
+    if runner is None:
+        indexer = Indexer(database, embeddings, LanceVectorIndex(config.data_dir))
+        runner = IngestionRunner(database, config.data_dir, indexer)
+    app.state.ingestion = runner
+    # require_local (inside LlmService) rejects any provider that is not local.
+    if memory is None:
+        memory = (
+            MemoryGuard(release_models=model_releaser(config))
+            if llm is None
+            else MemoryGuard(read_available=lambda: None)
+        )
+    llm_service = LlmService(llm or local_llm, memory)
+    app.state.questions = QuestionRunner(database, runner.indexer, llm_service, question_executor)
+    app.state.analyses = AnalysisRunner(database, llm_service, question_executor)
+    analyses = app.state.analyses
+    runner.after_sync = lambda sync_run_id: extraction.refresh_after_sync(
+        database, llm_service, analyses, sync_run_id
+    )
+    install_error_handlers(app)
+    app.include_router(
+        build_router(
+            config, sessions, database, environment, runner, llm_service, app.state.questions
+        )
+    )
+    app.include_router(build_analyses_router(database, app.state.analyses, runner.indexer))
+    app.include_router(build_knowledge_router(database, llm_service))
+    app.include_router(build_privacy_router(config, database, runner, environment))
+    app.include_router(build_control_router())
+
+    if config.web_dist.is_dir():
+        app.mount("/", InterfaceFiles(directory=config.web_dist, html=True), name="web")
+    else:
+
+        @app.get("/", include_in_schema=False)
+        def ui_not_built() -> PlainTextResponse:
+            return PlainTextResponse("Interfaz sin compilar. Ejecuta: make build")
+
+    return app

@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rule extraction in Scrinium</title>
+<style>
+/* Layout: one reading column (~70ch), diagrams may be wider; jump links at the top. */
+:root {
+  --bg: #f6f7f5;
+  --surface: #ffffff;
+  --fg: #1c2421;
+  --muted: #5b6662;
+  --line: #d5dbd8;
+  --accent: #17705f;
+  --accent-soft: #dcefe9;
+  --warn: #a5610c;
+  --warn-soft: #f8ead6;
+  --code-bg: #eceeec;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141917; --surface: #1b2220; --fg: #e3e8e5; --muted: #9aa6a1; --line: #33403b;
+    --accent: #5cc4ad; --accent-soft: #1d3a33; --warn: #e2a24f; --warn-soft: #3a2c18; --code-bg: #232c29;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141917; --surface: #1b2220; --fg: #e3e8e5; --muted: #9aa6a1; --line: #33403b;
+  --accent: #5cc4ad; --accent-soft: #1d3a33; --warn: #e2a24f; --warn-soft: #3a2c18; --code-bg: #232c29;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 16px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+}
+main { max-width: 860px; margin: 0 auto; display: grid; gap: 56px; }
+.prose { max-width: 70ch; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; line-height: 1.15; margin: 0; }
+h1 { font-size: clamp(2rem, 5vw, 2.9rem); font-weight: 600; letter-spacing: -0.01em; }
+h2 { font-size: 1.75rem; font-weight: 600; }
+h3 { font-size: 1.15rem; font-weight: 600; margin-top: 8px; }
+p, ul, ol { margin: 0; }
+section { display: grid; gap: 16px; scroll-margin-top: 16px; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.lede { font-size: 1.15rem; color: var(--fg); }
+.muted { color: var(--muted); }
+code, .mono { font-family: var(--font-mono); font-size: 0.86em; }
+code { background: var(--code-bg); padding: 0.05em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+.ref { font-family: var(--font-mono); font-size: 0.78em; color: var(--muted); background: none; padding: 0; white-space: nowrap; }
+ul, ol { padding-left: 1.3em; display: grid; gap: 6px; }
+li::marker { color: var(--muted); }
+a { color: var(--accent); }
+a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+header.top { display: grid; gap: 14px; }
+nav.toc { display: flex; flex-wrap: wrap; gap: 8px; }
+nav.toc a { font-family: var(--font-mono); font-size: 0.8rem; text-decoration: none; color: var(--fg); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--surface); }
+nav.toc a:hover { border-color: var(--accent); }
+.answer { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px; display: grid; gap: 10px; }
+.answer h2 { font-size: 1.2rem; }
+.sec-head { display: grid; gap: 6px; border-top: 2px solid var(--fg); padding-top: 14px; }
+figure { margin: 8px 0 0; display: grid; gap: 10px; }
+.diagram { overflow-x: auto; background: #f5f5f5; border: 1px solid var(--line); border-radius: 10px; }
+.diagram img { display: block; width: 100%; height: auto; min-width: 720px; }
+figcaption { font-size: 0.9rem; color: var(--muted); max-width: 70ch; }
+/* Tables */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+th { font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; background: var(--bg); }
+tr:last-child td { border-bottom: none; }
+td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill { display: inline-block; font-family: var(--font-mono); font-size: 0.72rem; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.ok { color: var(--accent); }
+.pill.part { color: var(--warn); }
+.pill.no { color: var(--muted); border-style: dashed; }
+.steps { counter-reset: step; list-style: none; padding: 0; display: grid; gap: 14px; }
+.steps > li { counter-increment: step; display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 4px 10px; }
+.steps > li::before { content: counter(step); font-family: var(--font-display); font-weight: 600; font-size: 1.1rem; color: var(--accent); }
+.steps > li > div { display: grid; gap: 6px; min-width: 0; }
+pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5; }
+.sample .hl { color: var(--accent); font-weight: 500; }
+.note { border-left: 3px solid var(--warn); padding: 4px 0 4px 14px; color: var(--fg); }
+.closing { background: var(--accent-soft); border-radius: 10px; padding: 20px 22px; display: grid; gap: 8px; }
+.closing h2 { font-size: 1.3rem; }
+@media (max-width: 560px) {
+  body { font-size: 15px; padding-block: 24px 56px; }
+  main { gap: 44px; }
+  .answer, .closing { padding: 16px; }
+}
+</style>
+</head>
+<body>
+<main>
+<header class="top">
+  <p class="eyebrow">Scrinium · business-rule extraction</p>
+  <h1>How Scrinium extracts rules from code, and what it still needs to explain it</h1>
+  <p class="lede prose">This page explains the what, when and how of rule extraction. It was checked against the repository code on 11 November 2026. Timing and recall figures come from <code>PERFORMANCE.md</code>. They were measured on a 6 GB GTX 1060 with Qwen3-4B, on the pilot project <code>reference-a</code>.</p>
+  <p class="muted prose" style="font-size:0.9rem">References such as <span class="ref">analysis/extraction.py:533</span> are relative to <code>runtime/src/scrinium/</code>, except those starting with <code>ui/</code>.</p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#what">1 · What</a><a href="#when">2 · When</a><a href="#how">3 · How</a><a href="#lines">4 · Few lines</a><a href="#limits">5 · What it does not do</a><a href="#missing">6 · What is missing</a>
+  </nav>
+</header>
+
+<div class="answer prose">
+  <h2>The short answer</h2>
+  <p>A rule shows only a few lines because that is all that is stored. Each rule comes from one <strong>group of decision lines</strong>: for example an <code>if (lives &lt;= 0)</code>, plus any decision lines within 3 lines of it. That group is the rule's <strong>only citation</strong>, and the UI shows exactly those lines.</p>
+  <p>Scrinium knows where every function starts and ends, and which names it calls. It does not use that knowledge to explain the code or to relate rules to each other. The relationship and flow tables exist, but nothing fills them, so the "Map" screen shows a single column of rules with no arrows.</p>
+  <p>What is missing most is not a better model. It is <strong>structure</strong>: the call graph, the full function and the relationships can all be computed without the GPU. Summaries written by the model are the expensive part.</p>
+</div>
+
+<!-- 1 -->
+<section id="what">
+  <div class="sec-head"><p class="eyebrow">1 · What</p><h2>What a rule is, and what is stored about it</h2></div>
+  <div class="prose" style="display:grid;gap:12px">
+    <p><strong>The definition the model uses.</strong> A business rule is "a domain decision that the code implements: a limit, a validation, a calculation, a permission, a state change". Drawing, sound, UI and implementation details do not count. <span class="ref">analysis/extraction.py:122-125</span></p>
+    <p><strong>The definition the code applies.</strong> Before the model is called, a possible rule is a <em>decision group</em>: lines within 3 lines of each other that do one of these:</p>
+    <ul>
+      <li>compare against a threshold (a named constant or a number ≥ 2);</li>
+      <li>apply a cap or a probability;</li>
+      <li>reject (<code>throw</code>/<code>raise</code>);</li>
+      <li>compute a formula with a constant;</li>
+      <li>change a state.</li>
+    </ul>
+    <p><span class="ref">analysis/candidates.py:164-179, 277-291, 334-346</span> The model answers each group with <code>null</code>, or with a title and a category. If it gives a title, that is a rule.</p>
+  </div>
+
+  <h3>What is stored for each rule</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Data</th><th>Where</th><th>What it holds today</th></tr></thead>
+    <tbody>
+      <tr><td>Identity</td><td><code>knowledge_entities</code></td><td>Key <code>extracted/&lt;normalized-title&gt;</code>: two rules with the same title are the same rule. Born <code>proposed</code>. <code>review_reason</code> is set when its code changes. <span class="ref">analysis/extraction.py:312-314</span></td></tr>
+      <tr><td>Category</td><td><code>business_rules</code></td><td>One of 10 three-letter codes chosen by the model (<code>val</code>, <code>cal</code>, <code>est</code>…). <span class="ref">analysis/extraction.py:161, 165-171</span></td></tr>
+      <tr><td>Criticality</td><td><code>business_rules</code></td><td>Always <strong>medium</strong>. The model no longer proposes it; a person decides. <span class="ref">analysis/extraction.py:571-572</span></td></tr>
+      <tr><td>Title</td><td><code>business_rule_versions</code></td><td>Between 12 and 60 characters, cut at a whole word. <span class="ref">analysis/extraction.py:101-102, 174-181</span></td></tr>
+      <tr><td>Statement</td><td><code>business_rule_versions</code></td><td>First "Pendiente de redactar. Código: &lt;line&gt;" (pending, plus the decision line). Then a sentence of at most 160 characters (phase 2). <span class="ref">analysis/rule_detail.py:42, 97-99</span></td></tr>
+      <tr><td>Scope</td><td><code>business_rule_versions.scope</code></td><td>Only the file path. <span class="ref">analysis/extraction.py:564</span></td></tr>
+      <tr><td>Preconditions, triggers, expected behaviour, exceptions, impact</td><td><code>business_rule_versions</code></td><td><strong>Empty.</strong> The columns exist, but extraction does not fill them. <span class="ref">infrastructure/sqlite/models.py:513-517</span></td></tr>
+      <tr><td>Rationale</td><td><code>business_rule_versions.rationale</code></td><td>Only when the model adjusts a rule because its code changed ("Before: …"). <span class="ref">analysis/extraction.py:643-650</span></td></tr>
+      <tr><td>Evidence (citation)</td><td><code>evidence_records</code></td><td><strong>One</strong> per version: path, commit, start and end lines, and an excerpt of up to 2000 characters. Method <code>llm_proposal</code>, status <code>unverified</code>. <span class="ref">knowledge/evidence.py:126-200</span></td></tr>
+      <tr><td>Versions</td><td><code>knowledge_entity_versions</code></td><td>One version per change, with the model and the extractor: <code>rules-map-1</code> (phase 1), <code>rules-detail-1</code> (phase 2), <code>rules-verdict-1</code> (reviewed after a code change). Each new version copies the previous one's citations. <span class="ref">analysis/rule_detail.py:39-40, 279-294</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Which tables exist, and who writes them</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Table</th><th>State</th><th>Who writes it, and why</th></tr></thead>
+    <tbody>
+      <tr><td><code>code_symbols</code></td><td><span class="pill ok">in use</span></td><td>Sync, with tree-sitter: functions, methods and classes with their lines, <code>logic_hash</code> and the <code>calls</code> list (called names). <span class="ref">ingestion/sources.py:312</span>, <span class="ref">retrieval/structure.py:22-45</span></td></tr>
+      <tr><td><code>extraction_tasks</code></td><td><span class="pill ok">in use</span></td><td>The extraction queue: one task per candidate chunk, with its fingerprint. <span class="ref">sqlite/models.py:345-371</span></td></tr>
+      <tr><td><code>business_rules</code>, <code>business_rule_versions</code>, <code>evidence_records</code></td><td><span class="pill ok">in use</span></td><td>Extraction (phases 1 and 2), manual rule creation and verification.</td></tr>
+      <tr><td><code>findings</code></td><td><span class="pill part">other analyses</span></td><td>Code diff, consistency, SQL, release comparison, bug investigation and answers. Extraction writes no findings.</td></tr>
+      <tr><td><code>entity_relationships</code></td><td><span class="pill no">empty</span></td><td>Nobody. <code>add_relationship</code> exists and validates cycles and symmetry, but only tests call it. The map, the rule detail and the diff analysis do read it. <span class="ref">knowledge/evidence.py:287</span>, <span class="ref">knowledge/views.py:128, 229</span></td></tr>
+      <tr><td><code>flow_definitions</code>, <code>flow_versions</code>, <code>flow_steps</code>, <code>flow_transitions</code></td><td><span class="pill no">empty</span></td><td>Nobody. <code>create_flow</code> exists and only tests use it. The "Map" screen already has a "Processes" section that would show them. <span class="ref">knowledge/entities.py:298</span></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- 2 -->
+<section id="when">
+  <div class="sec-head"><p class="eyebrow">2 · When</p><h2>What triggers extraction, and in what order it runs</h2></div>
+  <ul class="prose">
+    <li><strong>The "Extraer reglas automáticamente" button</strong> on the Rules screen.
+      <ul>
+        <li>Optional folder, and an option to read every function (threshold 0).</li>
+        <li>Only one extraction per project at a time; another returns 409.</li>
+      </ul>
+      <span class="ref">ui/src/screens/RulesScreen.tsx:132</span>, <span class="ref">api/analyses.py:255-258, 270-278</span></li>
+    <li><strong>After a sync.</strong>
+      <ul>
+        <li>It always flags the rules whose code changed.</li>
+        <li>It launches extraction, on what changed only, if the project <em>already</em> had completed tasks, no other extraction is running, and the model is ready.</li>
+        <li><strong>The first extraction is never automatic.</strong></li>
+      </ul>
+      <span class="ref">main.py:157</span>, <span class="ref">analysis/extraction.py:949-980</span></li>
+    <li><strong>At startup.</strong> Continues extractions with pending tasks, and missing statements. <span class="ref">cli/main.py:278-280</span>, <span class="ref">analysis/extraction.py:904-923</span></li>
+    <li><strong>Phase 2 in the background.</strong> When the map finishes, a separate analysis is queued: "Redactar los enunciados de las reglas". <span class="ref">analysis/extraction.py:940-944, 820-835</span></li>
+    <li><strong>Phase 2 on demand.</strong> Opening a rule without a statement makes the UI request it, and it is written right away, ahead of everything else. <span class="ref">api/knowledge.py:173-191</span>, <span class="ref">analysis/extraction.py:869-901</span></li>
+  </ul>
+
+  <figure>
+    <div class="diagram"><img src="diagrams/model-queue.svg" width="960" height="424" alt="Three triggers feed one analysis thread that sends one batch at a time to the single model slot; questions go first and phase 2 yields its turn."></div>
+    <figcaption>Everything goes through a single queue. Questions and an opened rule take priority: background batches wait between one batch and the next. Phase 2 also yields to any other waiting analysis. <span class="ref">analysis/runs.py:109-156</span>, <span class="ref">ai/service.py:36-55, 69-75</span>, <span class="ref">analysis/extraction.py:846-864</span></figcaption>
+  </figure>
+
+  <h3>Incremental extraction (T5)</h3>
+  <div class="prose" style="display:grid;gap:10px">
+    <p>Each candidate chunk is a task with a fingerprint: path, function, <code>logic_hash</code> and part number. The <code>logic_hash</code> is computed over the syntax tree's tokens without comments, so changing only formatting or comments does not change the fingerprint. <span class="ref">analysis/extraction_queue.py:26-34</span>, <span class="ref">infrastructure/code_structure.py:142-154</span></p>
+    <ul>
+      <li>A completed task whose fingerprint did not change does not go back to the model.</li>
+      <li>Tasks whose code no longer exists are deleted.</li>
+      <li>A failed batch is retried in the next extraction, and dropped after 2 attempts. <span class="ref">analysis/extraction_queue.py:23, 50-105, 117-121</span></li>
+      <li><strong>Rule watch:</strong> if the <code>logic_hash</code> of the function behind a rule changes:
+        <ul>
+          <li>the rule is flagged "Review";</li>
+          <li>the new function goes to the model together with that rule;</li>
+          <li>the model says whether the rule still holds, is adjusted (with a new statement), or is no longer met.</li>
+        </ul>
+        <span class="ref">knowledge/watch.py:81-160</span>, <span class="ref">analysis/extraction.py:623-672</span></li>
+    </ul>
+    <p class="muted">What T5 proposed as new, a result cache shared across projects or branches, is not done.</p>
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="how">
+  <div class="sec-head"><p class="eyebrow">3 · How</p><h2>The path, step by step</h2></div>
+
+  <figure>
+    <div class="diagram"><img src="diagrams/extraction-map.svg" width="960" height="344" alt="Phase 1: function symbols are scored, cut into windows, queued, batched and answered by the model; each rule is stored with one citation."></div>
+    <figcaption>Phase 1. Sync builds the function symbols without the model. The model only says whether each decision is a rule, and gives it a title and a category. The citation (in orange) comes from the code, not from the model.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="diagram"><img src="diagrams/extraction-statements.svg" width="960" height="320" alt="Phase 2: a background job or an opened rule sends the citation with four lines of context to the model, which writes one sentence stored as a new version."></div>
+    <figcaption>Phase 2. The statement is written later, from the citation and 4 lines around it: in the background with low priority, or right away when someone opens the rule.</figcaption>
+  </figure>
+
+  <ol class="steps prose">
+    <li><div>
+      <h3>Chunking and indexing</h3>
+      <p>On sync, each file is split into chunks of 60 to 80 lines, without overlap, for search and questions. <span class="ref">retrieval/chunking.py:14-16, 45-68</span></p>
+      <p>Tree-sitter also extracts the functions, methods and classes of 11 languages, with their lines, two fingerprints and the names each one calls. <span class="ref">infrastructure/code_structure.py:32-44, 157-205</span></p>
+      <p>For rules, the unit is the <strong>function</strong>. Chunks are only used for SQL and languages without a grammar. <span class="ref">analysis/candidates.py:463-500</span></p>
+    </div></li>
+    <li><div>
+      <h3>Which files go in</h3>
+      <p>Only code, schemas and tests, by extension. Tool and agent folders (<code>.claude</code>, <code>.github</code>, <code>.vscode</code>…) are excluded. <span class="ref">analysis/candidates.py:115-138, 439-448, 475-479</span></p>
+      <p>Tests are not extracted. If a test mentions a function, that function scores one point more.</p>
+    </div></li>
+    <li><div>
+      <h3>The decision-line filter (F10, <code>score_text</code>)</h3>
+      <p>A function's score is its number of decision lines, capped at 6. <span class="ref">analysis/candidates.py:305-326</span></p>
+      <ul>
+        <li>It loses 3 if it has more drawing lines than decision lines.</li>
+        <li>It gains 1 if it is small (15 lines or fewer).</li>
+        <li>It loses 2 if its path or name belongs to UI, drawing or sound. <span class="ref">analysis/candidates.py:373-378</span></li>
+      </ul>
+      <p>With the default threshold (2), a function without decisions never reaches the model. Functions over 6000 characters are split before scoring. <span class="ref">analysis/candidates.py:40-42, 394-415</span></p>
+    </div></li>
+    <li><div>
+      <h3>Windows and batches</h3>
+      <p>From a function over 40 lines, only <strong>±6-line windows</strong> around each decision line are sent. Windows 2 lines apart or less are merged. <span class="ref">analysis/candidates.py:217-218, 349-370</span></p>
+      <p>Chunks are sorted by score and packed into batches of at most 8000 characters and 24 decision groups. <span class="ref">analysis/extraction.py:94-97, 400-416</span></p>
+    </div></li>
+    <li><div>
+      <h3>The prompt and the grammar</h3>
+      <p>How the prompt is built: <span class="ref">analysis/extraction.py:114-146, 435-494</span></p>
+      <ul>
+        <li>The system prompt is fixed, to make use of the cache.</li>
+        <li>Each source goes between delimiters with a random value, so the code cannot give orders to the model.</li>
+        <li>Lines are numbered, with compacted indentation and no blank lines.</li>
+        <li>Decision lines carry <code>»</code>, and the list of decisions goes at the end of the message.</li>
+      </ul>
+      <p>What the model sees (the markers are in Spanish in the real prompt):</p>
+<pre class="sample" aria-label="Example of what the model sees">&lt;&lt;FUENTE 1 9f3a…&gt;&gt;
+ruta: src/game.ts, funcion: Game.loseLife
+41|loseLife() {
+42| this.lives -= 1
+43|<span class="hl">» if (this.lives &lt;= 0) {</span>
+44|<span class="hl">»  this.state = 'over'</span>
+45| }
+&lt;&lt;FIN 9f3a…&gt;&gt;
+
+Decisiones (1; una respuesta por cada una en "d"):
+D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
+      <p>The grammar forces <strong>exactly one answer per decision, in order</strong>: <code>{"i":"D1","r":null}</code> or <code>{"i":"D1","r":{"c":"est","t":"Fin de partida sin vidas"}}</code>. The model can neither skip a decision nor invent one (R1b). <span class="ref">analysis/extraction.py:252-273</span></p>
+    </div></li>
+    <li><div>
+      <h3>Citations, validation and storage (F6/F6b)</h3>
+      <p>Numbering continues from one source to the next within the batch, so each number is a single line of a single file. <span class="ref">analysis/extraction.py:242-249</span></p>
+      <p>The model no longer writes the citation: <strong>the citation is the decision group</strong>. <span class="ref">analysis/extraction.py:533-573</span></p>
+      <p>On storage, the code checks that the lines exist in that revision and that there are no more than 200 of them. If a rule with the same title exists, a version is added to it. <span class="ref">knowledge/evidence.py:151-155</span>, <span class="ref">analysis/extraction.py:576-620</span></p>
+    </div></li>
+    <li><div>
+      <h3>Phase 2 context (<code>CONTEXT_LINES</code>)</h3>
+      <p>For each map rule, phase 2 takes its <strong>first</strong> citation:</p>
+      <ul>
+        <li>it marks the cited lines and adds <strong>4 lines around them</strong>;</li>
+        <li>it keeps at most 16 non-empty lines and 900 characters;</li>
+        <li>it sends 12 rules per batch, and the grammar asks for one statement per rule.</li>
+      </ul>
+      <p><span class="ref">analysis/rule_detail.py:43-50, 102-116, 191-249</span></p>
+    </div></li>
+  </ol>
+</section>
+
+<!-- 4 -->
+<section id="lines">
+  <div class="sec-head"><p class="eyebrow">4 · Few lines</p><h2>Why only a few lines are shown</h2></div>
+
+  <figure>
+    <div class="diagram"><img src="diagrams/rule-anatomy.svg" width="960" height="424" alt="A 90-line function: the model reads only windows around decisions, phase 2 reads the citation plus four lines, and only the citation is stored, with no link between rules."></div>
+    <figcaption>An example built from the code's rules, not a real function: a long function with decisions on lines 14–17, 52 and 70–71. Each decision group yields one rule with one citation. The full function, and the link between those three rules, are lost.</figcaption>
+  </figure>
+
+  <div class="prose" style="display:grid;gap:12px">
+    <p><strong>One citation per rule, on purpose (S2).</strong> Writing is the expensive part on this GPU (about 2.3 s per rule with the earlier format), so everything the model wrote was trimmed. The model no longer writes the citation: it is the decision group, usually one to a few lines. If a chunk has no domain decision at all, the group is the whole chunk, and then the citation is longer. <span class="ref">analysis/candidates.py:346</span></p>
+    <p><strong>±6-line windows.</strong> The model never sees a function over 40 lines in full. It sees cut-outs around each decision, and answers each one separately.</p>
+    <p><strong>The batch cap no longer cuts rules.</strong> There used to be a cap of 6 rules per batch, which dropped rules the model had seen. With R1b the cap is 24 <em>decisions</em> per batch, and every decision gets an answer. Today the cap only decides where a batch ends.</p>
+    <p><strong>Neither the function nor its relationships are stored.</strong> A rule stores the path and the lines of its group. It does not store the function that contains it, who calls that function, or the other rules in the same function. <code>code_symbols</code> knows all of that, but the rule does not record it.</p>
+    <p><strong>The UI shows exactly the citation.</strong> "Abrir" requests the lines from the citation's start to its end, not one more, in a box of limited height. There is no button to see the full function. <span class="ref">ui/src/components/evidence-cite.tsx:47-53, 90</span> The "Relaciones" section of the rule detail only appears if the rule has a relationship, and today none does. <span class="ref">ui/src/screens/RulesScreen.tsx:744-745</span></p>
+  </div>
+
+  <h3>What the "Map" is today</h3>
+  <div class="prose" style="display:grid;gap:10px">
+    <p>The word "map" has two uses in Scrinium, and they should not be mixed up:</p>
+    <ul>
+      <li><strong>The rule map (phase 1)</strong> is the list of rules with title, category and citation, before they have a statement.</li>
+      <li><strong>The "Mapa del sistema" screen</strong> draws a graph in columns: requirements, rules, flows, modules, code, tests…
+        <ul>
+          <li>It takes up to 200 entities and 500 relationships from <code>entity_relationships</code>.</li>
+          <li>Below it, a "Procesos" section shows the flows.</li>
+        </ul>
+        <span class="ref">ui/src/screens/MapScreen.tsx:278-304</span>, <span class="ref">knowledge/views.py:38-39, 229-292</span>, <span class="ref">ui/src/lib/graph.ts:4-22</span></li>
+    </ul>
+    <p class="note">Extraction only creates rules, and nothing creates relationships or flows. So the screen shows <strong>a single column of rules with no arrows</strong>, with the notice "N elements have no known relationships", and an empty processes section. The drawing is ready; the data is not.</p>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="limits">
+  <div class="sec-head"><p class="eyebrow">5 · Limits</p><h2>What it does not do</h2></div>
+  <ul class="prose">
+    <li><strong>It does not understand the flow between functions.</strong>
+      <ul>
+        <li>It stores the names each function calls, but only the last part (<code>this.game.end()</code> becomes <code>end</code>). <span class="ref">infrastructure/code_structure.py:120-133, 157-159</span></li>
+        <li>It does not resolve which function a name refers to, and does not read <code>import</code>s.</li>
+        <li>The only use of those calls is citing the tests that call a rule's function, in the consistency analysis. <span class="ref">analysis/consistency.py:162-215</span></li>
+      </ul></li>
+    <li><strong>It does not relate rules to each other.</strong>
+      <ul>
+        <li>Each decision group is judged on its own. Two rules in the same function, or a rule and the one that validates its input, are not linked.</li>
+        <li>Duplicates are merged only if their normalized titles match exactly.</li>
+      </ul></li>
+    <li><strong>It gives no module or architecture view.</strong>
+      <ul>
+        <li>There is no summary of a function, file, folder or the system.</li>
+        <li>There are no dependencies between modules.</li>
+        <li>The <code>module</code> and <code>service</code> types exist in the data model, unused.</li>
+      </ul></li>
+    <li><strong>It does not follow data or execution.</strong> It does not know what comes in through an endpoint or what ends up in the database. It does not see behaviour that depends on configuration or runtime.</li>
+    <li><strong>It does not use documentation or tickets.</strong> Documentation is left out of extraction. Tickets as tags (the vision in <code>IMPROVEMENTS.md</code>, section 2) are not done.</li>
+    <li><strong>F3, F7 and F9 are pending:</strong>
+      <ul>
+        <li>F3: split the statement into "when" and "then";</li>
+        <li>F7: propose criticality with fixed rules;</li>
+        <li>F9: retry a failed batch split in two, and fix the temperature in production.</li>
+      </ul></li>
+  </ul>
+
+  <h3>How much it finds, measured</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Measure (<code>reference-a</code>)</th><th>Value</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td>Filter recall</td><td class="num">27 of 29 (0.931)</td><td>The 2 that never reach the model have no comparison or constant (<code>afterDoor</code>, <code>pack</code>).</td></tr>
+      <tr><td>Rules covered by a decision group (P1)</td><td class="num">24 of 29</td><td>The ones the model can answer at all.</td></tr>
+      <tr><td><strong>Extraction recall</strong></td><td class="num"><strong>24 of 28</strong></td><td>With the current setup (S3 + P1), on the reference sample.</td></tr>
+      <tr><td>Decisions the model marks as a rule</td><td class="num">≈ 90 %</td><td>Many are implementation details. Precision has not been reviewed by hand systematically.</td></tr>
+      <tr><td>First extraction time</td><td class="num">≈ 21 + 18 min</td><td>Map plus statements on the GTX 1060 (estimated from the sample). After that, only what changes.</td></tr>
+      <tr><td>1.7B model for the map</td><td class="num">9 of 28</td><td>2.6 times faster, but loses almost two thirds of the rules: rejected.</td></tr>
+      <tr><td>Parallel batches (S1)</td><td class="num">−2 % with 2 slots</td><td>The GTX 1060 is already saturated: not worth it.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted prose" style="font-size:0.9rem">The reference list is a draft of 29 rules written by Claude, pending review by the owner (<code>runtime/benchmarks/golden/reference-a.json</code>). It is a single project, and it is a game. Source: <code>PERFORMANCE.md</code>, sections F10 + F6, P1, S1 and small model.</p>
+</section>
+
+<!-- 6 -->
+<section id="missing">
+  <div class="sec-head"><p class="eyebrow">6 · What is missing</p><h2>What it would take to explain the code and map how it is built</h2></div>
+  <p class="prose">A tool that explains code needs four layers, each built on the one below. Today only the bottom one is complete.</p>
+
+  <figure>
+    <div class="diagram"><img src="diagrams/understanding-layers.svg" width="960" height="376" alt="Layer stack from rules to the whole system: what exists today, what is partial and what is missing."></div>
+    <figcaption>The solid boxes are already in the database. Calls exist only as bare names. Everything dashed has to be built, although the relationship and flow tables, and their drawing in the UI, already exist.</figcaption>
+  </figure>
+
+  <h3>Proposals, ordered by value and effort</h3>
+  <p class="prose">The first four do not use the model. They cost development time, not GPU time, and they are what changes a demo the most.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>#</th><th>Proposal</th><th>What is reused</th><th>Effort</th><th>GPU (GTX 1060)</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td><strong>See the full function next to the rule.</strong> A "See function" button that shows the symbol containing the citation, with the citation highlighted.</td><td><code>code_symbols</code> (start and end); the lookup of the symbol covering a citation already exists in <span class="ref">analysis/consistency.py:186-197</span>; the lines endpoint (<span class="ref">api/sources.py:287</span>) and <code>EvidenceCite</code>.</td><td>Low</td><td class="num">0</td></tr>
+      <tr><td class="num">2</td><td><strong>Resolved call graph.</strong> Read the <code>import</code>s, resolve each called name to its symbol, and show "who calls this function" and "what it calls".</td><td><code>parse_symbols</code> and <code>calls</code> (<span class="ref">infrastructure/code_structure.py:157-205</span>); <code>logic_hash</code> to redo only what changes; computed on sync.</td><td>Medium</td><td class="num">0 (seconds)</td></tr>
+      <tr><td class="num">3</td><td><strong>Relationships between rules, without the model.</strong> Same function; a function that calls another with rules; same named constant (<code>MAX_LIVES</code>).</td><td><code>add_relationship</code>, which already validates cycles and symmetry (<span class="ref">knowledge/evidence.py:287</span>); the <code>depends_on</code>, <code>calls</code> and <code>related_to</code> types; the Map graph and the "Relaciones" section, which already draw them.</td><td>Medium-low (after 2)</td><td class="num">0</td></tr>
+      <tr><td class="num">4</td><td><strong>Architecture view.</strong> Modules (folders or files) as nodes and their dependencies as arrows, with each one's rule count.</td><td>The <code>module</code> and <code>service</code> types; <code>layoutGraph</code> and <code>MapScreen</code> (<span class="ref">ui/src/lib/graph.ts</span>).</td><td>Medium</td><td class="num">0</td></tr>
+      <tr><td class="num">5</td><td><strong>Hierarchical summaries by the model.</strong> One sentence per function; a paragraph per module, from its functions' summaries and its rules; and a system summary.</td><td>The phase 2 pattern: background queue with low priority, on demand when opened, per-batch grammar, delimiters with a random value, and the logical fingerprint to redo only what changes.</td><td>High</td><td class="num">≈ 25–35 min the first time*</td></tr>
+      <tr><td class="num">6</td><td><strong>Proposed flows.</strong> Paths through the call graph from the entry points, with each step's rules. The model only names the flow and its steps.</td><td><code>create_flow</code> and the <code>flow_*</code> tables (<span class="ref">knowledge/entities.py:298</span>); the Map's "Procesos" section.</td><td>High</td><td class="num">≈ 3–10 min*</td></tr>
+      <tr><td class="num">7</td><td><strong>Rule quality:</strong> F3 (fill preconditions and expected behaviour, whose columns already exist), F7 (proposed criticality), F9 (split failed batches), and merging duplicates by citation instead of by title.</td><td>The <code>business_rule_versions</code> columns; the <code>score_text</code> signals.</td><td>Low-medium</td><td class="num">a little more writing in phase 2</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="prose" style="display:grid;gap:10px">
+    <p><strong>* How the GPU cost is estimated (not measured).</strong> It uses the speeds measured on the GTX 1060: reading at about 220–250 tokens/s and writing at about 32–35 tokens/s.</p>
+    <ul>
+      <li><strong>Function summaries.</strong> <code>reference-a</code> has 419 functions and about 746 000 characters of code, which is about 190 000–210 000 tokens.
+        <ul>
+          <li>Reading them takes ~13–16 min.</li>
+          <li>Writing one sentence of ~40 tokens per function is ~17 000 tokens, about 8–9 min.</li>
+        </ul></li>
+      <li><strong>Modules and the system.</strong> They read summaries instead of code, so they take a few minutes.</li>
+      <li><strong>Total, first time.</strong> About 30–45 min more on top of the ~39 min of rules, with the GPU busy. After that, as with rules, only what changes is redone.</li>
+    </ul>
+    <p class="note">The GPU is the real limit. S1 and the small model have already been tried, and they do not help on this machine. That is why proposals 1 to 4, which do not use it, come first. Summaries (5) should work like phase 2: in the background, with low priority, and on demand when someone opens a function or a module.</p>
+  </div>
+</section>
+
+<div class="closing prose">
+  <h2>Work plan</h2>
+  <p>Section 6 was turned into a work plan with phases, acceptance criteria, measurement, and a time projection by hardware and project size. Its goal is to show business modules, their dependencies, their rules and the rules they share, not just isolated lines. Plans are kept out of git: it lives locally as <code>docs/plan-mapa-de-negocio.md</code>.</p>
+</div>
+</main>
+</body>
+</html>

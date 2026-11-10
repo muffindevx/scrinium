@@ -1,0 +1,21 @@
+Scrinium: instalacion
+==================
+
+Necesitas unos 4 GB libres y, mejor, 8 GB de memoria o mas. No hace falta ser
+administrador. La primera vez descarga unos 3,2 GB (herramientas y modelos locales).
+
+Linux y macOS, en una terminal dentro de esta carpeta:
+
+    sh install.sh
+
+Windows, en PowerShell dentro de esta carpeta:
+
+    powershell -ExecutionPolicy Bypass -File install.ps1
+
+Despues, para abrir Scrinium:
+
+    scrinium start
+
+Si algo falla, `scrinium doctor` dice que falta y como arreglarlo.
+Para detenerlo: `scrinium stop`. Para ver en vivo todo lo que hace: `scrinium attach`.
+Para desinstalarlo todo, datos incluidos: `scrinium uninstall`.

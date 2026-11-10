@@ -1,0 +1,42 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+node_modules/
+runtime/src/scrinium/web_dist/
+.env
+# Scrinium's own Ollama models (make models): several GB.
+.models/
+sbom/
+
+# Intermediate diagram HTML (rebuilt by docs/diagrams/src/build.py).
+docs/diagrams/src/html/
+
+# Working documents are never committed: plans, proposals, handoffs, implementation notes,
+# the specification and the agent log. They stay on disk as the agent's build route.
+*PLAN*
+*PROPOSAL*
+*HANDOFF*
+*IMPLEMENTATION*
+plan-*.md
+*-plan.md
+*_plan.md
+plans/
+proposal-*.md
+*-proposal.md
+proposals/
+handoff-*.md
+*-handoff.md
+implementation-*.md
+*-implementation.md
+implementation/
+spec/
+IMPROVEMENTS.md
+PERFORMANCE.md
+ROADMAP.md
+SESSION.md
+README_DOCUMENTACION.md
+agent-execution-log.md

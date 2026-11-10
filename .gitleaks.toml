@@ -1,0 +1,24 @@
+# Secret scan of Scrinium's code (make secrets). gitleaks default rules.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Dependencias, compilados, modelos y datos generados; no son codigo de Scrinium"
+paths = [
+  '''(^|/)node_modules/''',
+  '''(^|/)\.venv/''',
+  '''runtime/src/scrinium/web_dist/''',
+  '''(^|/)\.models/''',
+  '''(^|/)sbom/''',
+  '''\.lock$''',
+  '''pnpm-lock\.yaml$''',
+]
+# Tests use fake credentials on purpose (ghp_ZZZ..., sk-a1b2...): only those repetitive
+# shapes are allowed, not any secret that shows up in tests.
+regexes = [
+  # A single repeated letter (gitleaks uses RE2, which has no backreferences like \1).
+  '''ghp_(?:A{36}|Q{36}|Z{36})''',
+  '''ghp_abcdefghijklmnopqrstuvwxyz0123456789''',
+  '''(sk-)(a1b2c3d4e5){4}''',
+  '''AKIA(A){16}''',
+]

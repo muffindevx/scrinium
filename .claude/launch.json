@@ -1,0 +1,113 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "scrinium-enunciados",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": [
+        "SCRINIUM_DATA_DIR=/tmp/claude-1000/-home-gris--claude-spares-spare-e8HYoB/06599422-b32f-4aff-85d5-657be1fb2e19/scratchpad/scrinium-data",
+        "/home/gris/.local/bin/uv",
+        "run",
+        "--project",
+        "/media/gris/GRIS/Sandbox/scrinium/runtime",
+        "scrinium",
+        "start",
+        "--no-browser",
+        "--port",
+        "47623"
+      ],
+      "port": 47623,
+      "url": "http://127.0.0.1:47623"
+    },
+    {
+      "name": "scrinium",
+      "runtimeExecutable": "/home/gris/.local/bin/uv",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "/media/gris/GRIS/Sandbox/scrinium/runtime",
+        "scrinium",
+        "start",
+        "--no-browser"
+      ],
+      "port": 47615,
+      "url": "http://127.0.0.1:47615"
+    },
+    {
+      "name": "scrinium-prueba",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": [
+        "SCRINIUM_DATA_DIR=/tmp/claude-1000/-home-gris--claude-spares-spare-QJ1i3Y/c6b07e26-14e7-4a89-b4de-a81176bc6b81/scratchpad/scrinium-data",
+        "/home/gris/.local/bin/uv",
+        "run",
+        "--project",
+        "/media/gris/GRIS/Sandbox/scrinium/runtime",
+        "scrinium",
+        "start",
+        "--no-browser",
+        "--port",
+        "47617"
+      ],
+      "port": 47617,
+      "url": "http://127.0.0.1:47617"
+    },
+    {
+      "name": "ollama-scrinium",
+      "runtimeExecutable": "make",
+      "runtimeArgs": [
+        "-C",
+        "/media/gris/GRIS/Sandbox/scrinium",
+        "ollama"
+      ],
+      "port": 11435,
+      "url": "http://127.0.0.1:11435"
+    },
+    {
+      "name": "scrinium-ui-dev",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "/media/gris/GRIS/Sandbox/scrinium/ui",
+        "dev"
+      ],
+      "port": 5173,
+      "url": "http://127.0.0.1:5173"
+    },
+    {
+      "name": "scrinium-t016",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": [
+        "SCRINIUM_DATA_DIR=/tmp/claude-1000/-media-gris-GRIS-Sandbox-scrinium/8c354300-75c7-4ad3-bc34-3078d3daf6fc/scratchpad/scrinium-data",
+        "/home/gris/.local/bin/uv",
+        "run",
+        "--project",
+        "/media/gris/GRIS/Sandbox/scrinium/runtime",
+        "scrinium",
+        "start",
+        "--no-browser",
+        "--port",
+        "47619"
+      ],
+      "port": 47619,
+      "url": "http://127.0.0.1:47619"
+    },
+    {
+      "name": "scrinium-revision-ui",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": [
+        "SCRINIUM_DATA_DIR=/tmp/claude-1000/-media-gris-GRIS-Sandbox-pinky/d9e14459-4045-460d-a3d3-5ace1c9e2608/scratchpad/data",
+        "/home/gris/.local/bin/uv",
+        "run",
+        "--project",
+        "/media/gris/GRIS/Sandbox/scrinium/runtime",
+        "scrinium",
+        "start",
+        "--no-browser",
+        "--port",
+        "47621"
+      ],
+      "port": 47621,
+      "url": "http://127.0.0.1:47621"
+    }
+  ]
+}
