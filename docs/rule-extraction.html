@@ -237,17 +237,19 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
     </div></li>
     <li><div>
       <h3>The decision-line filter (F10, <code>score_text</code>)</h3>
-      <p>A function's score is its number of decision lines, capped at 6. <span class="ref">analysis/candidates.py:305-326</span></p>
+      <p>A function's score is its number of decision lines, capped at 6. <span class="ref">analysis/candidates.py:317-344</span></p>
       <ul>
         <li>It loses 3 if it has more drawing lines than decision lines.</li>
         <li>It gains 1 if it is small (15 lines or fewer).</li>
-        <li>It loses 2 if its path or name belongs to UI, drawing or sound. <span class="ref">analysis/candidates.py:373-378</span></li>
+        <li>It loses 2 if its path or name belongs to UI, drawing or sound. <span class="ref">analysis/candidates.py:407-412</span></li>
       </ul>
-      <p>With the default threshold (2), a function without decisions never reaches the model. Functions over 6000 characters are split before scoring. <span class="ref">analysis/candidates.py:40-42, 394-415</span></p>
+      <p>A decision is written differently in a game and in a business system, and the filter knows both. In business code it also counts a guard on a state field or a failed check (<code>if (!user.isActive)</code>, <code>if (!isAllowedEmail(…))</code>), an equality with an upper-case status or role (<code>role === 'ADMIN'</code>, SQL <code>status &lt;&gt; 'DRAFT'</code>), a schema constraint (<code>check(</code>, <code>CHECK (</code>), a permission string (<code>'users:manage'</code>) and an HTTP refusal (<code>status(403)</code>). SQL keywords count in capitals. An explicit refusal (<code>throw</code>, <code>RAISE</code>, a 4xx status) or a database function or trigger adds 1. <span class="ref">analysis/candidates.py, _GUARD, _REJECTION</span></p>
+      <p>In files with a grammar, the stretches no function covers are candidates too: a schema's constraints, a role-to-permission table and the routes that require a permission live there. A call opened on a decision line (<code>check(</code> with its condition below) is cited whole, up to 6 lines. <span class="ref">analysis/candidates.py, _outside_functions, _call_end</span></p>
+      <p>With the default threshold (2), a function without decisions never reaches the model. Functions over 6000 characters are split before scoring. <span class="ref">analysis/candidates.py:41-43, 415-436</span></p>
     </div></li>
     <li><div>
       <h3>Windows and batches</h3>
-      <p>From a function over 40 lines, only <strong>±6-line windows</strong> around each decision line are sent. Windows 2 lines apart or less are merged. <span class="ref">analysis/candidates.py:217-218, 349-370</span></p>
+      <p>From a function over 40 lines, only <strong>±6-line windows</strong> around each decision line are sent. Windows 2 lines apart or less are merged. <span class="ref">analysis/candidates.py:233-234, 383-404</span></p>
       <p>Chunks are sorted by score and packed into batches of at most 8000 characters and 24 decision groups. <span class="ref">analysis/extraction.py:94-97, 400-416</span></p>
     </div></li>
     <li><div>
@@ -358,18 +360,18 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
 
   <h3>How much it finds, measured</h3>
   <div class="table-wrap"><table>
-    <thead><tr><th>Measure (<code>reference-a</code>)</th><th>Value</th><th>What it means</th></tr></thead>
+    <thead><tr><th>Measure</th><th><code>reference-a</code> (game)</th><th><code>reference-b</code> (GRC API)</th><th>What it means</th></tr></thead>
     <tbody>
-      <tr><td>Filter recall</td><td class="num">27 of 29 (0.931)</td><td>The 2 that never reach the model have no comparison or constant (<code>afterDoor</code>, <code>pack</code>).</td></tr>
-      <tr><td>Rules covered by a decision group</td><td class="num">24 of 29</td><td>The ones the model can answer at all.</td></tr>
-      <tr><td><strong>Extraction recall</strong></td><td class="num"><strong>24 of 28</strong></td><td>With the current two-phase setup, on the reference sample.</td></tr>
-      <tr><td>Decisions the model marks as a rule</td><td class="num">≈ 90 %</td><td>Many are implementation details. Precision has not been reviewed by hand systematically.</td></tr>
-      <tr><td>First extraction time</td><td class="num">≈ 21 + 18 min</td><td>Map plus statements on the GTX 1060 (estimated from the sample). After that, only what changes.</td></tr>
-      <tr><td>1.7B model for the map</td><td class="num">9 of 28</td><td>2.6 times faster, but loses almost two thirds of the rules: rejected.</td></tr>
-      <tr><td>Parallel batches</td><td class="num">−2 % with 2 slots</td><td>The GTX 1060 is already saturated: not worth it.</td></tr>
+      <tr><td>Reference rules</td><td class="num">48</td><td class="num">30</td><td>Reviewed by the owner.</td></tr>
+      <tr><td>Filter recall</td><td class="num">45 (0.938)</td><td class="num">29 (0.967)</td><td>Rules whose lines reach the model. Lost: <code>afterDoor</code>, <code>pack</code> and a crumb echo in the game; the sign-in hook in reference-b.</td></tr>
+      <tr><td><strong>Extraction recall</strong></td><td class="num"><strong>39 of 47 (0.83)</strong></td><td class="num"><strong>23 of 30 (0.77)</strong></td><td>On the reference sample, two-phase setup.</td></tr>
+      <tr><td>Precision</td><td class="num">48 of 50 real (0.96)</td><td class="num">not reviewed</td><td>Reviewed by hand on one sample; 46 of 50 were also well worded.</td></tr>
+      <tr><td>First extraction time</td><td class="num">≈ 27 min</td><td class="num">≈ 4 min</td><td>Map plus statements on the GTX 1060, estimated from the sample. After that, only what changes.</td></tr>
+      <tr><td>1.7B model for the map</td><td class="num">9 of 28</td><td class="num">—</td><td>2.6 times faster, but loses almost two thirds of the rules: rejected.</td></tr>
+      <tr><td>Parallel batches</td><td class="num">−2 % with 2 slots</td><td class="num">—</td><td>The GTX 1060 is already saturated: not worth it.</td></tr>
     </tbody>
   </table></div>
-  <p class="muted prose" style="font-size:0.9rem">The reference list is a draft of 29 rules written by Claude, pending review by the owner (<code>runtime/benchmarks/golden/reference-a.json</code>). It is a single project, and it is a game.</p>
+  <p class="muted prose" style="font-size:0.9rem">Reference lists: <code>runtime/benchmarks/golden/reference-a.json</code> and <code>reference-b.json</code>. Before the filter learned business code, reference-b's filter recall was 0.40: guards, SQL in capitals and code outside functions never reached the model.</p>
 </section>
 
 </main>

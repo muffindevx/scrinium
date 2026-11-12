@@ -5,6 +5,7 @@ import uuid
 from scrinium.application.analysis.candidates import (
     DEFAULT_MIN_SCORE,
     Candidate,
+    decision_groups,
     decision_windows,
     is_visual,
     score_text,
@@ -29,6 +30,35 @@ def test_business_rules_still_pass() -> None:
     tax = "def total(subtotal, customer):\n    return round(subtotal * (1 + TAX_RATE), 2)\n"
     assert score_text(rejection)[0] >= DEFAULT_MIN_SCORE
     assert score_text(tax)[0] >= DEFAULT_MIN_SCORE
+
+
+def test_business_guards_and_database_rules_pass() -> None:
+    """Q1: how a business system decides, unlike a game."""
+    guard = (
+        "async resolveActor(session) {\n"
+        "  const user = await usersRepository.findByEmail(session.user.email);\n"
+        "  if (!user || !user.isActive) return { kind: 'forbidden' };\n"
+        "  return { kind: 'ok', actor: user };\n"
+        "}"
+    )
+    last_admin = "const admins = users.some((u) => u.role === 'ADMIN' && u.isActive);\n"
+    sql_guard = (
+        "CREATE OR REPLACE FUNCTION grc.fn_soa_version_guard()\n"
+        "RETURNS trigger LANGUAGE plpgsql AS $$\nBEGIN\n"
+        "    IF OLD.status <> 'DRAFT' THEN\n"
+        "        RAISE EXCEPTION 'Solo se eliminan SoA en borrador';\n"
+        "    END IF;\n    RETURN OLD;\nEND $$;"
+    )
+    schema = "    check('ck_app_users_role', sql`${t.role} in ('VIEWER', 'EDITOR', 'ADMIN')`),\n"
+    permissions = "  EDITOR: ['grc:read', 'grc:write', 'soa:approve'],\n"
+    for text in (guard, last_admin, sql_guard, schema, permissions):
+        assert score_text(text)[0] >= 1, text
+
+
+def test_a_games_state_checks_do_not_all_become_decisions() -> None:
+    # Lower-case kinds are everywhere in a game: alone they are not a business status.
+    line = "      if (level.rules.kind === 'horde') updateHorde(delta);\n"
+    assert score_text(line)[0] == 0
 
 
 def test_code_without_decisions_is_not_a_candidate() -> None:
@@ -112,3 +142,15 @@ def test_test_paths_are_recognised_in_every_layout() -> None:
     code = ["src/billing.py", "src/testing_mode.py", "src/contest/rules.ts", "lib/specs.rb"]
     assert all(is_test_path(path) for path in tests)
     assert not any(is_test_path(path) for path in code)
+
+
+def test_a_constraint_opened_on_its_own_line_is_cited_whole() -> None:
+    schema = (
+        "  (t) => [\n"
+        "    check(\n"
+        "      'ck_document_validity',\n"
+        "      sql`${t.validUntil} is null or ${t.validUntil} >= ${t.validFrom}`,\n"
+        "    ),\n"
+        "  ],\n"
+    )
+    assert decision_groups(schema) == [(1, 4)]

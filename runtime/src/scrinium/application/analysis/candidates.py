@@ -37,7 +37,7 @@ from scrinium.infrastructure.sqlite.models import (
     SourceRevision,
 )
 
-CANDIDATES_VERSION: Final = "3"
+CANDIDATES_VERSION: Final = "4"
 DEFAULT_MIN_SCORE: Final = 2
 # A longer function is split: the small model loses track with huge texts.
 MAX_CANDIDATE_CHARS: Final = 6000
@@ -141,16 +141,30 @@ def is_rule_source(path: str) -> bool:
 
 # A constant: named (MAX_LIVES, TAX_RATE) or a number.
 _CONST: Final = r"(?:\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[A-Z][A-Z0-9]{2,}\b|-?\b\d+(?:\.\d+)?\b)"
-_CMP: Final = r"(?:[<>]=?|[!=]==?)"
+_CMP: Final = r"(?:[<>]=?|[!=]==?|<>)"
+# Business code decides differently from a game (Q1): a guard on a state field or a failed
+# check (`if (!user.isActive)`, `if (!isAllowedEmail(...))`), an equality with a status or role
+# (`role === 'ADMIN'`, SQL `status <> 'DRAFT'`), a schema constraint (`check(`, `CHECK (`), a
+# permission ('users:manage') and an HTTP refusal (`status(403)`). SQL keywords come in capitals.
+_GUARD: Final = (
+    r"(?i:\bif\b)[^\n]*!\s*(?:await\s+)?(?:\w+\.)*(?:is|has|can|should|valid|verify|allow)\w*\s*\("
+    r"|(?i:\bif\b)[^\n]*\.(?:is|has|can|should)[A-Z]\w*"
+    # A status or role is usually an upper-case value; a game's `kind === 'horde'` is not.
+    r"""|(?:[!=]==?|<>|(?i:\bif\b)[^\n'"]*\s=)\s*['"][A-Z][A-Z0-9_]+['"]"""
+    r"|(?i:\bcheck\b)\s*\("
+    r"""|['"][a-z][\w-]*:[a-z][\w-]*['"]"""
+    r"|\bstatus\(\s*4\d\d\b|\bstatus_code\s*=\s*4\d\d\b"
+)
 # A decision line, in any domain.
 _DECISION: Final = re.compile(
-    rf"\b(?:if|while|elif|elsif|case|when|unless)\b.*{_CMP}\s*{_CONST}|{_CONST}\s*{_CMP}"
+    rf"{_GUARD}"
+    rf"|(?i:\b(?:if|while|elif|elsif|case|when|unless)\b).*{_CMP}\s*{_CONST}|{_CONST}\s*{_CMP}"
     # Comparison between two values; with spaces, so it is not mistaken for generics or `=>`.
     r"|\s(?:<|>|<=|>=)\s"
     # Probability and caps.
     rf"|random\(\)\s*<|\b(?:Math\.)?(?:min|max|clamp)\([^)]*{_CONST}"
     # Rejection, and a predicate that returns a comparison.
-    rf"|\b(?:throw|raise|abort)\b|\breturn\b[^;\n]*{_CMP}"
+    rf"|(?i:\b(?:throw|raise|abort)\b)|\breturn\b[^;\n]*{_CMP}"
     # Formula with a named constant.
     r"|[-+*/%]=?\s*\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b"
     # State change.
@@ -163,12 +177,14 @@ _THRESHOLD: Final = rf"(?:{_NAMED}|-?\b(?:[2-9]|\d{{2,}}|\d+\.\d+)\b)"
 # P1: a domain decision, stricter than _DECISION (which decides which chunks pass the
 # F10 filter): it is the one the model sees marked and answers.
 _DOMAIN_DECISION: Final = re.compile(
+    # A business guard, constraint or permission (Q1).
+    rf"{_GUARD}"
     # Comparison against a threshold.
-    rf"{_CMP}\s*{_THRESHOLD}|{_THRESHOLD}\s*{_CMP}"
+    rf"|{_CMP}\s*{_THRESHOLD}|{_THRESHOLD}\s*{_CMP}"
     # Probability and caps.
     rf"|random\(\)\s*<|\b(?:Math\.)?(?:min|max|clamp)\([^)]*{_THRESHOLD}"
     # Rechazo.
-    r"|\b(?:throw|raise|abort)\b"
+    r"|(?i:\b(?:throw|raise|abort)\b)"
     # Formula with a named constant.
     r"|[-+*/%]=?\s*\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b"
     # State change.
@@ -217,7 +233,18 @@ _SMALL_FUNCTION_LINES: Final = 15
 _WINDOW_FROM_LINES: Final = 40
 _WINDOW: Final = 6
 
-_BRANCH: Final = re.compile(r"\b(?:if|elif|elsif|switch|case|when|match|unless)\b|\?\s*[^:?\n]+:")
+# An explicit refusal, and logic that lives in the database (a function or a trigger): both are
+# rules on their own, even with a single decision (Q1).
+_REJECTION: Final = re.compile(
+    r"(?i:\b(?:throw|raise)\b)|\babort\(|\bstatus\(\s*4\d\d\b|\bHTTPException\("
+)
+_DATABASE_LOGIC: Final = re.compile(
+    r"(?i:\bcreate\s+(?:or\s+replace\s+)?(?:function|trigger|procedure)\b)"
+)
+
+_BRANCH: Final = re.compile(
+    r"(?i:\b(?:if|elif|elsif|switch|case|when|match|unless)\b)|\?\s*[^:?\n]+:"
+)
 
 
 @dataclass
@@ -307,6 +334,12 @@ def score_text(text: str) -> tuple[int, list[str]]:
     if len(lines) <= _SMALL_FUNCTION_LINES:
         reasons.append("funcion pequena")
         score += 1
+    if any(_REJECTION.search(line) for line in lines):
+        reasons.append("rechazo explicito")
+        score += 1
+    elif _DATABASE_LOGIC.search(text):
+        reasons.append("logica en la base de datos")
+        score += 1
     # Never negative: with min_score 0 everything is still read.
     return max(score, 0), reasons
 
@@ -324,11 +357,27 @@ def decision_groups(text: str) -> list[tuple[int, int]]:
     for index, line in enumerate(lines):
         if not line.strip() or line.strip().startswith(_COMMENT) or not is_domain_decision(line):
             continue
+        end = _call_end(lines, index)
         if groups and index - groups[-1][1] <= _GROUP_GAP:
-            groups[-1][1] = index
+            groups[-1][1] = max(groups[-1][1], end)
         else:
-            groups.append([index, index])
+            groups.append([index, end])
     return [(start, end) for start, end in groups] or [(0, len(lines) - 1)]
+
+
+# A call opened on a decision line (`check(` with its condition below) is cited whole, up to
+# this many lines: otherwise the citation is just "check(" (Q1).
+_MAX_CALL_LINES: Final = 6
+
+
+def _call_end(lines: list[str], index: int) -> int:
+    """The line where the parentheses opened on `lines[index]` close, or `index` itself."""
+    depth = 0
+    for offset, line in enumerate(lines[index : index + _MAX_CALL_LINES]):
+        depth += line.count("(") - line.count(")")
+        if depth <= 0:
+            return index + offset
+    return index
 
 
 def decision_windows(candidate: "Candidate") -> list["Candidate"]:
@@ -385,6 +434,34 @@ def _split(candidate: Candidate) -> list[Candidate]:
         )  # fmt: skip
         start = end
     return parts
+
+
+def _outside_functions(
+    revision: SourceRevision, lines: list[str], symbols: list[CodeSymbol]
+) -> list[Candidate]:
+    """The stretches of a file that no function or method covers (Q1). In business code many
+    rules are declared there: a schema's checks, a role-to-permission table, the routes that
+    require a permission, the configuration of sign-in."""
+    covered = [False] * (len(lines) + 2)
+    for symbol in symbols:
+        for number in range(symbol.start_line, symbol.end_line + 1):
+            if number < len(covered):
+                covered[number] = True
+    spans: list[Candidate] = []
+    start: int | None = None
+    for number in range(1, len(lines) + 2):
+        inside = number <= len(lines) and not covered[number]
+        if inside and start is None:
+            start = number
+        elif not inside and start is not None:
+            text = "\n".join(lines[start - 1 : number - 1])
+            if _code_lines(text):
+                spans.append(
+                    Candidate(revision.id, revision.metadata_.get("path", ""), start, number - 1,
+                              text, 0, [])
+                )  # fmt: skip
+            start = None
+    return spans
 
 
 def select_candidates(
@@ -447,6 +524,12 @@ def select_candidates(
                 for number, piece in enumerate(pieces):
                     piece.part = number
                 found += pieces
+            # Code outside every function: schema constraints, permission tables, routes.
+            for span in _outside_functions(revision, lines, symbols[revision.id]):
+                selection.functions_total += 1
+                span.score, span.reasons = score_text(span.text)
+                _visual_penalty(span)
+                found += decision_windows(span) if span.score >= min_score else [span]
             continue
         # SQL and languages without a grammar: their chunks.
         for chunk in session.scalars(

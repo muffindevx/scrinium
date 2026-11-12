@@ -5,6 +5,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from scrinium.application.analysis.candidates import select_candidates
 from scrinium.infrastructure.sqlite.models import CodeSymbol, SourceItem, SourceRevision
 from tests.conftest import Runtime
 from tests.integration.test_analyses import Api
@@ -124,3 +125,35 @@ def test_search_finds_functions_by_name_in_any_style(runtime: Runtime, tmp_path:
     ).json()["results"]
     assert hidden == []
     assert uuid.UUID(api.project_id)
+
+
+ROLES = """\
+import { z } from 'zod';
+
+export const ROLE_PERMISSIONS = {
+  VIEWER: ['grc:read'],
+  EDITOR: ['grc:read', 'grc:write', 'soa:approve'],
+};
+
+export function roleOf(user: { role: string }) {
+  return user.role;
+}
+"""
+
+
+def test_rules_declared_outside_functions_become_candidates(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """Q1: a role-to-permission table is a rule even though no function holds it."""
+    root = tmp_path / "api"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    write(root, "src/roles.ts", ROLES)
+    commit_all(root, "inicio")
+    api = Api(runtime, root)
+    with runtime.database.session() as session:
+        found = select_candidates(session, uuid.UUID(api.project_id), None).candidates
+    spans = [(c.symbol, c.start_line, c.end_line) for c in found if c.path == "src/roles.ts"]
+    # The table (lines 3-6) passes; the import alone and the plain getter do not.
+    assert any(symbol is None and start <= 4 <= end for symbol, start, end in spans), spans
+    assert all(symbol != "roleOf" for symbol, _, _ in spans)

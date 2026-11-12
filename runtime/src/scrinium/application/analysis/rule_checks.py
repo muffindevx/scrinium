@@ -18,7 +18,9 @@ _VISUAL: Final = re.compile(
 # The minimum for some lines to back a rule: a condition, a comparison, an error
 # or a named or numeric constant.
 _EVIDENCE: Final = re.compile(
-    r"\b(?:if|else|elif|switch|case|when|while|unless|throw|raise|assert)\b"
+    r"(?i:\b(?:if|else|elif|switch|case|when|while|unless|throw|raise|assert|check)\b)"
+    # A permission ('users:manage') or a status or role ('ADMIN') is evidence too (Q1).
+    r"""|['"][a-z][\w-]*:[a-z][\w-]*['"]|['"][A-Z][A-Z0-9_]+['"]|<>"""
     r"|[<>]=?|===?|!==?|\?\?|\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b\d+(?:\.\d+)?\b"
 )
 _SPANISH: Final = frozenset({
