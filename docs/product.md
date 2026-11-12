@@ -1,4 +1,4 @@
-# Product: MVP scope (T-001)
+# Product: MVP scope
 
 **Confirmed by the owner on 6 November 2026.** The Scrinium MVP is **local-first, for one person, with one workspace and no Scrinium cloud infrastructure**.
 
@@ -18,5 +18,3 @@
 - WorkOS, SAML and SCIM;
 - sync between devices;
 - PostgreSQL/pgvector, Redis, S3 and Kubernetes.
-
-The full specification is `SCRINIUM_IMPLEMENTATION_PLAN.md`, kept locally at the root and not versioned.

@@ -1,9 +1,6 @@
 # Data flow
 
-This document has two parts:
-
-- the **current** state, as of `main` on 11 November 2026;
-- the **planned** state, which does not exist yet.
+How data moves through Scrinium, as of `main` on 11 November 2026. The diagram also marks, dashed, the boundaries that connectors and remote AI would cross; neither exists.
 
 ![What stays on your machine: browser, sources, local models, stores and keyring sit on the user's machine; ticket sources and remote AI are planned and not built](diagrams/data-boundaries.svg)
 

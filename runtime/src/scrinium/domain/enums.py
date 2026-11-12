@@ -75,7 +75,7 @@ class AnswerStatus(StrEnum):
     INSUFFICIENT_EVIDENCE = "insufficient_evidence"
 
 
-# Knowledge model (section 3.2 C-J of the plan).
+# Knowledge model.
 
 
 class EntityType(StrEnum):

@@ -4,7 +4,7 @@ It holds every table except the derived indexes (chunks, FTS5 and vectors), whic
 rebuilt from the revisions, and the keyring references, which are useless outside this
 machine. The text of indexed sources does go inside: that is why it is encrypted.
 
-Encryption with nothing home-made (section 16.2): the password becomes a key with scrypt and
+Encryption with nothing home-made: the password becomes a key with scrypt and
 the content is encrypted with AES-256-GCM, which also detects any tampering. The header goes
 as authenticated data: changing its parameters also makes decryption fail. The password
 is stored nowhere; without it, the file cannot be opened.

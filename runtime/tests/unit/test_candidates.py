@@ -12,7 +12,7 @@ from scrinium.application.analysis.candidates import (
 
 
 def test_a_game_rule_passes_without_business_vocabulary() -> None:
-    # No errors, money or permissions: a rule from a game (PERFORMANCE.md, baseline).
+    # No errors, money or permissions: a rule from a game.
     door = (
         "export function rollDoor(state, random) {\n"
         "  if (random() < TRICK_CHANCE) return pick(TRICKS, random);\n"

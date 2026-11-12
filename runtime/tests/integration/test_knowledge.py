@@ -453,7 +453,7 @@ def test_flow_is_stored_whole_with_ordered_steps(ctx: Context) -> None:
         flow = session.scalars(
             select(KnowledgeEntity).where(KnowledgeEntity.canonical_key == "cobro")
         ).one()
-        # A generated flow is a proposal: the plan says so and the UI will show it.
+        # A generated flow is a proposal, and the UI shows it as one.
         assert flow.lifecycle_status is EntityLifecycle.PROPOSED
         with pytest.raises(KnowledgeError, match="not_a_flow"):
             create_flow(

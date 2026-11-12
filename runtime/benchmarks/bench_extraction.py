@@ -1,4 +1,4 @@
-"""Fixed rule-extraction benchmark (PERFORMANCE.md, section 4).
+"""Fixed rule-extraction benchmark.
 
 It measures with the real model, over a fixed sample of code chunks from an indexed project:
 tokens read, cached and written, seconds and tokens per second per batch, and rules proposed.
@@ -337,7 +337,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 input_tokens=completion.prompt_tokens,
                 cached_tokens=completion.cached_tokens,
                 output_tokens=completion.completion_tokens,
-                # The whole batch: mixes reading and writing (PERFORMANCE.md, H8).
+                # The whole batch: mixes reading and writing.
                 output_tokens_per_second=round(completion.completion_tokens / seconds, 1),
                 read_seconds=round(read, 2),
                 write_seconds=round(written, 2),

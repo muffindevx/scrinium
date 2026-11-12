@@ -2,8 +2,8 @@
 
 **Status:** accepted, 2026-11-06. Updated on later dates:
 
-- embeddings implemented in T-009;
-- LLM in T-010;
+- embeddings implemented on 2026-11-07;
+- LLM answers implemented later;
 - managed llama.cpp on 2026-11-09.
 
 ## The question

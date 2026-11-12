@@ -9,7 +9,7 @@
 
 Embeddings are `confidential`. They are not an encrypted copy, and can reveal information.
 
-## How it is applied (T-008)
+## How it is applied
 
 - Source content is treated as `confidential` and stored only locally.
 - Anything that looks `restricted` is excluded before it is stored, in two ways:

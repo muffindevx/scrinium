@@ -4,7 +4,7 @@
 
 ## The question
 
-With `src/` and `frontend/` both at the root, it was not obvious that `src/` was only the backend. Section 9 of the plan proposed that layout, but marked it as a suggestion. How should a repository with one Python service and one web UI be laid out?
+With `src/` and `frontend/` both at the root, it was not obvious that `src/` was only the backend. That layout was only an early suggestion. How should a repository with one Python service and one web UI be laid out?
 
 ## What we decided
 
@@ -12,7 +12,6 @@ With `src/` and `frontend/` both at the root, it was not obvious that `src/` was
   - `runtime/` for the Python application;
   - `ui/` for the React interface;
   - a root `Makefile` for the common commands.
-- The specification and plans stay out of git: they live at the root, listed in `.gitignore`.
 
 ## How it works
 

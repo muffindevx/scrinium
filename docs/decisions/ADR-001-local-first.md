@@ -48,7 +48,7 @@ Nothing it indexes or generates leaves the machine by default. Every knowledge e
 - **No collaboration.** One person, one machine. Sharing knowledge between people is out of scope.
 - **Security depends on the user's machine.** Malware in an unlocked session can read what the user can read. Scrinium reports whether full-disk encryption is on, but does not encrypt its own data. See `docs/security/THREAT_MODEL.md`.
 - **Performance depends on the user's hardware.** Rule extraction with a local model takes ~40 minutes on a GTX 1060 for a 50 000-line project (see `README.md`, "Hardware requirements").
-- **Moving to hybrid or cloud** must pass the gates in the roadmap (`ROADMAP.md`, kept locally, not versioned), and needs a new ADR on data egress and consent.
+- **Moving to hybrid or cloud** needs a new ADR on data egress and consent.
 
 ## Revisit when
 

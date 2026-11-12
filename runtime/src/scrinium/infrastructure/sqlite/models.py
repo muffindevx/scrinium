@@ -1,4 +1,4 @@
-"""Scrinium's canonical schema (section 3.2 of the plan).
+"""Scrinium's canonical schema.
 
 Portable types only: the same schema must be able to migrate to PostgreSQL in Hybrid.
 Child tables repeat `workspace_id` and tie it with a composite foreign key, so a
@@ -407,7 +407,7 @@ class AnalysisRun(Base):
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
 
-# Knowledge model (section 3.2 C-J). Each row carries `workspace_id` and `project_id`, and the
+# Knowledge model. Each row carries `workspace_id` and `project_id`, and the
 # foreign keys between these tables include both: a rule of one project cannot cite,
 # relate to or enter the snapshot of another. What the LLM generates is born unverified.
 

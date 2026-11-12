@@ -57,7 +57,7 @@ check:
 format:
 	cd runtime && uv run ruff format src tests benchmarks
 
-# Fixed rule-extraction benchmark (PERFORMANCE.md). With the real model and the resource
+# Fixed rule-extraction benchmark. With the real model and the resource
 # limit (Linux with systemd only); never with Scrinium open at the same time. Example:
 #   make bench DATA_DIR=~/.local/share/scrinium OUT=/tmp/bench.json BENCH_ARGS="--fragments 60"
 bench:

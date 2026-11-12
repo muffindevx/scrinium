@@ -280,7 +280,7 @@ export const getCitedLines = (revisionId: string, start: number, end: number) =>
     `/api/v1/source-revisions/${revisionId}/lines?${new URLSearchParams({ start: String(start), end: String(end) })}`,
   )
 
-// Knowledge, analyses and releases (T-014 to T-016).
+// Knowledge, analyses and releases.
 
 export type VerificationStatus =
   | "unverified"
@@ -569,7 +569,7 @@ export const snapshotRelease = async (releaseId: string) =>
 export const isFinished = (analysis: Analysis) =>
   analysis.status !== "queued" && analysis.status !== "running"
 
-// Privacidad (T-017).
+// Privacidad.
 
 export interface DeletionImpact {
   files: number

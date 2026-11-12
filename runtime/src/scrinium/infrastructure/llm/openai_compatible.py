@@ -52,7 +52,7 @@ def _cached_tokens(result: dict[str, Any], usage: dict[str, Any]) -> int:
 
 def _timings(result: dict[str, Any]) -> dict[str, int]:
     """llama-server only: `timings` separates reading the input from writing the output. Without
-    it, tokens per second mix both (PERFORMANCE.md, H8)."""
+    it, tokens per second mix both."""
     timings = result.get("timings")
     if not isinstance(timings, dict):
         return {}

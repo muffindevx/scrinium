@@ -1,4 +1,4 @@
-"""Extraction phase 2 (S3 in PERFORMANCE.md): the statement of each map rule.
+"""Extraction phase 2: the statement of each map rule.
 
 Phase 1 (`extraction.py`) answers each decision in the code with null or a title and a
 category: the project's rule map comes out in half the time. Its versions carry

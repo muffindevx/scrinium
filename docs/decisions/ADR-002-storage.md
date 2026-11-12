@@ -2,8 +2,8 @@
 
 **Status:** accepted, 2026-11-06.
 
-- SQLite with synchronous SQLAlchemy and Alembic: implemented in T-006, 2026-11-07.
-- FTS5 and LanceDB: implemented in T-009, 2026-11-07.
+- SQLite with synchronous SQLAlchemy and Alembic: implemented on 2026-11-07.
+- FTS5 and LanceDB: implemented on 2026-11-07.
 - Code-symbol search added later (see "How it works").
 
 ## The question

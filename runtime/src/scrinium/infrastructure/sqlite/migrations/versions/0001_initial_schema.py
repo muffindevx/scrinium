@@ -15,8 +15,8 @@ down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-# Source revisions are immutable and the audit log only accepts new rows (plan, 3.1).
-# Delete if possible: workspace data deletion arrives in T-017. SQLite syntax:
+# Source revisions are immutable and the audit log only accepts new rows.
+# Only UPDATE is blocked, so deleting workspace data stays possible. SQLite syntax:
 # PostgreSQL will need its own migration.
 _APPEND_ONLY_TABLES = ("source_revisions", "audit_events")
 

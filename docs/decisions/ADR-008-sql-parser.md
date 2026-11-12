@@ -1,10 +1,10 @@
 # ADR-008: sqlglot to analyze SQL as text
 
-**Status:** accepted and implemented in T-015, 2026-11-07. Owner's decision.
+**Status:** accepted and implemented on 2026-11-07. Owner's decision.
 
 ## The question
 
-Section 6.2 of the plan asks Scrinium to review SQL against the business rules. It must understand the statement's structure: tables, columns, reads and writes, in the declared dialect. It must **never execute** the SQL. Which tool can do that safely?
+Scrinium reviews SQL against the business rules. It must understand the statement's structure: tables, columns, reads and writes, in the declared dialect. It must **never execute** the SQL. Which tool can do that safely?
 
 ## What we decided
 
@@ -33,7 +33,7 @@ Scrinium uses it only to parse. SQL is never passed to SQLite or to any other da
 | Option | Why not |
 |---|---|
 | **sqlparse** | It only tokenizes. Detecting writes and columns would be fragile. |
-| **Running `EXPLAIN` on an empty database** | It still executes third-party SQL, which is exactly what the plan forbids. |
+| **Running `EXPLAIN` on an empty database** | It still executes third-party SQL, which Scrinium must never do. |
 | **A tree-sitter SQL grammar** | Dialect coverage is uneven, and it gives syntax only, without the semantic helpers (qualified columns, statement types) that sqlglot has. |
 | **Asking the LLM to read the SQL** | Not deterministic. It can invent tables or miss writes. |
 

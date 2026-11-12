@@ -90,8 +90,8 @@ def presets(served: list[ServedModel]) -> str:
             # untouched, so already indexed vectors remain comparable.
             lines += ["cache-type-k = q8_0", "cache-type-v = q8_0"]
             lines.append(f"cache-ram = {CHAT_CACHE_RAM_MIB}")
-            # V5 (n-grams) was removed: with short answers it only accepted 4-8 % of what it
-            # proposed (PERFORMANCE.md, F8).
+            # N-gram speculative decoding was removed: with short answers it only accepted
+            # 4-8 % of what it proposed.
             lines.append(f"ubatch-size = {CHAT_UBATCH}")
             if entry.no_thinking:
                 lines.append("reasoning-budget = 0")

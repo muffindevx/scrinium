@@ -16,7 +16,7 @@ Local-first software change intelligence. It explains:
 - questions about your sources: the local LLM answers citing every claim, or says it has no evidence;
 - business-rule extraction from code.
 
-What is still open is listed in [Scrinium internals](docs/scrinium-internals.md) and in each document's limits.
+What it does not do yet is described in [Rule extraction](docs/rule-extraction.html#limits).
 
 ## Hardware requirements
 
@@ -241,12 +241,11 @@ Sign in first with the link from `make start`, then open `http://127.0.0.1:5173`
 
 ### Not in git
 
-Plans, proposals, handoffs and implementation notes are kept out of git (see `.gitignore`).
-
 ## Documentation
 
+Start with the [documentation index](docs/README.md). It gives a reading order for developers:
+
 - [Scope](docs/product.md)
-- [Threat model](docs/security/THREAT_MODEL.md) and [security glossary](docs/security/SECURITY_GLOSSARY.md)
-- [Data flow](docs/data-flow.md) and [decisions](docs/decisions/)
-- [Scrinium internals](docs/scrinium-internals.md): architecture, data model and how to work on the code
+- [Scrinium internals](docs/scrinium-internals.md): architecture, data model, code paths and how to work on the code
 - [Rule extraction](docs/rule-extraction.html): what a rule is, when and how it is extracted, and its limits
+- [Data flow](docs/data-flow.md), [decisions](docs/decisions/) and [security](docs/security/THREAT_MODEL.md)

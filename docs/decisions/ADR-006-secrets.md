@@ -1,6 +1,6 @@
 # ADR-006: The OS keyring for secrets
 
-**Status:** accepted, 2026-11-06. Implemented in T-007, 2026-11-07.
+**Status:** accepted, 2026-11-06. Implemented on 2026-11-07.
 
 ## The question
 

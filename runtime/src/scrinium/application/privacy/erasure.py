@@ -223,7 +223,7 @@ class StoredData:
 
 
 def stored_data(session: Session, data_dir: Path) -> StoredData:
-    """What is stored and how much space it takes: the data view from section 16.7."""
+    """What is stored and how much space it takes: the data view."""
 
     def count(model: type[Any]) -> int:
         return session.scalar(select(func.count()).select_from(model)) or 0

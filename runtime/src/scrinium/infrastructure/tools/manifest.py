@@ -187,7 +187,7 @@ EMBEDDING_MODEL = Model(
 )
 
 # Evaluated for the rule map (extraction phase 1) and rejected on 2026-11-10: 2.6x
-# faster, but it found 9 of 28 reference rules versus 24 with the 4B (PERFORMANCE.md).
+# faster, but it found 9 of 28 reference rules versus 24 with the 4B.
 # Not in MODELS: not installed; the benchmark uses it with --map-model if present. Apache-2.0.
 MAP_MODEL = Model(
     "qwen3-1.7b",

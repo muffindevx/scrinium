@@ -3,7 +3,7 @@ with evidence in those files, and related chunks.
 
 It finds correlations, not causes: an old commit fixing something similar does not prove
 this bug comes from there. It reads local repository history without changing it and does not
-use the LLM. Without a ticket connector (T-013), it does not search tickets.
+use the LLM. Without a ticket connector, it does not search tickets.
 """
 
 import re

@@ -1,4 +1,4 @@
-"""T-018 adversarial battery: huge bodies, leaks into logs and errors, exfiltration through
+"""Adversarial battery: huge bodies, leaks into logs and errors, exfiltration through
 the model output, and compressed files in a repository."""
 
 import io

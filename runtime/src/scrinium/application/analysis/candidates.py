@@ -3,9 +3,9 @@
 The unit is the function or method (structural map). A rule is a DECISION about the
 domain state, whatever the domain (an invoice, a permission or a game): a
 condition against a threshold, a cap, a probability, a formula with a named constant,
-a rejection or a state change. The score counts those decision lines (F10 in
-PERFORMANCE.md); business-app vocabulary (money, permissions, errors) only
-describes, it does not decide: with it, 2 of every 3 rules in a game never reached the model.
+a rejection or a state change. The score counts those decision lines; business-app
+vocabulary (money, permissions, errors) only describes, it does not decide: with it,
+2 of every 3 rules in a game never reached the model.
 
 - A chunk without any decision line is not a candidate.
 - Penalties: more drawing or sound lines than decision lines, few decisions for its size, and
@@ -156,7 +156,7 @@ _DECISION: Final = re.compile(
     r"""|\b(?:state|status|phase|stage|mode|lives)\s*=\s*['"\w]""",
 )
 # A threshold: a named constant or a number other than 0 or 1 (those are usually indexes,
-# empty lists or counters, not rules). P1 in PERFORMANCE.md.
+# empty lists or counters, not rules).
 _NAMED: Final = r"(?:\b[A-Z][A-Z0-9]*_[A-Z0-9_]+\b|\b[A-Z][A-Z0-9]{2,}\b)"
 _THRESHOLD: Final = rf"(?:{_NAMED}|-?\b(?:[2-9]|\d{{2,}}|\d+\.\d+)\b)"
 # P1: a domain decision, stricter than _DECISION (which decides which chunks pass the

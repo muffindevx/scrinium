@@ -1,4 +1,4 @@
-"""Installed size of Scrinium by direct dependency (PERFORMANCE.md, section 3).
+"""Installed size of Scrinium by direct dependency.
 
 Counts each direct dependency with its own dependencies, without development tools. The
 models, llama-server and gitleaks do not count: they are downloaded separately (`scrinium tools`).

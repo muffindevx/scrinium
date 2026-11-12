@@ -4,7 +4,7 @@ Deleting a source removes the evidence citing its revisions, with its excerpts.
 Then, for each entity that had evidence there:
 
 - If the LLM or an analysis proposed it, no person reviewed it, and all its evidence came from
-  that source, it is deleted: its text paraphrases the deleted source (section 16.7 of the plan).
+  that source, it is deleted: its text paraphrases the deleted source.
 - Otherwise it is kept and flagged for review (`review_reason`). Whatever relied only on the
   source goes back to `unverified` or `hypothesis`: it cannot keep showing as supported.
 

@@ -1,4 +1,4 @@
-"""Deterministic checks of an extracted rule (PERFORMANCE.md, F1 and F2).
+"""Deterministic checks of an extracted rule.
 
 A 4B model does not always obey the prompt: these checks look at what it returned without
 calling it again. Today the benchmark uses them to measure; F2 will use them to discard.

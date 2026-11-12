@@ -2,8 +2,7 @@
 
 How Scrinium works, why it is built this way, and where to start changing it.
 
-- Every claim was checked against the code of `main` at `8ddeb71` (11 November 2026).
-- Where other documents disagreed with the code, this is noted in [Outdated documents](#outdated-documents).
+- Every claim was checked against the code of `main` at `b271a13` (11 November 2026).
 - Timings were measured on the reference machine: a 6 GB GTX 1060 with Vulkan.
 
 Contents:
@@ -18,7 +17,7 @@ Contents:
 - [Decisions and their reasons](#decisions-and-their-reasons)
 - [Practical guide](#practical-guide)
 - [Known traps](#known-traps)
-- [Outdated documents](#outdated-documents)
+- [Diagrams](#diagrams)
 - [Glossary](#glossary)
 
 ## What it is and how it is built
@@ -37,9 +36,7 @@ The repository is a light monorepo ([ADR-007](decisions/ADR-007-repository-struc
   - FastAPI and uvicorn, synchronous SQLAlchemy with Alembic, LanceDB for vectors, and the `scrinium` CLI with `argparse`.
   - It uses the `src/` layout, so tests run against the installed package.
 - **`ui/`:** React, TypeScript, Vite, Tailwind and shadcn/ui, with `react-router`. `pnpm build` writes the compiled UI to `runtime/src/scrinium/web_dist`, which git ignores and the runtime serves.
-- **`docs/`:** decisions (ADRs), security, internals and diagrams.
-
-Working documents live **outside git**, listed in `.gitignore`: `PERFORMANCE.md`, `IMPROVEMENTS.md`, `HANDOFF.md`, the specification and roadmap, plans and the agent log. Anyone who clones the repository will not have them.
+- **`docs/`:** decisions (ADRs), security, internals and diagrams. [docs/README.md](README.md) is the index.
 
 Inside `runtime/src/scrinium` the code is layered:
 
@@ -74,7 +71,7 @@ Three details explain the rest of the system:
   - Chat has a single slot (`CHAT_SLOTS = 1`). Questions, extraction, on-demand statements and the consistency review all share it.
   - `LlmService` orders them: a question calls `begin_interactive()`, and extraction waits between batches in `wait_for_background_turn()`.
 - **Load order matters.**
-  - If embeddings load first, chat does not fit entirely in 6 GB and writes at ~12 tokens/s instead of ~44 (V4).
+  - If embeddings load first, chat does not fit entirely in 6 GB and writes at ~12 tokens/s instead of ~44.
   - `ChatFirst` unloads the embeddings, waits for the router to confirm the memory is free, and then loads chat.
 - **Machine memory.**
   - `MemoryGuard` sets a floor of 2 GiB or 15 % of RAM, whichever is larger.
@@ -136,7 +133,7 @@ Three details explain the rest of the system:
 
 ## Rule extraction
 
-Extracting rules is the most expensive thing Scrinium does. On the GTX 1060, writing costs ~2.3 s per rule and reading runs at ~250 tokens/s. That is why extraction was split into two phases (S3):
+Extracting rules is the most expensive thing Scrinium does. On the GTX 1060, writing costs ~2.3 s per rule and reading runs at ~250 tokens/s. That is why extraction is split into two phases:
 
 - **Phase 1** walks the whole project, and only gives each decision in the code a title and a category.
 - **Phase 2** writes the statements, either in the background with low priority, or immediately when someone opens a rule that does not have one yet.
@@ -191,9 +188,9 @@ A rule is an entity whose versions are only ever added. In a version, only these
 - the verification status (`unverified` → `human_verified` or `rejected`);
 - who reviewed it, and when.
 
-The rule list reads `knowledge_entities.summary`, not the version. That is why every new version must go through `add_rule_version`. The example statement comes from the P1 measurement in `PERFORMANCE.md`. Real titles and statements are written in Spanish, the language the prompt asks for.
+The rule list reads `knowledge_entities.summary`, not the version. That is why every new version must go through `add_rule_version`. Real titles and statements are written in Spanish, the language the prompt asks for.
 
-### How long it takes, and what is pending
+### How long it takes
 
 **Measured** on the GTX 1060 with `reference-a` (~50 000 lines, ~500 rules):
 
@@ -203,21 +200,13 @@ The rule list reads `knowledge_entities.summary`, not the version. That is why e
 
 On other hardware, the figures in the [README](../README.md) requirements table are estimates.
 
-**Pending** according to `PERFORMANCE.md`, checked in the code:
-
-- **F1:** the reference set ([`runtime/benchmarks/golden/reference-a.json`](../runtime/benchmarks/golden/reference-a.json), 29 rules) is still a "draft", without the owner's review.
-- **F3:** the statement is still a single field. It is not split into "when" and "then".
-- **F7:** criticality is always stored as medium ([`extraction.py:572`](../runtime/src/scrinium/application/analysis/extraction.py#L572)), with no fixed rules.
-- **F9:** a failed batch is not split into two halves. Production uses temperature 0.2 without a seed ([`openai_compatible.py:76`](../runtime/src/scrinium/infrastructure/llm/openai_compatible.py#L76)), while the benchmark uses 0 with a seed.
-- **P1 + P3 (size):** vectors are still in LanceDB ([`lance.py`](../runtime/src/scrinium/infrastructure/vector_index/lance.py)). Moving to sqlite-vec with smaller vectors is proposed.
-
 ## Data model
 
 **One SQLite database** in the data directory.
 
 - WAL, foreign keys and `secure_delete` are enabled on every connection.
 - Alembic migrations are applied at startup, and Scrinium refuses to open a database newer than itself.
-- The specification separates the original source from what Scrinium interprets (`SCRINIUM_IMPLEMENTATION_PLAN.md` 3.1, kept locally and not versioned), and the schema enforces it with triggers.
+- The original source is kept apart from what Scrinium interprets, and the schema enforces it with triggers.
 
 ![Where sources, rules and citations live: immutable source revisions feed chunks, symbols and the extraction queue; rules are versioned entities whose evidence cites a revision](diagrams/data-model.svg)
 
@@ -310,7 +299,7 @@ Only then does the request reach the FastAPI routes.
 
 ## Critical code paths
 
-The number is the line where the function or constant starts at `8ddeb71`.
+The number is the line where the function or constant starts at `b271a13`.
 
 ### Startup
 
@@ -375,11 +364,7 @@ The number is the line where the function or constant starts at `8ddeb71`.
 
 ## Decisions and their reasons
 
-**How the performance decisions were made.**
-
-- They were measured with `make bench`, on the same copy of `reference-a`.
-- The codes (T1, V4, S3…) are those of `PERFORMANCE.md`.
-- That document uses **P1** for two different things. They are kept apart here.
+Architecture and security decisions are recorded as ADRs in [decisions/](decisions/). Extraction decisions were measured with `make bench`, on the same copy of `reference-a`.
 
 ### Architecture and security
 
@@ -391,35 +376,33 @@ The number is the line where the function or constant starts at `8ddeb71`.
 | Local AI by default: `require_local`; llama-server managed by Scrinium, `--offline`, key via environment; Ollama as the alternative | We cannot assume what an external provider keeps. One process serves chat and embeddings. `Qwen3-4B-Instruct` was chosen because the always-reasoning model used up 4 096 tokens without answering. | [ADR-004](decisions/ADR-004-ai-data-egress.md) | Current |
 | OS keyring with a closed list of backends | Never fall back to plain text silently: without a secure backend, the connection is disabled. | [ADR-006](decisions/ADR-006-secrets.md) | Current |
 | `runtime/` + `ui/` monorepo with a `Makefile`; the UI builds into the package | `src/` at the root did not make clear it was the backend. One project per language: no uv or pnpm workspaces. | [ADR-007](decisions/ADR-007-repository-structure.md) | Current |
-| sqlglot only to parse SQL | The plan forbids running third-party SQL, even `EXPLAIN` on an empty database. | [ADR-008](decisions/ADR-008-sql-parser.md) | Current |
+| sqlglot only to parse SQL | Scrinium must never run third-party SQL, not even `EXPLAIN` on an empty database. | [ADR-008](decisions/ADR-008-sql-parser.md) | Current |
 | react-router with real paths | Linkable details and screen reloads; the runtime serves `index.html` only for a closed list of prefixes. | [ADR-009](decisions/ADR-009-ui-routing.md) | Current |
-| Rules come from code; documentation only supports them | With the old selection, the 24 chunks sent to the model were agent instructions (`.claude/`), not code. | `IMPROVEMENTS.md` §2 | Applied |
-| Nothing the LLM generates is born verified; every claim needs a citation | No technique removes prompt injection or invention: the answer is a proposal checked against its citations. | `SCRINIUM_IMPLEMENTATION_PLAN.md` 3.1 and 5.2 (local), [THREAT_MODEL.md](security/THREAT_MODEL.md) | Current |
+| Rules come from code; documentation only supports them | With the old selection, the 24 chunks sent to the model were agent instructions (`.claude/`), not code. | [rule-extraction.html](rule-extraction.html) | Current |
+| Nothing the LLM generates is born verified; every claim needs a citation | No technique removes prompt injection or invention: the answer is a proposal checked against its citations. | [THREAT_MODEL.md](security/THREAT_MODEL.md) | Current |
 
 ### Extraction performance
 
-Source for all of them: `PERFORMANCE.md` (outside git), in the section shown.
+What the extraction code does, and why. Rejected options are listed so they are not retried without new evidence.
 
-| Decision | Why | Section | Status |
+| Decision | Why | Where | Status |
 |---|---|---|---|
-| **M1** · prompt cache in RAM capped at 512 MiB (0 for embeddings) | By default llama-server keeps up to 8 GiB and grows with every prompt: it took chat from 1.3 to 3.4 GB in 14 batches. A real risk of freezing the machine. | M1; [`llama_server.py:36`](../runtime/src/scrinium/infrastructure/llama_server.py#L36) | Done |
-| **T1** · fixed prefix: the KEY value moves out of the system prompt; `cache_prompt` + `id_slot` | The nonce in the system prompt prevented cache reuse. With T1, 418 tokens per batch come from cache (17 % of the input). Locally it saves ~1.7 s per batch; the big gain would be with external providers. | T1; [`llm/base.py:25`](../runtime/src/scrinium/infrastructure/llm/base.py#L25) | Done |
-| **V4** · chat loads before embeddings (`ChatFirst`) | Embeddings first → chat at 12 tokens/s; chat first → 44 tokens/s. Per batch: 144 s → 43 s. `--models-max 1` also fixed the speed, but reloaded the models on every question. | V4 | Done |
-| **V1 (T2 + T3)** · minimal answers with short keys and caps in the schema | Writing was 85 % of a batch's time. Each rule went from ~300 to ~80 tokens. | T2, T3, V1 | Done |
-| **F10** · filter by domain decisions instead of a "strong signal" (V2) | V2 used business-app vocabulary (errors, validation, money) and lost 2 of every 3 rules in a game. Filter recall: 0.345 → 0.931. | F10 | Done |
-| **F6 + F6b** · citations valid by construction | The model miscounted lines: 30 % of citations pointed at the first line of the chunk. Lines are now numbered continuously across the batch, and the grammar only allows lines that exist in a single source. | F6, F6b | Done |
-| **S2** · write less per rule: 12–60-character title, 3-letter category, always in Spanish | ~80 → ~62 tokens per rule. English appeared because the prompt asked for "the language of the sources". | S2, F5 | Done |
-| **R1b** · one answer per decision, with its identifier | The model chose to write few rules (8 of 28). With one mandatory answer per decision: 16 of 28. Without the identifier it lost count and cited the neighbouring decision. | R1b | Done |
-| **S3** · two phases: map and statements | The full map arrives earlier (~21 min) and recall rises to 23 of 28. Total time does not drop: it is spread out. | S3 | Done |
-| **P1 (domain decisions)** · `is_domain_decision` and ±4 lines of context in phase 2 | Statements described the code ("if held has size > 0…"). With context they state the rule. 685 → 576 groups; recall 24 of 28. Adding project vocabulary was rejected: it would tune the filter to the test. | "P1 applied" | Done |
-| Statements in the background and on demand | Extraction is "complete" once the map is; statements block nothing, and an opened rule gets written immediately. | "Statements in the background" | Done |
-| **V5** · n-gram speculative decoding | With short answers it only accepted 4–8 % of its proposals. | F8, S6; [`llama_server.py:93`](../runtime/src/scrinium/infrastructure/llama_server.py#L93) | Removed |
-| **V9** · larger `ubatch-size` to read faster | 512, 1024 and 2048 gave the same read speed (~259 tokens/s): the GTX 1060 with Vulkan is compute-bound. | S6 | Rejected |
-| **S1** · parallel batches (2–3 slots) | With 2 slots each writes at half speed: −2 % total time. With 3, `--fit` moves layers to the CPU: +86 %. `CHAT_SLOTS = 1` stays, ready in case an ideal-tier GPU proves it worthwhile. | "S1 measured" | Rejected |
-| Qwen3-1.7B model only for the map | 2.6× faster, but recall of 9 of 28 versus 24 of 28, and generic titles. The criterion was not to lose recall. | "Small model for the map" | Rejected |
-| Skipping files by `mtime` | Syncing already takes under 1 s, and the SHA-256 hash is more reliable across copies, branches and clocks. | §6 | Rejected |
-| **F3, F7, F9** · rule shape, criticality by fixed rules, split retry | They fix titles that are statements, a "medium" criticality that looks like data, and batches that lose all their rules when they fail. | F3, F7, F9 | Pending |
-| **P1 (size) + P3** · sqlite-vec and 256-dimension int8 vectors | LanceDB with pyarrow and numpy is 411 MB, 87 % of the install (~473 → ~60 MB). Risk: sqlite-vec still publishes 0.1.x versions. | §3 | Proposed |
+| Prompt cache in RAM capped at 512 MiB (0 for embeddings) | By default llama-server keeps up to 8 GiB and grows with every prompt: it took chat from 1.3 to 3.4 GB in 14 batches, enough to freeze the machine. | [`llama_server.py`](../runtime/src/scrinium/infrastructure/llama_server.py) | Current |
+| Fixed prompt prefix: the per-request KEY goes in the user message, with `cache_prompt` and `id_slot` | A random value in the system prompt prevented cache reuse. Now ~418 tokens per batch (17 % of the input) come from cache. | [`llm/base.py`](../runtime/src/scrinium/infrastructure/llm/base.py) | Current |
+| Chat loads before embeddings (`ChatFirst`) | Embeddings first left chat at 12 tokens/s; chat first gives 44 tokens/s (144 s → 43 s per batch). `--models-max 1` also fixed the speed, but reloaded the models on every question. | [`llm/load_order.py`](../runtime/src/scrinium/infrastructure/llm/load_order.py) | Current |
+| Minimal answers: short keys and caps in the schema | Writing was 85 % of a batch's time. Each rule went from ~300 to ~80 tokens. | [`extraction.py`](../runtime/src/scrinium/application/analysis/extraction.py) | Current |
+| Filter by domain decisions, not by business vocabulary | Errors, validation and money words lost 2 of every 3 rules in a game. Filter recall: 0.345 → 0.931. | [`candidates.py`](../runtime/src/scrinium/application/analysis/candidates.py) | Current |
+| Citations valid by construction | The model miscounted lines: 30 % of citations pointed at the first line of the chunk. Lines are numbered continuously across the batch, and the grammar only allows lines that exist in a single source. | [`extraction.py`](../runtime/src/scrinium/application/analysis/extraction.py) | Current |
+| Short output: 12–60-character title, 3-letter category, always in Spanish | ~80 → ~62 tokens per rule. English appeared because the prompt asked for "the language of the sources". | [`extraction.py`](../runtime/src/scrinium/application/analysis/extraction.py) | Current |
+| One answer per decision, with its identifier | The model chose to write few rules (8 of 28). With one mandatory answer per decision: 16 of 28. Without the identifier it lost count and cited the neighbouring decision. | `extraction_schema` | Current |
+| Two phases: map and statements | The full map arrives earlier (~21 min) and recall rises to 23 of 28. Total time does not drop: it is spread out. | [`rule_detail.py`](../runtime/src/scrinium/application/analysis/rule_detail.py) | Current |
+| Domain decisions and ±4 lines of context in phase 2 | Statements described the code ("if held has size > 0…"). With context they state the rule. Recall 24 of 28. Project-specific vocabulary was rejected: it would tune the filter to the test. | `is_domain_decision` | Current |
+| Statements in the background and on demand | Extraction is "complete" once the map is; statements block nothing, and an opened rule gets written immediately. | `write_statement_now` | Current |
+| N-gram speculative decoding | With short answers it only accepted 4–8 % of its proposals. | — | Removed |
+| Larger `ubatch-size` to read faster | 512, 1024 and 2048 gave the same read speed (~259 tokens/s): the GTX 1060 with Vulkan is compute-bound. | — | Rejected |
+| Parallel batches (2–3 slots) | With 2 slots each writes at half speed: −2 % total time. With 3, layers move to the CPU: +86 %. `CHAT_SLOTS = 1` stays. | `CHAT_SLOTS` | Rejected |
+| Qwen3-1.7B only for the map | 2.6× faster, but recall of 9 of 28 versus 24 of 28, and generic titles. | `MAP_MODEL` in [`manifest.py`](../runtime/src/scrinium/infrastructure/tools/manifest.py) | Rejected |
+| Skipping files by `mtime` | Syncing already takes under 1 s, and the SHA-256 hash is more reliable across copies, branches and clocks. | — | Rejected |
 
 ## Practical guide
 
@@ -499,17 +482,23 @@ Other variables:
 7. **At startup, every half-done analysis is marked failed.**
    - `mark_interrupted_questions` marks as `failed` with `interrupted` any queued or running `analysis_run`, not only questions.
    - Extraction is not lost: `resume_pending` creates a new "Continuar la extraccion de reglas" analysis with what is pending in the queue.
-8. **Working documents are not in git.** `PERFORMANCE.md` and `IMPROVEMENTS.md` hold almost all the reasoning behind extraction, and `HANDOFF.md` lists what is pending. In another copy of the repository, you will not have them.
+## Diagrams
 
-## Outdated documents
+Every diagram is an SVG in [diagrams/](diagrams/), built from `diagrams/src/` with `build.py`.
 
-These are places where a document says something that does not match `8ddeb71`. The code wins.
-
-1. **The comment in [`api/static.py:15`](../runtime/src/scrinium/api/static.py#L15)** points to `ui/src/routes.tsx`, which does not exist. The routes are in [`ui/src/App.tsx`](../ui/src/App.tsx).
-2. **`IMPROVEMENTS.md` §2** explains the problem with `select_fragments` and `MAX_CHUNKS = 24`. Neither exists any more: selection is `select_candidates`, with the `extraction_tasks` queue. The section is still useful as the history of the decision.
-3. **`PERFORMANCE.md`** uses "P1" for two different proposals: domain decisions (section 2, done) and sqlite-vec (section 3, pending). One of them should be renamed.
-
-On 11 November 2026, ADR-002, ADR-005, ADR-009, `THREAT_MODEL.md` and `data-flow.md` were corrected while being rewritten in English.
+| Diagram | Shows | Used in |
+|---|---|---|
+| [runtime-architecture](diagrams/runtime-architecture.svg) | Processes, threads, the shared local model and storage | [Architecture](#architecture) |
+| [sync-flow](diagrams/sync-flow.svg) | Syncing a source, from revisions to vectors and the rule watch | [Data flow](#data-flow) |
+| [question-flow](diagrams/question-flow.svg) | Answering a question with three searches and cited claims | [Data flow](#data-flow) |
+| [data-boundaries](diagrams/data-boundaries.svg) | What data crosses which boundary | [data-flow.md](data-flow.md) |
+| [extraction-map](diagrams/extraction-map.svg) | Extraction phase 1: candidates, queue, batches and stored rules | [Rule extraction](#rule-extraction), [rule-extraction.html](rule-extraction.html) |
+| [extraction-statements](diagrams/extraction-statements.svg) | Extraction phase 2: statements in the background or on demand | [Rule extraction](#rule-extraction), [rule-extraction.html](rule-extraction.html) |
+| [model-queue](diagrams/model-queue.svg) | Who uses the model, and in what order | [rule-extraction.html](rule-extraction.html#when) |
+| [rule-anatomy](diagrams/rule-anatomy.svg) | What is stored about a rule | [rule-extraction.html](rule-extraction.html#what) |
+| [understanding-layers](diagrams/understanding-layers.svg) | From rules to the whole system: what is built and what is not | [rule-extraction.html](rule-extraction.html#limits) |
+| [data-model](diagrams/data-model.svg) | Sources, rules and citations in the database | [Data model](#data-model) |
+| [sign-in](diagrams/sign-in.svg) | Signing in with the launch link, session and CSRF | [Security](#security) |
 
 ## Glossary
 
@@ -517,7 +506,7 @@ On 11 November 2026, ADR-002, ADR-005, ADR-009, `THREAT_MODEL.md` and `data-flow
 |---|---|
 | (Business) rule | A domain decision the code implements: a limit, a validation, a calculation, a permission, a state change. Drawing, UI and implementation details are not rules. Table `business_rules` plus a knowledge entity. |
 | Decision | A line that compares with a threshold or a named constant, caps, rejects or changes a state. Decisions within 3 lines of each other form a *group* (D1, D2…), and the model answers once per group. |
-| Candidate | A piece of code (a function, or a ±6-line window) that the F10 filter considers may contain rules. Each candidate is a queue task. |
+| Candidate | A piece of code (a function, or a ±6-line window) that the candidate filter considers may contain rules. Each candidate is a queue task. |
 | Batch | The candidates sent together in one model call: at most 8 000 characters and 24 decisions in the map, or 12 rules in phase 2. |
 | Map (phase 1) | The first pass: for each decision, "not a rule" or a title and a category. Its versions carry `extractor_version = rules-map-1` and the provisional statement "Pendiente de redactar. Código: …". |
 | Statement (phase 2) | The sentence of the rule, 25 words at most: the condition and what it requires. Stored in a new `rules-detail-1` version. |
@@ -529,11 +518,11 @@ On 11 November 2026, ADR-002, ADR-005, ADR-009, `THREAT_MODEL.md` and `data-flow
 | Analysis | Any job with a stored result: question, extraction, statements, diff, SQL, releases or bug. Table `analysis_runs`. |
 | Source, revision and chunk | A source is a repository or folder. Each file has immutable revisions (text, hash, commit), and each revision is split into 60–80-line chunks for search. |
 | `unit_key` and `logic_hash` | The fingerprint of an extraction task. For a function it uses the logical hash, so changing only formatting or comments does not resend it to the model. |
-| KEY (nonce) | A random value per request that delimits each source in the prompt. It goes on the first line of the user message, not in the system message, so the cache keeps working (T1). |
+| KEY (nonce) | A random value per request that delimits each source in the prompt. It goes on the first line of the user message, not in the system message, so the cache keeps working. |
 | Grammar | The JSON schema of each batch, which llama-server enforces while generating: the model cannot write anything outside it. |
 | Slot | One concurrent generation in llama-server. Scrinium uses one for chat. |
 | RRF | Reciprocal Rank Fusion: adds `1 / (60 + position)` from each ranking to combine searches. |
-| F1 (reference set) | In this project it is **not** the F1 metric. It is the name of the task that created the list of 29 real `reference-a` rules used for measurement ([`reference-a.json`](../runtime/benchmarks/golden/reference-a.json)). It is a draft. |
+| Reference set | The list of 29 real `reference-a` rules that `make bench` measures against ([`reference-a.json`](../runtime/benchmarks/golden/reference-a.json)). It is still a draft. |
 | Filter recall | The fraction of reference rules that fall inside some candidate that passes the filter. Computed without the model, in seconds. |
 | Extraction recall | The fraction of reference rules that end up with an extracted rule citing overlapping lines in the same file. |
 | Precision | Of the extracted rules, how many are real rules. Measured by reviewing a sample of 20 by hand. |

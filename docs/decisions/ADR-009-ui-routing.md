@@ -1,10 +1,10 @@
 # ADR-009: react-router for the UI screens
 
-**Status:** accepted and implemented in T-016, 2026-11-07. Owner's decision. Routes renamed to Spanish later, matching the UI language.
+**Status:** accepted and implemented on 2026-11-07. Owner's decision. Routes renamed to Spanish later, matching the UI language.
 
 ## The question
 
-T-016 replaced a single page of stacked cards with separate screens, each with linkable detail views: rules, flows and analyses. How should the UI navigate between screens so that links can be shared, reloaded and bookmarked?
+The UI moved from a single page of stacked cards to separate screens, each with linkable detail views: rules, flows and analyses. How should the UI navigate between screens so that links can be shared, reloaded and bookmarked?
 
 ## What we decided
 

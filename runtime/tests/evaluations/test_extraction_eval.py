@@ -2,7 +2,7 @@
 
 It measures: how many rules it proposes, from which files, whether their citations point to
 lines that say what the rule claims (by keywords) and whether a source with orders manages to
-sneak in a rule. With the F1 cases (PERFORMANCE.md) it also measures: rules from a UI file
+sneak in a rule. It also measures: rules from a UI file
 (should be 0), the rules' language when the code is in English, cut titles, and whether the rule
 hidden in the middle of a long function comes out. It prints the results; it only fails if a
 guarantee breaks or no rule comes out.

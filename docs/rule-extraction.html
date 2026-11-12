@@ -102,11 +102,11 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
 <main>
 <header class="top">
   <p class="eyebrow">Scrinium · business-rule extraction</p>
-  <h1>How Scrinium extracts rules from code, and what it still needs to explain it</h1>
-  <p class="lede prose">This page explains the what, when and how of rule extraction. It was checked against the repository code on 11 November 2026. Timing and recall figures come from <code>PERFORMANCE.md</code>. They were measured on a 6 GB GTX 1060 with Qwen3-4B, on the pilot project <code>reference-a</code>.</p>
+  <h1>How Scrinium extracts rules from code, </h1>
+  <p class="lede prose">This page explains the what, when and how of rule extraction. It was checked against the repository code on 11 November 2026. Timing and recall figures were measured with <code>make bench</code> on a 6 GB GTX 1060 with Qwen3-4B, on the pilot project <code>reference-a</code>.</p>
   <p class="muted prose" style="font-size:0.9rem">References such as <span class="ref">analysis/extraction.py:533</span> are relative to <code>runtime/src/scrinium/</code>, except those starting with <code>ui/</code>.</p>
   <nav class="toc" aria-label="Sections">
-    <a href="#what">1 · What</a><a href="#when">2 · When</a><a href="#how">3 · How</a><a href="#lines">4 · Few lines</a><a href="#limits">5 · What it does not do</a><a href="#missing">6 · What is missing</a>
+    <a href="#what">1 · What</a><a href="#when">2 · When</a><a href="#how">3 · How</a><a href="#lines">4 · Few lines</a><a href="#limits">5 · What it does not do</a>
   </nav>
 </header>
 
@@ -114,7 +114,6 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
   <h2>The short answer</h2>
   <p>A rule shows only a few lines because that is all that is stored. Each rule comes from one <strong>group of decision lines</strong>: for example an <code>if (lives &lt;= 0)</code>, plus any decision lines within 3 lines of it. That group is the rule's <strong>only citation</strong>, and the UI shows exactly those lines.</p>
   <p>Scrinium knows where every function starts and ends, and which names it calls. It does not use that knowledge to explain the code or to relate rules to each other. The relationship and flow tables exist, but nothing fills them, so the "Map" screen shows a single column of rules with no arrows.</p>
-  <p>What is missing most is not a better model. It is <strong>structure</strong>: the call graph, the full function and the relationships can all be computed without the GPU. Summaries written by the model are the expensive part.</p>
 </div>
 
 <!-- 1 -->
@@ -348,75 +347,31 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
         <li>The <code>module</code> and <code>service</code> types exist in the data model, unused.</li>
       </ul></li>
     <li><strong>It does not follow data or execution.</strong> It does not know what comes in through an endpoint or what ends up in the database. It does not see behaviour that depends on configuration or runtime.</li>
-    <li><strong>It does not use documentation or tickets.</strong> Documentation is left out of extraction. Tickets as tags (the vision in <code>IMPROVEMENTS.md</code>, section 2) are not done.</li>
-    <li><strong>F3, F7 and F9 are pending:</strong>
-      <ul>
-        <li>F3: split the statement into "when" and "then";</li>
-        <li>F7: propose criticality with fixed rules;</li>
-        <li>F9: retry a failed batch split in two, and fix the temperature in production.</li>
-      </ul></li>
+    <li><strong>It does not use documentation or tickets.</strong> Documentation is left out of extraction. Tickets are not linked to rules.</li>
   </ul>
+
+  <p class="prose">Rules are the bottom layer of understanding a codebase. The layers above them are only partly built:</p>
+  <figure>
+    <div class="diagram"><img src="diagrams/understanding-layers.svg" width="960" height="376" alt="Layer stack from rules to the whole system: what exists today, what is partial and what is missing."></div>
+    <figcaption>The solid boxes are already in the database. Calls exist only as bare names. Everything dashed is not built yet; the relationship and flow tables, and their drawing in the UI, already exist.</figcaption>
+  </figure>
 
   <h3>How much it finds, measured</h3>
   <div class="table-wrap"><table>
     <thead><tr><th>Measure (<code>reference-a</code>)</th><th>Value</th><th>What it means</th></tr></thead>
     <tbody>
       <tr><td>Filter recall</td><td class="num">27 of 29 (0.931)</td><td>The 2 that never reach the model have no comparison or constant (<code>afterDoor</code>, <code>pack</code>).</td></tr>
-      <tr><td>Rules covered by a decision group (P1)</td><td class="num">24 of 29</td><td>The ones the model can answer at all.</td></tr>
-      <tr><td><strong>Extraction recall</strong></td><td class="num"><strong>24 of 28</strong></td><td>With the current setup (S3 + P1), on the reference sample.</td></tr>
+      <tr><td>Rules covered by a decision group</td><td class="num">24 of 29</td><td>The ones the model can answer at all.</td></tr>
+      <tr><td><strong>Extraction recall</strong></td><td class="num"><strong>24 of 28</strong></td><td>With the current two-phase setup, on the reference sample.</td></tr>
       <tr><td>Decisions the model marks as a rule</td><td class="num">≈ 90 %</td><td>Many are implementation details. Precision has not been reviewed by hand systematically.</td></tr>
       <tr><td>First extraction time</td><td class="num">≈ 21 + 18 min</td><td>Map plus statements on the GTX 1060 (estimated from the sample). After that, only what changes.</td></tr>
       <tr><td>1.7B model for the map</td><td class="num">9 of 28</td><td>2.6 times faster, but loses almost two thirds of the rules: rejected.</td></tr>
-      <tr><td>Parallel batches (S1)</td><td class="num">−2 % with 2 slots</td><td>The GTX 1060 is already saturated: not worth it.</td></tr>
+      <tr><td>Parallel batches</td><td class="num">−2 % with 2 slots</td><td>The GTX 1060 is already saturated: not worth it.</td></tr>
     </tbody>
   </table></div>
-  <p class="muted prose" style="font-size:0.9rem">The reference list is a draft of 29 rules written by Claude, pending review by the owner (<code>runtime/benchmarks/golden/reference-a.json</code>). It is a single project, and it is a game. Source: <code>PERFORMANCE.md</code>, sections F10 + F6, P1, S1 and small model.</p>
+  <p class="muted prose" style="font-size:0.9rem">The reference list is a draft of 29 rules written by Claude, pending review by the owner (<code>runtime/benchmarks/golden/reference-a.json</code>). It is a single project, and it is a game.</p>
 </section>
 
-<!-- 6 -->
-<section id="missing">
-  <div class="sec-head"><p class="eyebrow">6 · What is missing</p><h2>What it would take to explain the code and map how it is built</h2></div>
-  <p class="prose">A tool that explains code needs four layers, each built on the one below. Today only the bottom one is complete.</p>
-
-  <figure>
-    <div class="diagram"><img src="diagrams/understanding-layers.svg" width="960" height="376" alt="Layer stack from rules to the whole system: what exists today, what is partial and what is missing."></div>
-    <figcaption>The solid boxes are already in the database. Calls exist only as bare names. Everything dashed has to be built, although the relationship and flow tables, and their drawing in the UI, already exist.</figcaption>
-  </figure>
-
-  <h3>Proposals, ordered by value and effort</h3>
-  <p class="prose">The first four do not use the model. They cost development time, not GPU time, and they are what changes a demo the most.</p>
-  <div class="table-wrap"><table>
-    <thead><tr><th>#</th><th>Proposal</th><th>What is reused</th><th>Effort</th><th>GPU (GTX 1060)</th></tr></thead>
-    <tbody>
-      <tr><td class="num">1</td><td><strong>See the full function next to the rule.</strong> A "See function" button that shows the symbol containing the citation, with the citation highlighted.</td><td><code>code_symbols</code> (start and end); the lookup of the symbol covering a citation already exists in <span class="ref">analysis/consistency.py:186-197</span>; the lines endpoint (<span class="ref">api/sources.py:287</span>) and <code>EvidenceCite</code>.</td><td>Low</td><td class="num">0</td></tr>
-      <tr><td class="num">2</td><td><strong>Resolved call graph.</strong> Read the <code>import</code>s, resolve each called name to its symbol, and show "who calls this function" and "what it calls".</td><td><code>parse_symbols</code> and <code>calls</code> (<span class="ref">infrastructure/code_structure.py:157-205</span>); <code>logic_hash</code> to redo only what changes; computed on sync.</td><td>Medium</td><td class="num">0 (seconds)</td></tr>
-      <tr><td class="num">3</td><td><strong>Relationships between rules, without the model.</strong> Same function; a function that calls another with rules; same named constant (<code>MAX_LIVES</code>).</td><td><code>add_relationship</code>, which already validates cycles and symmetry (<span class="ref">knowledge/evidence.py:287</span>); the <code>depends_on</code>, <code>calls</code> and <code>related_to</code> types; the Map graph and the "Relaciones" section, which already draw them.</td><td>Medium-low (after 2)</td><td class="num">0</td></tr>
-      <tr><td class="num">4</td><td><strong>Architecture view.</strong> Modules (folders or files) as nodes and their dependencies as arrows, with each one's rule count.</td><td>The <code>module</code> and <code>service</code> types; <code>layoutGraph</code> and <code>MapScreen</code> (<span class="ref">ui/src/lib/graph.ts</span>).</td><td>Medium</td><td class="num">0</td></tr>
-      <tr><td class="num">5</td><td><strong>Hierarchical summaries by the model.</strong> One sentence per function; a paragraph per module, from its functions' summaries and its rules; and a system summary.</td><td>The phase 2 pattern: background queue with low priority, on demand when opened, per-batch grammar, delimiters with a random value, and the logical fingerprint to redo only what changes.</td><td>High</td><td class="num">≈ 25–35 min the first time*</td></tr>
-      <tr><td class="num">6</td><td><strong>Proposed flows.</strong> Paths through the call graph from the entry points, with each step's rules. The model only names the flow and its steps.</td><td><code>create_flow</code> and the <code>flow_*</code> tables (<span class="ref">knowledge/entities.py:298</span>); the Map's "Procesos" section.</td><td>High</td><td class="num">≈ 3–10 min*</td></tr>
-      <tr><td class="num">7</td><td><strong>Rule quality:</strong> F3 (fill preconditions and expected behaviour, whose columns already exist), F7 (proposed criticality), F9 (split failed batches), and merging duplicates by citation instead of by title.</td><td>The <code>business_rule_versions</code> columns; the <code>score_text</code> signals.</td><td>Low-medium</td><td class="num">a little more writing in phase 2</td></tr>
-    </tbody>
-  </table></div>
-
-  <div class="prose" style="display:grid;gap:10px">
-    <p><strong>* How the GPU cost is estimated (not measured).</strong> It uses the speeds measured on the GTX 1060: reading at about 220–250 tokens/s and writing at about 32–35 tokens/s.</p>
-    <ul>
-      <li><strong>Function summaries.</strong> <code>reference-a</code> has 419 functions and about 746 000 characters of code, which is about 190 000–210 000 tokens.
-        <ul>
-          <li>Reading them takes ~13–16 min.</li>
-          <li>Writing one sentence of ~40 tokens per function is ~17 000 tokens, about 8–9 min.</li>
-        </ul></li>
-      <li><strong>Modules and the system.</strong> They read summaries instead of code, so they take a few minutes.</li>
-      <li><strong>Total, first time.</strong> About 30–45 min more on top of the ~39 min of rules, with the GPU busy. After that, as with rules, only what changes is redone.</li>
-    </ul>
-    <p class="note">The GPU is the real limit. S1 and the small model have already been tried, and they do not help on this machine. That is why proposals 1 to 4, which do not use it, come first. Summaries (5) should work like phase 2: in the background, with low priority, and on demand when someone opens a function or a module.</p>
-  </div>
-</section>
-
-<div class="closing prose">
-  <h2>Work plan</h2>
-  <p>Section 6 was turned into a work plan with phases, acceptance criteria, measurement, and a time projection by hardware and project size. Its goal is to show business modules, their dependencies, their rules and the rules they share, not just isolated lines. Plans are kept out of git: it lives locally as <code>docs/plan-mapa-de-negocio.md</code>.</p>
-</div>
 </main>
 </body>
 </html>
