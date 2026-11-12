@@ -353,6 +353,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 dropped_rules=dropped,
                 rule_titles=[rule.content.title for rule in rules],
             )  # fmt: skip
+            if dropped:
+                # Kept to diagnose why the answers did not become rules.
+                row["raw_output"] = completion.text
             rows += [_rule_row(rule) for rule in rules]
             batches.append(row)
             print(
