@@ -493,6 +493,12 @@ export const updateProfile = async (displayName: string) =>
     display_name: string | null
   }>
 
+export const getSearchSettings = () => getJson<{ include_tests: boolean }>("/api/v1/search/settings")
+export const updateSearchSettings = async (includeTests: boolean) =>
+  (await mutate("/api/v1/search/settings", { include_tests: includeTests }, "PUT")).json() as Promise<{
+    include_tests: boolean
+  }>
+
 export const listRules = async (
   projectId: string,
   filters: { verification?: VerificationStatus; lifecycle?: string; q?: string } = {},

@@ -10,12 +10,14 @@ import uuid
 from dataclasses import dataclass
 from typing import Final
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, exists, func, select, true, update
 from sqlalchemy.orm import Session
 
 from scrinium.application.retrieval.chunking import chunk_text, embedding_input
 from scrinium.application.retrieval.structure import ensure_symbols
+from scrinium.application.workspaces import search_includes_tests
 from scrinium.domain.enums import ItemLifecycle
+from scrinium.domain.paths import is_test_path
 from scrinium.infrastructure.embeddings.base import EmbeddingProvider
 from scrinium.infrastructure.local_http import ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.database import Database
@@ -36,6 +38,7 @@ _STATUS_TTL_SECONDS: Final = 10.0
 def chunk_revision(session: Session, revision: SourceRevision) -> int:
     path = revision.metadata_.get("path", "")
     chunks = chunk_text(path, revision.text_content or "")
+    is_test = is_test_path(path)
     for chunk in chunks:
         session.add(
             ContentChunk(
@@ -46,6 +49,7 @@ def chunk_revision(session: Session, revision: SourceRevision) -> int:
                 locator=chunk.locator(),
                 content_hash=chunk.content_hash,
                 token_count=chunk.token_count,
+                is_test=is_test,
             )
         )
     return len(chunks)
@@ -110,6 +114,8 @@ class Indexer:
                 SourceItem.lifecycle_status == ItemLifecycle.ACTIVE,
             )
         )
+        if not search_includes_tests(session):
+            base = base.where(ContentChunk.is_test.is_(False))
         total = session.scalar(base) or 0
         embedded = (
             session.scalar(base.where(ContentChunk.embedding_model == self.provider.model_id)) or 0
@@ -119,6 +125,7 @@ class Indexer:
     def _pending_batch(self) -> list[tuple[ContentChunk, str, uuid.UUID, uuid.UUID]]:
         model = self.provider.model_id
         with self.database.session() as session:
+            tests = search_includes_tests(session)
             rows = session.execute(
                 select(ContentChunk, SourceRevision, SourceConnection)
                 .join(SourceRevision, SourceRevision.id == ContentChunk.source_revision_id)
@@ -127,6 +134,8 @@ class Indexer:
                 .where(
                     SourceItem.lifecycle_status == ItemLifecycle.ACTIVE,
                     SourceConnection.project_id.is_not(None),
+                    # Tests get no vector unless included: ~10 % of the code, all noise.
+                    true() if tests else ContentChunk.is_test.is_(False),
                     (ContentChunk.embedding_model.is_(None))
                     | (ContentChunk.embedding_model != model),
                 )

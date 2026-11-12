@@ -22,6 +22,7 @@ DEFAULT_WORKSPACE_NAME: Final = "Workspace personal"
 PROJECT_KEY_PATTERN: Final = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 PROJECT_KEY_MAX_LENGTH: Final = 64
 _FALLBACK_KEY: Final = "proyecto"
+INCLUDE_TESTS_KEY: Final = "search_include_tests"
 
 
 class ProjectKeyTakenError(Exception):
@@ -79,6 +80,19 @@ def local_workspace(session: Session) -> Workspace:
     if workspace is None:
         raise LookupError("local workspace not created")
     return workspace
+
+
+def search_includes_tests(session: Session) -> bool:
+    """Whether search, answers and vectors also cover tests. Off by default: tests check
+    rules, they do not explain them, and they add noise and embedding time."""
+    workspace = session.scalars(select(Workspace).order_by(Workspace.created_at)).first()
+    return bool(workspace is not None and workspace.settings.get(INCLUDE_TESTS_KEY, False))
+
+
+def set_search_includes_tests(session: Session, value: bool) -> None:
+    workspace = local_workspace(session)
+    # A new dict: SQLAlchemy does not see changes made inside a JSON value.
+    workspace.settings = {**workspace.settings, INCLUDE_TESTS_KEY: value}
 
 
 def list_projects(session: Session, workspace: Workspace) -> list[Project]:

@@ -111,14 +111,15 @@ Three details explain the rest of the system:
 - **Store.**
   - `_apply_plan` creates a new revision only if the content changed. Revisions are never modified.
   - In the same transaction, the revision is chunked (windows of 60 to 80 lines, by section in Markdown) and its symbols are computed with tree-sitter.
+  - Chunks from tests, fixtures, mocks and stories are marked `is_test` by their path ([`domain/paths.py`](../runtime/src/scrinium/domain/paths.py)).
 - **After.**
   - `after_sync` flags the rules whose code changed.
   - If the project already has an extraction, it relaunches it with only what is pending.
-  - Finally, `embed_pending` computes the missing vectors.
+  - Finally, `embed_pending` computes the missing vectors. Test chunks get none unless Settings → Búsqueda includes them.
 
 ### Asking, step by step
 
-- **Three rankings,** all filtered by project:
+- **Three rankings,** all filtered by project and, by default, without test chunks:
   - function names in `code_symbols`;
   - quoted words in FTS5;
   - embedding vectors in LanceDB.

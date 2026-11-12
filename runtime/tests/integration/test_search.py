@@ -156,6 +156,43 @@ def test_without_ollama_search_is_lexical_and_catches_up_later(
     assert (status["chunks"], status["embedded"]) == (4, 4)
 
 
+def test_tests_stay_out_of_search_unless_included(runtime: Runtime, repo: Path) -> None:
+    write(
+        repo,
+        "tests/test_billing.py",
+        "def test_calculate_invoice_total():\n    assert calculate_invoice_total([]) == 0\n",
+    )
+    write(repo, "web/billing.spec.ts", "it('calculate_invoice_total', () => {})\n")
+    commit_all(repo)
+    csrf = runtime.login()
+    project, _ = _index(runtime, csrf, repo)
+
+    def paths() -> set[str]:
+        # Vector search always returns neighbours: only word and name matches tell.
+        results = _search(runtime, project, "calculate_invoice_total")["results"]
+        return {r["path"] for r in results if r["matched_by"] != ["semantic"]}
+
+    assert paths() == {"src/billing.py"}
+    # Tests get no vector and do not count as pending in the index status.
+    status = runtime.client.get(f"/api/v1/projects/{project}/index-status").json()
+    assert (status["chunks"], status["embedded"]) == (4, 4)
+    assert runtime.client.get("/api/v1/search/settings").json() == {"include_tests": False}
+
+    included = _request(
+        runtime, csrf, "PUT", "/api/v1/search/settings", json={"include_tests": True}
+    )
+    assert included.json() == {"include_tests": True}
+    assert paths() == {"src/billing.py", "tests/test_billing.py", "web/billing.spec.ts"}
+    status = runtime.client.get(f"/api/v1/projects/{project}/index-status").json()
+    assert (status["chunks"], status["embedded"]) == (6, 6)
+
+    _request(runtime, csrf, "PUT", "/api/v1/search/settings", json={"include_tests": False})
+    # Their vectors stay, but search filters them out again, semantic neighbours included.
+    assert paths() == {"src/billing.py"}
+    every = _search(runtime, project, "test_calculate_invoice_total assert")["results"]
+    assert every and all(not r["path"].startswith(("tests/", "web/")) for r in every)
+
+
 def test_deleting_a_source_removes_chunks_fts_and_vectors(runtime: Runtime, repo: Path) -> None:
     csrf = runtime.login()
     project, source = _index(runtime, csrf, repo)

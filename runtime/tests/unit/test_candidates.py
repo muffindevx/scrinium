@@ -9,6 +9,7 @@ from scrinium.application.analysis.candidates import (
     is_visual,
     score_text,
 )
+from scrinium.domain.paths import is_test_path
 
 
 def test_a_game_rule_passes_without_business_vocabulary() -> None:
@@ -94,3 +95,20 @@ def test_close_decisions_are_one_group_and_a_part_without_any_is_one_whole_group
     ])  # fmt: skip
     assert decision_groups(text) == [(1, 2), (7, 7)]
     assert decision_groups("wire();\nstart();") == [(0, 1)]
+
+
+def test_test_paths_are_recognised_in_every_layout() -> None:
+    tests = [
+        "tests/test_pagos.py",
+        "src/app/__tests__/cart.ts",
+        "web/billing.spec.ts",
+        "web/Button.stories.tsx",
+        "pkg/billing_test.go",
+        "src/main/java/BillingTest.java",
+        "Billing.Tests/InvoiceTests.cs",
+        "spec/models/user_spec.rb",
+        "app/fixtures/users.json",
+    ]
+    code = ["src/billing.py", "src/testing_mode.py", "src/contest/rules.ts", "lib/specs.rb"]
+    assert all(is_test_path(path) for path in tests)
+    assert not any(is_test_path(path) for path in code)

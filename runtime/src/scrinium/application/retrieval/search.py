@@ -2,6 +2,7 @@
 from the structural map, merged with RRF.
 
 Only chunks of the current revision of active files in the requested project are searched.
+Tests are left out unless the person includes them in Settings.
 """
 
 import re
@@ -9,10 +10,11 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Final
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, true
 from sqlalchemy.orm import Session
 
 from scrinium.application.retrieval.indexing import Indexer
+from scrinium.application.workspaces import search_includes_tests
 from scrinium.domain.enums import ItemLifecycle
 from scrinium.infrastructure.local_http import ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.models import (
@@ -43,6 +45,7 @@ _LEXICAL_SQL: Final = text(
     WHERE content_chunks_fts MATCH :query
       AND s.project_id = :project_id
       AND i.lifecycle_status = :active
+      AND (:tests OR c.is_test = 0)
     ORDER BY bm25(content_chunks_fts, 0.0, 2.0, 1.0)
     LIMIT :limit
     """
@@ -65,7 +68,9 @@ def fts_query(query: str, operator: str) -> str | None:
     return f"{{path body}} : ({joined})"
 
 
-def lexical(session: Session, project_id: uuid.UUID, query: str, limit: int) -> list[uuid.UUID]:
+def lexical(
+    session: Session, project_id: uuid.UUID, query: str, limit: int, tests: bool = False
+) -> list[uuid.UUID]:
     for operator in ("AND", "OR"):
         expression = fts_query(query, operator)
         if expression is None:
@@ -77,6 +82,7 @@ def lexical(session: Session, project_id: uuid.UUID, query: str, limit: int) -> 
                 "project_id": project_id.hex,
                 "active": ItemLifecycle.ACTIVE.value,
                 "limit": limit,
+                "tests": tests,
             },
         ).all()
         if rows:
@@ -89,7 +95,9 @@ def _normalized(name: str) -> str:
     return name.replace("_", "").replace("-", "").lower()
 
 
-def symbols(session: Session, project_id: uuid.UUID, query: str, limit: int) -> list[uuid.UUID]:
+def symbols(
+    session: Session, project_id: uuid.UUID, query: str, limit: int, tests: bool = False
+) -> list[uuid.UUID]:
     """Chunks where a function, method or class with a name from the query starts."""
     names = {_normalized(term) for term in _TERM.findall(query)[:MAX_TERMS] if len(term) >= 3}
     if not names:
@@ -106,6 +114,7 @@ def symbols(session: Session, project_id: uuid.UUID, query: str, limit: int) -> 
             normalized.in_(names),
             ContentChunk.locator["start_line"].as_integer() <= CodeSymbol.start_line,
             ContentChunk.locator["end_line"].as_integer() >= CodeSymbol.start_line,
+            true() if tests else ContentChunk.is_test.is_(False),
         )
         .limit(limit)
     ).all()
@@ -116,9 +125,10 @@ def symbols(session: Session, project_id: uuid.UUID, query: str, limit: int) -> 
 
 
 def _searchable(
-    session: Session, project_id: uuid.UUID, chunk_ids: list[uuid.UUID]
+    session: Session, project_id: uuid.UUID, chunk_ids: list[uuid.UUID], tests: bool
 ) -> set[uuid.UUID]:
-    """Filters candidates from the vector index, which also stores old revisions."""
+    """Filters candidates from the vector index, which also stores old revisions and, once
+    tests were included, their vectors."""
     if not chunk_ids:
         return set()
     rows = session.scalars(
@@ -129,6 +139,7 @@ def _searchable(
             ContentChunk.id.in_(chunk_ids),
             SourceConnection.project_id == project_id,
             SourceItem.lifecycle_status == ItemLifecycle.ACTIVE,
+            true() if tests else ContentChunk.is_test.is_(False),
         )
     )
     return set(rows)
@@ -153,9 +164,10 @@ def search(
     session: Session, indexer: Indexer, project_id: uuid.UUID, query: str, limit: int
 ) -> SearchResult:
     candidates = limit * _CANDIDATES_FACTOR
+    tests = search_includes_tests(session)
     rankings: dict[str, list[uuid.UUID]] = {
-        "symbol": symbols(session, project_id, query, candidates),
-        "lexical": lexical(session, project_id, query, candidates),
+        "symbol": symbols(session, project_id, query, candidates, tests),
+        "lexical": lexical(session, project_id, query, candidates, tests),
     }
 
     result = SearchResult()
@@ -167,7 +179,7 @@ def search(
             hits = indexer.vector_index.search(
                 indexer.provider.model_id, vector, project_id, candidates
             )
-            allowed = _searchable(session, project_id, [chunk_id for chunk_id, _ in hits])
+            allowed = _searchable(session, project_id, [chunk_id for chunk_id, _ in hits], tests)
             rankings["semantic"] = [chunk_id for chunk_id, _ in hits if chunk_id in allowed]
         except ModelError:
             result.semantic = ModelStatus.UNAVAILABLE.value

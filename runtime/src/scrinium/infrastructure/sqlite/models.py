@@ -12,6 +12,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     CheckConstraint,
     DateTime,
     Dialect,
@@ -310,6 +311,8 @@ class ContentChunk(Base):
     locator: Mapped[dict[str, Any]] = mapped_column(JSON)
     content_hash: Mapped[str] = mapped_column(String(64))
     token_count: Mapped[int] = mapped_column(Integer)
+    # From a test, fixture or mock (by its path): left out of search and vectors by default.
+    is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0", index=True)
     # Model its vector was computed with; empty if it has none yet.
     embedding_model: Mapped[str | None] = mapped_column(String(200), index=True)
     embedding_dimension: Mapped[int | None] = mapped_column(Integer)

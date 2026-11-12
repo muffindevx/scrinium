@@ -1,4 +1,4 @@
-import { Cpu, LogOut, Monitor, Moon, Palette, ShieldCheck, Sun, UserRound } from "lucide-react"
+import { Cpu, LogOut, Monitor, Moon, Palette, Search, ShieldCheck, Sun, UserRound } from "lucide-react"
 import { type FormEvent, useEffect, useState } from "react"
 import { InfoRow, PageHeader, Section } from "@/components/page"
 import { ModelStatusBadge, StatusBadge } from "@/components/status"
@@ -13,7 +13,9 @@ import {
   type SecurityStatus,
   checkLlm,
   getEngine,
+  getSearchSettings,
   updateProfile,
+  updateSearchSettings,
 } from "@/lib/api"
 import { type ThemePreference, setTheme, storedTheme } from "@/lib/theme"
 import { PrivacyCard } from "@/screens/PrivacyCard"
@@ -234,6 +236,48 @@ function ProfileSection({
   )
 }
 
+function SearchSection({ onSessionLost }: { onSessionLost: (error: unknown) => void }) {
+  const [includeTests, setIncludeTests] = useState<boolean | null>(null)
+  const { error, setError, fail } = useErrors(onSessionLost)
+  useEffect(() => {
+    getSearchSettings()
+      .then((settings) => setIncludeTests(settings.include_tests))
+      .catch(fail)
+  }, [fail])
+  const toggle = (value: boolean) => {
+    setError(null)
+    updateSearchSettings(value)
+      .then((settings) => setIncludeTests(settings.include_tests))
+      .catch(fail)
+  }
+  return (
+    <Section
+      title={
+        <span className="flex items-center gap-2">
+          <Search className="size-4" />
+          Búsqueda
+        </span>
+      }
+      description="Buscar y preguntar devuelve código, reglas y documentos. Los tests comprueban reglas pero no las explican, así que quedan fuera salvo que los incluyas."
+    >
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="size-4 accent-primary"
+          checked={includeTests ?? false}
+          disabled={includeTests === null}
+          onChange={(event) => toggle(event.target.checked)}
+        />
+        Incluir los tests en la búsqueda y en las respuestas
+      </label>
+      {includeTests ? (
+        <Muted>Sus vectores se calculan en segundo plano; mientras tanto se encuentran por palabras.</Muted>
+      ) : null}
+      <ErrorText>{error}</ErrorText>
+    </Section>
+  )
+}
+
 const DISK_ENCRYPTION: Record<SecurityStatus["storage"]["disk_encryption"], string> = {
   encrypted: "Activo",
   not_detected: "No detectado",
@@ -321,6 +365,7 @@ export function SettingsScreen({
         <ProfileSection name={profileName} onSaved={onProfileSaved} onSessionLost={onSessionLost} />
         <AppearanceSection />
       </div>
+      <SearchSection onSessionLost={onSessionLost} />
       <PrivacySection status={status} dataFlow={dataFlow} />
       <PrivacyCard
         project={project}

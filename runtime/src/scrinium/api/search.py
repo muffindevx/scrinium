@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session as DbSession
 
+from scrinium.application import workspaces
 from scrinium.application.ingestion import sources
 from scrinium.application.retrieval import search as retrieval
 from scrinium.application.workspaces import local_workspace, record_audit
@@ -34,6 +35,10 @@ class SearchHitResponse(BaseModel):
 class SearchResponse(BaseModel):
     semantic: SemanticStatus
     results: list[SearchHitResponse]
+
+
+class SearchSettings(BaseModel):
+    include_tests: bool
 
 
 class IndexStatusResponse(BaseModel):
@@ -96,6 +101,26 @@ def build_search_router(database: Database, runner: sources.IngestionRunner) -> 
             provider=current.provider.value,
             model=current.model_id,
         )
+
+    @router.get("/api/v1/search/settings")
+    def read_search_settings(db: Db) -> SearchSettings:
+        return SearchSettings(include_tests=workspaces.search_includes_tests(db))
+
+    @router.put("/api/v1/search/settings")
+    def update_search_settings(body: SearchSettings, request: Request) -> SearchSettings:
+        request_id: str | None = getattr(request.state, "request_id", None)
+        # Its own transaction, committed before the vectors start: they read this setting.
+        with database.session() as session:
+            workspace = local_workspace(session)
+            workspaces.set_search_includes_tests(session, body.include_tests)
+            record_audit(
+                session, workspace.id, "search.settings", "workspace", str(workspace.id),
+                AuditResult.SUCCESS, request_id, {"include_tests": body.include_tests},
+            )  # fmt: skip
+        if body.include_tests:
+            # The tests' vectors, in the background: search uses words until they are ready.
+            runner.submit_embeddings()
+        return body
 
     @router.post("/api/v1/index/rebuild", status_code=status.HTTP_202_ACCEPTED)
     def rebuild(request: Request, db: Db) -> None:

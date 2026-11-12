@@ -233,7 +233,7 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
     <li><div>
       <h3>Which files go in</h3>
       <p>Only code, schemas and tests, by extension. Tool and agent folders (<code>.claude</code>, <code>.github</code>, <code>.vscode</code>…) are excluded. <span class="ref">analysis/candidates.py:115-138, 439-448, 475-479</span></p>
-      <p>Tests are not extracted. If a test mentions a function, that function scores one point more.</p>
+      <p>Tests are left out: they check rules, they do not hold them. They are not extracted, cited, embedded or searched, unless search is told to include them in Settings. <span class="ref">domain/paths.py</span></p>
     </div></li>
     <li><div>
       <h3>The decision-line filter (F10, <code>score_text</code>)</h3>
@@ -333,7 +333,7 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
       <ul>
         <li>It stores the names each function calls, but only the last part (<code>this.game.end()</code> becomes <code>end</code>). <span class="ref">infrastructure/code_structure.py:120-133, 157-159</span></li>
         <li>It does not resolve which function a name refers to, and does not read <code>import</code>s.</li>
-        <li>The only use of those calls is citing the tests that call a rule's function, in the consistency analysis. <span class="ref">analysis/consistency.py:162-215</span></li>
+        <li>Those calls are not used yet.</li>
       </ul></li>
     <li><strong>It does not relate rules to each other.</strong>
       <ul>

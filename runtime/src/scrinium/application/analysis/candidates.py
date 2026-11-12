@@ -27,6 +27,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from scrinium.domain.enums import ItemLifecycle
+from scrinium.domain.paths import is_test_path
 from scrinium.infrastructure.code_structure import language_for
 from scrinium.infrastructure.sqlite.models import (
     CodeSymbol,
@@ -129,7 +130,7 @@ TOOLING_DIRS: Final = frozenset(
 
 
 def is_rule_source(path: str) -> bool:
-    """Whether a file may hold business rules: code, schemas or tests."""
+    """Whether a file is code or a schema by its extension; tests are filtered apart."""
     parts = path.split("/")
     if any(part in TOOLING_DIRS for part in parts[:-1]):
         return False
@@ -212,27 +213,11 @@ _MAX_DECISIONS: Final = 6
 _DENSITY_MIN_LINES: Final = 20
 _LOW_DENSITY: Final = 0.5
 _SMALL_FUNCTION_LINES: Final = 15
-_TESTED_BONUS: Final = 1
 # A longer function only goes as windows of +-_WINDOW lines around its decisions.
 _WINDOW_FROM_LINES: Final = 40
 _WINDOW: Final = 6
 
 _BRANCH: Final = re.compile(r"\b(?:if|elif|elsif|switch|case|when|match|unless)\b|\?\s*[^:?\n]+:")
-# Tests of every kind: they do not implement rules, they check them (they back rules elsewhere).
-_TEST_DIRS: Final = frozenset(
-    {
-        "tests",
-        "test",
-        "__tests__",
-        "spec",
-        "e2e",
-        "smoke",
-        "fixtures",
-        "mocks",
-        "__mocks__",
-        "stories",
-    }
-)
 
 
 @dataclass
@@ -378,19 +363,6 @@ def _visual_penalty(candidate: "Candidate") -> None:
         candidate.reasons.append("interfaz o dibujo")
 
 
-def _is_test(path: str) -> bool:
-    name = path.rsplit("/", 1)[-1]
-    return (
-        path.startswith(("tests/", "test/", "__tests__/", "spec/"))
-        or any(part in _TEST_DIRS for part in path.split("/")[:-1])
-        or ".stories." in name
-        or name.startswith("test_")
-        or ".test." in name
-        or ".spec." in name
-        or name.endswith(("_test.py", "_test.go", "Test.java", "Tests.cs", "_spec.rb"))
-    )
-
-
 def _split(candidate: Candidate) -> list[Candidate]:
     if len(candidate.text) <= MAX_CANDIDATE_CHARS:
         return [candidate]
@@ -436,16 +408,13 @@ def select_candidates(
     ).scalars()
     selection = Selection()
     code: list[SourceRevision] = []
-    tests_text: list[str] = []
     for revision in revisions:
         file_path = revision.metadata_.get("path", "")
         if not is_rule_source(file_path):
             selection.not_code += 1
-        elif _is_test(file_path):
-            tests_text.append(revision.text_content or "")
-        else:
+        elif not is_test_path(file_path):
+            # Tests check rules; they never go to the model nor change the order.
             code.append(revision)
-    tested_words = set(re.findall(r"\w+", "\n".join(tests_text)))
 
     symbols: dict[uuid.UUID, list[CodeSymbol]] = defaultdict(list)
     for symbol in session.scalars(
@@ -472,11 +441,6 @@ def select_candidates(
                 pieces: list[Candidate] = []
                 for part in _split(whole):
                     part.score, part.reasons = score_text(part.text)
-                    if symbol.name in tested_words and part.score > 0:
-                        # A rule that tests call moves up the queue; without decisions, a
-                        # test does not make it a rule.
-                        part.score += _TESTED_BONUS
-                        part.reasons.append("tiene tests")
                     _visual_penalty(part)
                     pieces += decision_windows(part) if part.score >= min_score else [part]
                 # Each piece with its number: it is part of its task's fingerprint in the queue.

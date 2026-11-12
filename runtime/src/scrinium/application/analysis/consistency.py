@@ -1,11 +1,8 @@
-"""Rulebook consistency: tests that exercise the rules, duplicates, contradictions and
-ambiguous rules.
+"""Rulebook consistency: duplicates, contradictions and ambiguous rules.
 
-1. Without AI: each rule is linked to the tests that call the functions it cites (static
-   analysis evidence; "backed by a test" still requires a test result that ran).
-2. Pairs of similar rules, by vector similarity (or by words, without an embedding
+1. Pairs of similar rules, by vector similarity (or by words, without an embedding
    model): the model says whether they are the same rule, contradict each other or are compatible.
-3. Each rule with its code: the model says whether it is ambiguous (uncovered branches,
+2. Each rule with its code: the model says whether it is ambiguous (uncovered branches,
    overlapping conditions, vague statement).
 
 Everything the model proposes stays as a finding (hypothesis) and as a review flag on the
@@ -26,22 +23,18 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai.service import LlmService
-from scrinium.application.analysis.candidates import _is_test
 from scrinium.application.analysis.runs import finish_run, report_progress
 from scrinium.application.knowledge.common import KnowledgeError, audit, get_in_project
-from scrinium.application.knowledge.evidence import MAX_EVIDENCE_LINES, cite_source, record_finding
+from scrinium.application.knowledge.evidence import cite_source, record_finding
 from scrinium.application.knowledge.watch import REVIEW_CODE_CONTRADICTS, WATCH_REASONS
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.domain.enums import (
     AnalysisStatus,
     EntityLifecycle,
     EntityType,
-    EvidenceRole,
     EvidenceType,
     FindingType,
-    ItemLifecycle,
     Severity,
-    VerificationMethod,
     VerificationStatus,
 )
 from scrinium.infrastructure.llm.base import ChatMessage, TokenUsage, key_line
@@ -50,13 +43,10 @@ from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
     BusinessRuleVersion,
-    CodeSymbol,
     EvidenceRecord,
     KnowledgeEntity,
     KnowledgeEntityVersion,
     Project,
-    SourceConnection,
-    SourceItem,
     SourceRevision,
 )
 
@@ -159,58 +149,6 @@ def _cited_code(session: Session, rule: Rule) -> list[tuple[EvidenceRecord, Sour
     return [(evidence, revision) for evidence, revision in rows]
 
 
-def link_tests(session: Session, project: Project, rules: list[Rule]) -> int:
-    """Cites as evidence the tests that call the functions backing each rule."""
-    tests = session.execute(
-        select(CodeSymbol, SourceRevision)
-        .join(SourceRevision, SourceRevision.id == CodeSymbol.source_revision_id)
-        .join(SourceItem, SourceItem.current_revision_id == SourceRevision.id)
-        .join(SourceConnection, SourceConnection.id == SourceItem.source_connection_id)
-        .where(
-            SourceConnection.project_id == project.id,
-            SourceItem.lifecycle_status == ItemLifecycle.ACTIVE,
-            CodeSymbol.kind != "class",
-        )
-    ).all()
-    callers: dict[str, list[tuple[CodeSymbol, SourceRevision]]] = {}
-    for symbol, revision in tests:
-        if not _is_test(revision.metadata_.get("path", "")):
-            continue
-        for called in symbol.calls:
-            callers.setdefault(called, []).append((symbol, revision))
-    linked = 0
-    for rule in rules:
-        names: set[str] = set()
-        for evidence, revision in _cited_code(session, rule):
-            start = int(evidence.locator.get("start_line", 0))
-            end = int(evidence.locator.get("end_line", start))
-            names.update(
-                symbol.name
-                for symbol in session.scalars(
-                    select(CodeSymbol).where(
-                        CodeSymbol.source_revision_id == revision.id,
-                        CodeSymbol.kind != "class",
-                        CodeSymbol.start_line <= end,
-                        CodeSymbol.end_line >= start,
-                    )
-                )
-            )
-        for name in names:
-            for test, revision in callers.get(name, []):
-                end = min(test.end_line, test.start_line + MAX_EVIDENCE_LINES - 1)
-                try:
-                    cite_source(
-                        session, project, entity_id=rule.entity_id, revision_id=revision.id,
-                        start_line=test.start_line, end_line=end, role=EvidenceRole.TESTS,
-                        evidence_type=EvidenceType.TEST,
-                        method=VerificationMethod.STATIC_ANALYSIS, version_id=rule.version_id,
-                    )  # fmt: skip
-                    linked += 1
-                except KnowledgeError:
-                    continue
-    return linked
-
-
 def _words(rule: Rule) -> set[str]:
     return {w for w in re.findall(r"\w+", f"{rule.title} {rule.statement}".lower()) if len(w) > 3}
 
@@ -304,11 +242,10 @@ def review_consistency(
         run = session.get_one(AnalysisRun, run_id)
         project = session.get_one(Project, run.project_id)
         rules = _rules(session, project.id)
-        tests_linked = link_tests(session, project, rules)
         for rule in rules:
             rule.code = _code_of(session, rule)
     result: dict[str, Any] = {
-        "kind": "consistency", "rules": len(rules), "tests_linked": tests_linked,
+        "kind": "consistency", "rules": len(rules),
         "pairs": 0, "duplicates": 0, "contradictions": 0, "ambiguous": 0,
         "batches": 0, "batches_total": 0, "batches_failed": 0, "label": "llm_proposal",
         "tokens": TokenUsage().as_dict(),

@@ -71,6 +71,7 @@ from scrinium.domain.enums import (
     VerificationMethod,
     VersionOrigin,
 )
+from scrinium.domain.paths import is_test_path
 from scrinium.infrastructure.llm.base import ChatMessage, TokenUsage, key_line
 from scrinium.infrastructure.local_http import ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.database import Database
@@ -300,7 +301,7 @@ class ExistingRule:
 
 def evidence_type_for(path: str) -> EvidenceType:
     name = path.rsplit("/", 1)[-1]
-    if path.startswith(("tests/", "test/")) or "/tests/" in path or name.startswith("test_"):
+    if is_test_path(path):
         return EvidenceType.TEST
     if name.endswith((".md", ".markdown", ".txt", ".rst", ".adoc")):
         return EvidenceType.DOCUMENT

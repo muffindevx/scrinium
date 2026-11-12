@@ -1,4 +1,4 @@
-"""Rulebook consistency: linked tests, duplicates, contradictions and ambiguity."""
+"""Rulebook consistency: duplicates, contradictions and ambiguity."""
 
 import json
 from pathlib import Path
@@ -48,7 +48,7 @@ def _review(api: Api, pairs: list[dict[str, Any]], rules: list[dict[str, Any]]) 
     return api.read(api.post(f"/api/v1/projects/{api.project_id}/consistency", {})["id"])
 
 
-def test_review_links_tests_and_flags_duplicates_and_ambiguity(api: Api) -> None:
+def test_review_flags_duplicates_and_ambiguity(api: Api) -> None:
     first = api.rule("comision-venta", SAME, "src/pagos.py")
     second = api.rule("comision-ventas", SAME.replace("Las ventas", "Toda venta"), "src/pagos.py")
     api.rule("recargo", "Un importe negativo no se acepta.", "src/recargos.py")
@@ -64,15 +64,10 @@ def test_review_links_tests_and_flags_duplicates_and_ambiguity(api: Api) -> None
     assert result["tokens"]["calls"] == result["batches"] and result["tokens"]["output"] > 0
     assert result["pairs"] == 1 and result["duplicates"] == 1
     assert result["ambiguous"] >= 1
-    # Both commission rules cite comision(), and a test calls it.
-    assert result["tests_linked"] == 2
-    tested = _detail(api, str(first))["versions"][0]
-    assert tested["profile"]["tested"] == 1
-    test_evidence = [e for e in tested["evidence"] if e["role"] == "tests"]
-    assert test_evidence[0]["locator"]["path"] == "tests/test_pagos.py"
-    assert test_evidence[0]["method"] == "static_analysis"
-    # Still unverified: a test that calls the function is not a test that ran.
-    assert tested["verification_status"] == "unverified"
+    # A test calls comision(), but tests are never cited: they check rules, not explain them.
+    assert "tests_linked" not in result
+    version = _detail(api, str(first))["versions"][0]
+    assert all(e["locator"]["path"] != "tests/test_pagos.py" for e in version["evidence"])
 
     rules = _rules(api)
     assert rules["comision-venta"]["review_reason"] == "possible_duplicate"

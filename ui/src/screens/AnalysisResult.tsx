@@ -45,11 +45,7 @@ function ConsistencyResult({ analysis }: { analysis: Analysis }) {
         {str(result.rules)} reglas revisadas: {str(result.duplicates)} posibles duplicados,{" "}
         {str(result.contradictions)} contradicciones y {str(result.ambiguous)} reglas ambiguas.
       </p>
-      <Muted>
-        {str(result.tests_linked)} tests ligados a reglas porque llaman a su código. Una regla solo
-        queda «respaldada por test» con el resultado de un test ejecutado. Los hallazgos son
-        propuestas: confírmalos o descártalos abajo.
-      </Muted>
+      <Muted>Los hallazgos son propuestas: confírmalos o descártalos abajo.</Muted>
     </div>
   )
 }
