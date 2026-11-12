@@ -21,9 +21,11 @@ from scrinium.domain.enums import (
     VerificationStatus,
     VersionOrigin,
 )
+from scrinium.infrastructure.code_structure import innermost_function
 from scrinium.infrastructure.sqlite.models import (
     BusinessRule,
     BusinessRuleVersion,
+    CodeSymbol,
     EntityRelationship,
     EvidenceRecord,
     Finding,
@@ -34,6 +36,7 @@ from scrinium.infrastructure.sqlite.models import (
     KnowledgeEntity,
     KnowledgeEntityVersion,
     Project,
+    SourceRevision,
 )
 
 MAX_GRAPH_NODES: Final = 200
@@ -151,6 +154,49 @@ def _evidence(record: EvidenceRecord) -> dict[str, Any]:
     }  # fmt: skip
 
 
+# Over this many lines, a function is looked into for the nested one that holds the citation.
+_LARGE_FUNCTION_LINES: Final = 150
+
+
+def enclosing_symbol(session: Session, record: EvidenceRecord) -> dict[str, Any] | None:
+    """The smallest function or method that holds a citation's lines (stage 3, phase A): the
+    rule screen shows it whole, with the rule's lines marked."""
+    locator = record.locator or {}
+    if record.source_revision_id is None or "start_line" not in locator:
+        return None
+    start = int(locator["start_line"])
+    end = int(locator.get("end_line", start))
+    symbol = session.scalars(
+        select(CodeSymbol)
+        .where(
+            CodeSymbol.source_revision_id == record.source_revision_id,
+            CodeSymbol.kind != "class",
+            CodeSymbol.start_line <= start,
+            CodeSymbol.end_line >= end,
+        )
+        .order_by(CodeSymbol.end_line - CodeSymbol.start_line)
+        .limit(1)
+    ).first()
+    if symbol is None:
+        return None
+    found = {
+        "id": str(symbol.id), "name": symbol.qualified_name, "kind": symbol.kind,
+        "start_line": symbol.start_line, "end_line": symbol.end_line, "nested_in": None,
+    }  # fmt: skip
+    if symbol.end_line - symbol.start_line > _LARGE_FUNCTION_LINES:
+        # A huge function usually wraps nested ones: show the one that really holds the rule.
+        revision = session.get(SourceRevision, record.source_revision_id)
+        inner = innermost_function(
+            locator.get("path", ""), (revision.text_content or "") if revision else "", start, end
+        )
+        if inner is not None and inner[2] - inner[1] < symbol.end_line - symbol.start_line:
+            found.update(
+                name=inner[0], start_line=inner[1], end_line=inner[2],
+                nested_in=symbol.qualified_name,
+            )  # fmt: skip
+    return found
+
+
 def _neighbours(session: Session, entity_id: uuid.UUID) -> list[dict[str, Any]]:
     rows = session.execute(
         select(EntityRelationship, KnowledgeEntity)
@@ -204,7 +250,9 @@ def rule_detail(session: Session, project: Project, entity_id: uuid.UUID) -> dic
                     "from_analysis_id": str(content.created_from_analysis_id)
                     if content.created_from_analysis_id else None,
                 },
-                "evidence": [_evidence(r) for r in records],
+                "evidence": [
+                    {**_evidence(r), "symbol": enclosing_symbol(session, r)} for r in records
+                ],
                 "profile": evidence_profile(session, version.id),
                 "findings": [
                     {"id": str(f.id), "title": f.title, "finding_type": f.finding_type.value,

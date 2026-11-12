@@ -2,7 +2,7 @@ import { ArrowLeft, BookOpen, Check, ListChecks, Pause, PenLine, Sparkles, X } f
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router"
 import { cn } from "cn"
-import { CodeExcerpt } from "@/components/code-excerpt"
+import { CONTEXT_LINES, CodeExcerpt } from "@/components/code-excerpt"
 import { EmptyState, PageHeader, Section } from "@/components/page"
 import { StatusBadge, VerificationStatusBadge } from "@/components/status"
 import { VERIFIED_STATUSES } from "@/lib/status"
@@ -12,6 +12,8 @@ import { Select } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   ApiError,
+  type Evidence,
+  type FunctionRef,
   type ExtractionStatus,
   type NewRule,
   type RuleCategory,
@@ -23,6 +25,7 @@ import {
   correctRule,
   createRule,
   getExtractionStatus,
+  getNeighbours,
   getRule,
   PENDING_STATEMENT_PREFIX,
   writeStatement,
@@ -653,12 +656,119 @@ const REVIEW_ACTIONS: { status: VerificationStatus; label: string }[] = [
   { status: "unverified", label: "Volver a sin verificar" },
 ]
 
+/** A list of functions; each one opens its code below. */
+function FunctionList({ label, items }: { label: string; items: FunctionRef[] }) {
+  const [open, setOpen] = useState<string | null>(null)
+  if (items.length === 0) return null
+  const shown = items.find((item) => item.symbol_id === open)
+  return (
+    <div className="grid min-w-0 gap-1.5">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Eyebrow>{label}</Eyebrow>
+        {items.map((item) => (
+          <Button
+            key={item.symbol_id}
+            size="xs"
+            variant={open === item.symbol_id ? "secondary" : "outline"}
+            aria-expanded={open === item.symbol_id}
+            title={`${item.path}:${item.start_line}`}
+            onClick={() => setOpen(open === item.symbol_id ? null : item.symbol_id)}
+          >
+            <code>{item.name}</code>
+          </Button>
+        ))}
+      </div>
+      {shown && (
+        <div className="grid gap-1">
+          <code className="text-xs text-muted-foreground">
+            {shown.path}:{shown.start_line}-{shown.end_line}
+          </code>
+          <CodeExcerpt
+            revisionId={shown.revision_id}
+            path={shown.path}
+            startLine={0}
+            endLine={0}
+            window={[shown.start_line, shown.end_line]}
+            className="max-h-80 overflow-y-auto"
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The function's place in the code: what it calls and what calls it. */
+function CallLists({ projectId, symbolId }: { projectId: string; symbolId: string }) {
+  const [found, setFound] = useState<{ calls: FunctionRef[]; called_by: FunctionRef[] } | null>(null)
+  useEffect(() => {
+    const live = { current: true }
+    getNeighbours(projectId, symbolId)
+      .then((result) => live.current && setFound(result))
+      .catch(() => live.current && setFound(null))
+    return () => {
+      live.current = false
+    }
+  }, [projectId, symbolId])
+  if (!found) return null
+  return (
+    <div className="grid gap-2">
+      <FunctionList label="Llama a" items={found.calls} />
+      <FunctionList label="Llamada por" items={found.called_by} />
+    </div>
+  )
+}
+
+/** A citation with its context; "Ver función completa" opens the whole function that holds it. */
+function CitedCode({ evidence, projectId }: { evidence: Evidence; projectId: string }) {
+  const [whole, setWhole] = useState(false)
+  const start = evidence.locator.start_line ?? 1
+  const end = evidence.locator.end_line ?? start
+  const symbol = evidence.symbol
+  // Only worth offering when the function is longer than what the context already shows.
+  const longer = symbol && (symbol.start_line < start - CONTEXT_LINES || symbol.end_line > end + CONTEXT_LINES)
+  return (
+    <div className="grid min-w-0 gap-1.5">
+      {symbol && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            En <code>{symbol.name}</code>
+            {symbol.nested_in && (
+              <>
+                {" "}
+                (dentro de <code>{symbol.nested_in}</code>)
+              </>
+            )}{" "}
+            · líneas {symbol.start_line}-{symbol.end_line}
+          </span>
+          {longer && (
+            <Button size="xs" variant="ghost" aria-expanded={whole} onClick={() => setWhole(!whole)}>
+              {whole ? "Ver solo la regla" : "Ver función completa"}
+            </Button>
+          )}
+        </div>
+      )}
+      <CodeExcerpt
+        revisionId={evidence.revision_id ?? ""}
+        path={evidence.locator.path ?? ""}
+        startLine={start}
+        endLine={end}
+        window={whole && symbol ? [symbol.start_line, symbol.end_line] : undefined}
+        className={whole ? "max-h-[32rem] overflow-y-auto" : undefined}
+      />
+      {/* The call graph knows top-level functions; a nested one's calls are not separated yet. */}
+      {symbol && !symbol.nested_in && <CallLists projectId={projectId} symbolId={symbol.id} />}
+    </div>
+  )
+}
+
 function VersionBlock({
+  projectId,
   version,
   latest,
   onChanged,
   onSessionLost,
 }: {
+  projectId: string
   version: RuleVersion
   latest: boolean
   onChanged: () => void
@@ -737,15 +847,7 @@ function VersionBlock({
       {latest &&
         version.evidence
           .filter((item) => item.revision_id && item.locator.path && item.locator.start_line && item.type !== "test")
-          .map((item) => (
-            <CodeExcerpt
-              key={`code-${item.id}`}
-              revisionId={item.revision_id ?? ""}
-              path={item.locator.path ?? ""}
-              startLine={item.locator.start_line ?? 1}
-              endLine={item.locator.end_line ?? item.locator.start_line ?? 1}
-            />
-          ))}
+          .map((item) => <CitedCode key={`code-${item.id}`} evidence={item} projectId={projectId} />)}
       <div className="grid gap-2">
         <Eyebrow>Evidencia</Eyebrow>
         {version.evidence.length === 0 ? (
@@ -875,6 +977,7 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
       {rule.versions.map((version, index) => (
         <VersionBlock
           key={version.id}
+          projectId={project.id}
           version={version}
           latest={index === 0}
           onChanged={load}

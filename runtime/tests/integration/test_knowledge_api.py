@@ -47,6 +47,11 @@ def test_rulebook_lists_and_details_extracted_rules(api: Api) -> None:
     assert detail["versions"][1]["content"]["statement"].startswith("Pendiente de redactar.")
     evidence = version["evidence"][0]
     assert evidence["method"] == "llm_proposal" and evidence["locator"]["path"] == "src/billing.py"
+    # Phase A: the citation knows the function that holds it, to show it whole.
+    symbol = evidence["symbol"]
+    assert symbol is not None and symbol["kind"] in {"function", "method"}
+    assert symbol["start_line"] <= evidence["locator"]["start_line"]
+    assert symbol["end_line"] >= evidence["locator"]["end_line"]
     assert version["profile"]["implemented"] == 1
     other = client.post("/api/v1/projects", json={"name": "Otro"}, headers=api.headers).json()
     hidden = client.get(f"/api/v1/projects/{other['id']}/rules/{entity_id}")

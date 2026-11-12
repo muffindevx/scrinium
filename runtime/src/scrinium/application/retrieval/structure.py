@@ -46,6 +46,18 @@ def symbolize_revision(session: Session, revision: SourceRevision) -> int:
 
 
 def _pending(session: Session, connection_ids: list[uuid.UUID]) -> list[SourceRevision]:
+    # Current revisions mapped by an older structure version are mapped again: their symbols
+    # (and, by cascade, their call edges) are replaced. Older revisions keep theirs.
+    outdated = (
+        select(CodeSymbol.source_revision_id)
+        .join(SourceItem, SourceItem.current_revision_id == CodeSymbol.source_revision_id)
+        .where(
+            SourceItem.source_connection_id.in_(connection_ids),
+            CodeSymbol.structure_version != STRUCTURE_VERSION,
+        )
+        .distinct()
+    )
+    session.execute(delete(CodeSymbol).where(CodeSymbol.source_revision_id.in_(outdated)))
     has_symbols = exists().where(CodeSymbol.source_revision_id == SourceRevision.id)
     revisions = session.scalars(
         select(SourceRevision)

@@ -20,6 +20,7 @@ from scrinium.application.knowledge.deletion import (
     forget_releases,
     forget_revisions,
 )
+from scrinium.application.retrieval.edges import build_edges
 from scrinium.application.retrieval.indexing import Indexer, delete_chunks_of_source, ensure_chunks
 from scrinium.application.retrieval.structure import delete_symbols_of_source, ensure_symbols
 from scrinium.application.workspaces import local_workspace, record_audit
@@ -310,6 +311,9 @@ def _apply_plan(session: Session, run: SyncRun, connection: SourceConnection, pl
     # the sync finishes. Vectors come later.
     ensure_chunks(session, connection.id)
     ensure_symbols(session, connection.id)
+    # Who calls whom across the whole project: a change in one file can resolve another's calls.
+    if connection.project_id is not None:
+        build_edges(session, session.get_one(Project, connection.project_id))
 
     run.items_seen = len(plan.included) + len(plan.excluded)
     run.items_created = created

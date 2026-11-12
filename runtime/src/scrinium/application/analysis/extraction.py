@@ -61,6 +61,7 @@ from scrinium.application.knowledge.watch import (
     WatchedRule,
     detect_changes,
 )
+from scrinium.application.retrieval.edges import build_edges
 from scrinium.application.retrieval.structure import ensure_project_symbols
 from scrinium.domain.enums import (
     AnalysisStatus,
@@ -374,6 +375,8 @@ def select_work(
     """
     # Projects synced before the structural map existed: completed now.
     ensure_project_symbols(session, project.id)
+    # Also for projects synced before the call graph existed; it takes well under a second.
+    build_edges(session, project)
     watched = detect_changes(session, project.id)
     selection = select_candidates(session, project.id, path_prefix, min_score)
     attached = _attach_watched(session, selection, path_prefix, watched)

@@ -36,6 +36,7 @@ from scrinium.infrastructure.sqlite.models import (
 EXPECTED_TABLES = {
     "analysis_runs",
     "code_symbols",
+    "code_edges",
     "content_chunks",
     "content_chunks_fts",
     "extraction_tasks",

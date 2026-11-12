@@ -37,7 +37,9 @@ MIN_PASSPHRASE: Final = 12
 SCRYPT_N: Final = 2**17
 SCRYPT_R: Final = 8
 SCRYPT_P: Final = 1
-_DERIVED_TABLES: Final = frozenset({"content_chunks", "code_symbols", "extraction_tasks"})
+_DERIVED_TABLES: Final = frozenset(
+    {"content_chunks", "code_symbols", "code_edges", "extraction_tasks"}
+)
 _SECRET_COLUMNS: Final = {"source_connections": frozenset({"secret_ref"})}
 
 
@@ -72,7 +74,8 @@ def collect(session: Session) -> dict[str, Any]:
         "format_version": FORMAT_VERSION,
         "scrinium_version": __version__,
         "created_at": utc_now().isoformat(),
-        "excluded": ["content_chunks y code_symbols (se regeneran)", "vectores (se regeneran)",
+        "excluded": ["content_chunks, code_symbols y code_edges (se regeneran)",
+                     "vectores (se regeneran)",
                      "secret_ref (credenciales del keyring de este equipo)"],
         "tables": tables,
     }  # fmt: skip

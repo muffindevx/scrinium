@@ -26,6 +26,7 @@ from scrinium.application.knowledge.entities import (
     set_verification,
     title_slug,
 )
+from scrinium.application.retrieval import edges
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
 from scrinium.domain.enums import (
     AuditResult,
@@ -249,6 +250,16 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
                 "verification_status": updated.verification_status.value,
                 "reviewed_by": updated.reviewed_by,
             }
+
+    @router.get("/api/v1/projects/{project_id}/symbols/{symbol_id}/neighbours")
+    def symbol_neighbours(project_id: uuid.UUID, symbol_id: uuid.UUID) -> dict[str, Any]:
+        """Who this function calls and who calls it (stage 3, phase B)."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            try:
+                return edges.neighbours(session, project.id, symbol_id)
+            except LookupError:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
 
     @router.get("/api/v1/projects/{project_id}/graph")
     def graph(project_id: uuid.UUID) -> dict[str, Any]:

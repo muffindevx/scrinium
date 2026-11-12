@@ -39,6 +39,7 @@ export function CodeExcerpt({
   startLine,
   endLine,
   context = CONTEXT_LINES,
+  window,
   className,
 }: {
   revisionId: string
@@ -46,21 +47,26 @@ export function CodeExcerpt({
   startLine: number
   endLine: number
   context?: number
+  /** Lines to show instead of the context around the citation: a whole function. */
+  window?: [number, number]
   className?: string
 }) {
   const [ref, near] = useNearScreen<HTMLDivElement>()
   const [loaded, setLoaded] = useState<Loaded>(null)
 
+  // Primitives, so the effect does not run again on every render with a new array.
+  const from = window ? window[0] : Math.max(1, startLine - context)
+  const to = window ? window[1] : endLine + context
   useEffect(() => {
     if (!near) return
     const live = { current: true }
-    getCitedLines(revisionId, Math.max(1, startLine - context), endLine + context)
+    getCitedLines(revisionId, from, to)
       .then((lines) => live.current && setLoaded({ start: lines.start, lines: lines.lines }))
       .catch(() => live.current && setLoaded("error"))
     return () => {
       live.current = false
     }
-  }, [near, revisionId, startLine, endLine, context])
+  }, [near, revisionId, from, to])
 
   const colored = useHighlighted(loaded === null || loaded === "error" ? null : loaded.lines, path)
 

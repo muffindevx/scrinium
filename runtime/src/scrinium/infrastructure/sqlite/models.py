@@ -345,6 +345,29 @@ class CodeSymbol(Base):
     structure_version: Mapped[str] = mapped_column(String(20))
 
 
+class CodeEdge(Base):
+    """A call from one function to another of the same project (stage 3, phase B). Derived:
+    rebuilt for the whole project after each sync, from the current revisions' symbols.
+
+    `to_symbol_id` is empty when the name could not be resolved; `status` says why: `external`
+    (imported from a package), `ambiguous` (several functions share the name) or `unknown`.
+    """
+
+    __tablename__ = "code_edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    from_symbol_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("code_symbols.id", ondelete="CASCADE"), index=True
+    )
+    to_symbol_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("code_symbols.id", ondelete="CASCADE"), index=True
+    )
+    callee: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20))
+
+
 class ExtractionTask(Base):
     """A candidate piece of code in the rule-extraction queue.
 

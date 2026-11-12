@@ -47,7 +47,14 @@ _DEFERRED: Final = {
     "software_releases": "previous_release_id",
 }
 _SKIPPED: Final = frozenset(
-    {"workspaces", "local_profile", "content_chunks", "code_symbols", "extraction_tasks"}
+    {
+        "workspaces",
+        "local_profile",
+        "content_chunks",
+        "code_symbols",
+        "code_edges",
+        "extraction_tasks",
+    }
 )
 
 

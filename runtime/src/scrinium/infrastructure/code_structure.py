@@ -9,6 +9,7 @@ with errors. Each symbol carries two fingerprints:
 """
 
 import hashlib
+import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from functools import cache
@@ -26,7 +27,8 @@ import tree_sitter_rust
 import tree_sitter_typescript
 from tree_sitter import Language, Node, Parser
 
-STRUCTURE_VERSION: Final = "1"
+# 2: a member call keeps its receiver ("usersRepository.findByEmail"), for phase B.
+STRUCTURE_VERSION: Final = "2"
 MAX_CALLS: Final = 200
 
 _GRAMMARS: Final[dict[str, Callable[[], Any]]] = {
@@ -128,7 +130,16 @@ def _callee(node: Node) -> str:
     text = _text(target)
     for separator in ("->", "::", "?."):
         text = text.replace(separator, ".")
-    return text.rsplit(".", 1)[-1].strip("()! ")
+    parts = text.split(".")
+    name = parts[-1].strip("()! ")
+    if len(parts) == 1 or not name:
+        return name
+    # The receiver's last identifier: `this.game.end` -> "game.end", `arr[0].find` -> "arr.find".
+    receivers = _IDENTIFIER.findall(parts[-2])
+    return f"{receivers[-1] if receivers else '?'}.{name}"
+
+
+_IDENTIFIER: Final = re.compile(r"[A-Za-z_$][\w$]*")
 
 
 def _walk(node: Node) -> Iterator[Node]:
@@ -205,3 +216,112 @@ def parse_symbols(path: str, text: str) -> list[Symbol]:
                 inner = [*scope, name]
         stack.extend((child, inner) for child in reversed(node.children))
     return sorted(symbols, key=lambda symbol: (symbol.start_line, symbol.end_line))
+
+
+@dataclass(frozen=True)
+class Import:
+    """A name a file brings in from a module (stage 3, phase B).
+
+    `name` is how the file calls it, `original` its name in the module (they differ with an
+    alias), and `module` the module as written: './schemas', '..repositories', 'zod'.
+    """
+
+    name: str
+    original: str
+    module: str
+
+
+def _string_value(node: Node | None) -> str:
+    if node is None:
+        return ""
+    fragment = next(
+        (child for child in node.named_children if child.type == "string_fragment"), None
+    )
+    return _text(fragment) if fragment is not None else _text(node).strip("'\"`")
+
+
+def _js_imports(root: Node) -> list[Import]:
+    found: list[Import] = []
+    for node in root.children:
+        if node.type != "import_statement":
+            continue
+        module = _string_value(node.child_by_field_name("source"))
+        clause = next(
+            (child for child in node.named_children if child.type == "import_clause"), None
+        )
+        if not module or clause is None:
+            continue
+        for part in clause.named_children:
+            if part.type == "identifier":  # default import
+                found.append(Import(_text(part), "default", module))
+            elif part.type == "namespace_import":
+                alias = next((c for c in part.named_children if c.type == "identifier"), None)
+                if alias is not None:
+                    found.append(Import(_text(alias), "*", module))
+            elif part.type == "named_imports":
+                for spec in part.named_children:
+                    if spec.type != "import_specifier":
+                        continue
+                    names = [c for c in spec.named_children if c.type == "identifier"]
+                    if names:
+                        found.append(Import(_text(names[-1]), _text(names[0]), module))
+    return found
+
+
+def _python_imports(root: Node) -> list[Import]:
+    found: list[Import] = []
+    for node in root.children:
+        if node.type == "import_statement":
+            for part in node.named_children:
+                target = part.child_by_field_name("name") if part.type == "aliased_import" else part
+                alias = part.child_by_field_name("alias") if part.type == "aliased_import" else None
+                module = _text(target)
+                if module:
+                    found.append(Import(_text(alias) or module.split(".")[0], "*", module))
+        elif node.type == "import_from_statement":
+            source = node.child_by_field_name("module_name")
+            module = _text(source)
+            for part in node.named_children:
+                # Node objects are rebuilt on each access: compare positions, not identity.
+                if source is not None and part.start_byte == source.start_byte:
+                    continue
+                if part.type == "aliased_import":
+                    original = _text(part.child_by_field_name("name"))
+                    found.append(Import(_text(part.child_by_field_name("alias")), original, module))
+                elif part.type == "dotted_name":
+                    found.append(Import(_text(part), _text(part), module))
+    return found
+
+
+def parse_imports(path: str, text: str) -> list[Import]:
+    """The file's top-level imports, in TypeScript, JavaScript and Python; [] for the rest."""
+    language = language_for(path)
+    if language not in {"typescript", "tsx", "javascript", "python"}:
+        return []
+    root = _parser(language).parse(text.encode("utf-8")).root_node
+    return _python_imports(root) if language == "python" else _js_imports(root)
+
+
+def innermost_function(path: str, text: str, start: int, end: int) -> tuple[str, int, int] | None:
+    """The smallest function, method or arrow function assigned to a name that holds lines
+    `start`-`end`, nested or not: (name, first line, last line). The structural map only keeps
+    top-level functions; a game wrapped in one huge closure needs this to show the real one."""
+    language = language_for(path)
+    if language is None:
+        return None
+    root = _parser(language).parse(text.encode("utf-8")).root_node
+    best: tuple[str, int, int] | None = None
+    for node in _walk(root):
+        first, last = node.start_point[0] + 1, node.end_point[0] + 1
+        if first > start or last < end:
+            continue
+        name = ""
+        if node.type in _FUNCTIONS:
+            name = _name_of(node)
+        elif node.type in _DECLARATORS:
+            value = node.child_by_field_name("value")
+            if value is not None and value.type in _FUNCTION_VALUES:
+                name = _name_of(node)
+        if name and (best is None or last - first < best[2] - best[1]):
+            best = (name, first, last)
+    return best

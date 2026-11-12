@@ -157,3 +157,46 @@ def test_rules_declared_outside_functions_become_candidates(
     # The table (lines 3-6) passes; the import alone and the plain getter do not.
     assert any(symbol is None and start <= 4 <= end for symbol, start, end in spans), spans
     assert all(symbol != "roleOf" for symbol, _, _ in spans)
+
+
+def test_calls_resolve_across_files_and_ignore_builtin_methods(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """Phase B: a call to an imported function resolves to it; `items.find()` does not resolve to
+    the project's own `find`, and a receiver imported from a file resolves to that file."""
+    root = tmp_path / "graph"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    write(root, "src/repo.ts", "export const repo = {\n  find(id: string) { return id },\n}\n")
+    write(
+        root, "src/rules.ts",
+        "export function limit(n: number) {\n  return n > 3\n}\n"
+        "export function find(x: string) {\n  return x\n}\n",
+    )  # fmt: skip
+    write(
+        root, "src/service.ts",
+        "import { limit } from './rules'\nimport { repo } from './repo'\n\n"
+        "export function check(items: string[]) {\n"
+        "  const first = items.find((i) => i)\n"
+        "  return limit(items.length) && repo.find(first ?? '')\n}\n",
+    )  # fmt: skip
+    commit_all(root, "inicio")
+    api = Api(runtime, root)
+    check = _symbols(runtime, "src/service.ts")["check"]
+    path = f"/api/v1/projects/{api.project_id}/symbols/{check.id}/neighbours"
+    found = runtime.client.get(path).json()
+    assert {(c["path"], c["name"]) for c in found["calls"]} == {
+        ("src/rules.ts", "limit"),
+        ("src/repo.ts", "find"),
+    }
+    assert found["called_by"] == [] and found["ambiguous_calls"] == 0
+    limit = _symbols(runtime, "src/rules.ts")["limit"]
+    callers = runtime.client.get(
+        f"/api/v1/projects/{api.project_id}/symbols/{limit.id}/neighbours"
+    ).json()["called_by"]
+    assert [c["name"] for c in callers] == ["check"]
+    other = runtime.client.post("/api/v1/projects", json={"name": "Otro"}, headers=api.headers)
+    hidden = runtime.client.get(
+        f"/api/v1/projects/{other.json()['id']}/symbols/{check.id}/neighbours"
+    )
+    assert hidden.status_code == 404

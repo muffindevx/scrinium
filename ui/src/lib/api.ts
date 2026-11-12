@@ -343,6 +343,16 @@ export interface RuleSummary {
 
 export interface Evidence {
   id: string
+  /** In a rule's detail: the function or method that holds the citation. */
+  symbol?: {
+    id: string
+    name: string
+    kind: string
+    start_line: number
+    end_line: number
+    /** The huge top-level function that wraps this nested one, if any. */
+    nested_in: string | null
+  } | null
   role: string
   type: string
   method: "direct_reference" | "static_analysis" | "test_result" | "human_review" | "llm_proposal"
@@ -512,6 +522,22 @@ export const updateSearchSettings = async (includeTests: boolean) =>
 /** The rule is real but badly worded: the text becomes a new version, confirmed by the profile. */
 export const correctRule = async (projectId: string, entityId: string, statement: string) =>
   (await mutate(`/api/v1/projects/${projectId}/rules/${entityId}/correction`, { statement })).json() as Promise<RuleDetail>
+
+export interface FunctionRef {
+  symbol_id: string
+  name: string
+  kind: string
+  path: string
+  revision_id: string
+  start_line: number
+  end_line: number
+}
+
+/** Who a function calls and who calls it, resolved without the model (stage 3, phase B). */
+export const getNeighbours = (projectId: string, symbolId: string) =>
+  getJson<{ calls: FunctionRef[]; called_by: FunctionRef[]; ambiguous_calls: number }>(
+    `/api/v1/projects/${projectId}/symbols/${symbolId}/neighbours`,
+  )
 
 export const listRules = async (
   projectId: string,
