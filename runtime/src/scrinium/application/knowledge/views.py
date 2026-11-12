@@ -16,6 +16,7 @@ from scrinium.application.knowledge.entities import FLOW_ENTITY_TYPES, latest_ve
 from scrinium.application.knowledge.evidence import evidence_profile
 from scrinium.domain.enums import (
     EntityLifecycle,
+    EvidenceType,
     VerificationMethod,
     VerificationStatus,
     VersionOrigin,
@@ -97,6 +98,7 @@ def list_rules(
     rules = []
     for entity, rule, evidence in session.execute(query):
         version = latest_version(session, entity.id)
+        citation = None if version is None else _first_code_citation(session, version.id)
         if verification is not None and (
             version is None or version.verification_status is not verification
         ):
@@ -108,10 +110,31 @@ def list_rules(
                 "lifecycle_status": entity.lifecycle_status.value,
                 "rule_category": rule.rule_category.value, "criticality": rule.criticality.value,
                 "latest_version": _version_summary(version), "evidence_count": evidence,
-                "review_reason": entity.review_reason,
+                "review_reason": entity.review_reason, "citation": citation,
             }
         )  # fmt: skip
     return rules
+
+
+def _first_code_citation(session: Session, version_id: uuid.UUID) -> dict[str, Any] | None:
+    """Where the rule lives in the code: the list shows those lines without opening the rule."""
+    record = session.scalars(
+        select(EvidenceRecord)
+        .where(
+            EvidenceRecord.target_version_id == version_id,
+            EvidenceRecord.source_revision_id.is_not(None),
+            EvidenceRecord.evidence_type.in_((EvidenceType.CODE, EvidenceType.SCHEMA)),
+        )
+        .order_by(EvidenceRecord.created_at)
+        .limit(1)
+    ).first()
+    if record is None or "start_line" not in (record.locator or {}):
+        return None
+    return {
+        "revision_id": str(record.source_revision_id), "path": record.locator.get("path"),
+        "commit": record.locator.get("commit"), "start_line": record.locator["start_line"],
+        "end_line": record.locator.get("end_line", record.locator["start_line"]),
+    }  # fmt: skip
 
 
 def _evidence(record: EvidenceRecord) -> dict[str, Any]:

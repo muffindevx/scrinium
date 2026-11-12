@@ -9,7 +9,7 @@ import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session as DbSession
 
 from scrinium.application.ai.service import LlmService
@@ -19,6 +19,7 @@ from scrinium.application.ingestion import sources
 from scrinium.application.knowledge import views
 from scrinium.application.knowledge.common import KnowledgeError, KnowledgeNotFoundError
 from scrinium.application.knowledge.content import RuleContent
+from scrinium.application.knowledge.corrections import correct_rule
 from scrinium.application.knowledge.entities import (
     Provenance,
     create_business_rule,
@@ -59,6 +60,13 @@ class NewRuleBody(BaseModel):
     rationale: str | None = Field(default=None, max_length=4000)
     category: RuleCategory = RuleCategory.OTHER
     criticality: Criticality = Criticality.MEDIUM
+
+
+class CorrectionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    statement: str = Field(min_length=1, max_length=4000)
+    title: str | None = Field(default=None, min_length=1, max_length=300)
 
 
 class MergeBody(BaseModel):
@@ -139,6 +147,33 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
                 KnowledgeEntityVersion, version.knowledge_entity_version_id
             )
             return views.rule_detail(session, project, entity_version.knowledge_entity_id)
+
+    @router.post("/api/v1/projects/{project_id}/rules/{entity_id}/correction")
+    def correct(
+        project_id: uuid.UUID, entity_id: uuid.UUID, body: CorrectionBody, request: Request
+    ) -> dict[str, Any]:
+        """The rule is real but badly worded: the person's text becomes a new, confirmed version
+        with the same citations."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            author = reviewer_name(session)
+            if author is None:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "profile_name_required")
+            try:
+                views.rule_detail(session, project, entity_id)
+                correct_rule(
+                    session, project, entity_id, statement=body.statement, title=body.title,
+                    author=author, request_id=getattr(request.state, "request_id", None),
+                )  # fmt: skip
+            except (KnowledgeNotFoundError, LookupError):
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
+            except KnowledgeError as error:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
+            except ValidationError:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_request"
+                ) from None
+            return views.rule_detail(session, project, entity_id)
 
     @router.post("/api/v1/projects/{project_id}/rules/{entity_id}/merge")
     def merge(

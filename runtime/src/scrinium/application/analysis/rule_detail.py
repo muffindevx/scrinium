@@ -19,9 +19,9 @@ from sqlalchemy.orm import Session
 
 from scrinium.application.knowledge.common import KnowledgeError
 from scrinium.application.knowledge.content import RuleContent
+from scrinium.application.knowledge.corrections import copy_citations
 from scrinium.application.knowledge.entities import Provenance, add_rule_version
-from scrinium.application.knowledge.evidence import cite_source
-from scrinium.domain.enums import EvidenceRole, VerificationMethod, VersionOrigin
+from scrinium.domain.enums import VerificationMethod, VersionOrigin
 from scrinium.infrastructure.llm.base import ChatMessage, key_line
 from scrinium.infrastructure.local_http import ModelError
 from scrinium.infrastructure.sqlite.models import (
@@ -276,22 +276,10 @@ def store_details(
             )
             if not created:
                 continue
-            # The same citations in the new version: rule watch looks at those of the
-            # current version. The evidence count counts distinct citations, not copies.
-            for record in session.scalars(
-                select(EvidenceRecord).where(EvidenceRecord.target_version_id == item.version_id)
-            ):
-                locator = record.locator or {}
-                if record.source_revision_id is None or "start_line" not in locator:
-                    continue
-                cite_source(
-                    session, project, entity_id=item.entity_id,
-                    revision_id=record.source_revision_id, start_line=locator["start_line"],
-                    end_line=locator["end_line"], role=EvidenceRole(record.evidence_role),
-                    evidence_type=record.evidence_type,
-                    method=VerificationMethod.LLM_PROPOSAL,
-                    version_id=version.knowledge_entity_version_id,
-                )  # fmt: skip
+            copy_citations(
+                session, project, item.entity_id, item.version_id,
+                version.knowledge_entity_version_id, VerificationMethod.LLM_PROPOSAL,
+            )  # fmt: skip
             stored.append(str(version.knowledge_entity_version_id))
         except (KnowledgeError, ValidationError) as error:
             logger.warning("detail_skipped run=%s type=%s", run.id, type(error).__name__)

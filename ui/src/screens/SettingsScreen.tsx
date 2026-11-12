@@ -1,5 +1,6 @@
 import { Cpu, LogOut, Monitor, Moon, Palette, Search, ShieldCheck, Sun, UserRound } from "lucide-react"
 import { type FormEvent, useEffect, useState } from "react"
+import { CodeThemePreview } from "@/components/code-excerpt"
 import { InfoRow, PageHeader, Section } from "@/components/page"
 import { ModelStatusBadge, StatusBadge } from "@/components/status"
 import { Button } from "@/components/ui/button"
@@ -17,7 +18,9 @@ import {
   updateProfile,
   updateSearchSettings,
 } from "@/lib/api"
+import { CODE_THEMES, type CodeThemeId, setCodeTheme } from "@/lib/highlight"
 import { type ThemePreference, setTheme, storedTheme } from "@/lib/theme"
+import { useCodeTheme } from "@/lib/use-code-theme"
 import { PrivacyCard } from "@/screens/PrivacyCard"
 import { useErrors } from "@/screens/hooks"
 import { ErrorText, Eyebrow, Muted } from "@/screens/shared"
@@ -184,7 +187,30 @@ function AppearanceSection() {
           ))}
         </TabsList>
       </Tabs>
+      <CodeThemeChoice />
     </Section>
+  )
+}
+
+/** The colors of the code in rules and citations: the three most used VS Code themes. */
+function CodeThemeChoice() {
+  const theme = useCodeTheme()
+  const hint = CODE_THEMES.find((option) => option.id === theme)?.hint
+  return (
+    <div className="grid min-w-0 gap-2">
+      <Label>Colores del código</Label>
+      <Tabs value={theme} onValueChange={(value) => setCodeTheme(value as CodeThemeId)}>
+        <TabsList aria-label="Colores del código">
+          {CODE_THEMES.map(({ id, label }) => (
+            <TabsTrigger key={id} value={id}>
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+      <CodeThemePreview />
+    </div>
   )
 }
 
@@ -359,7 +385,7 @@ export function SettingsScreen({
 }) {
   return (
     <>
-      <PageHeader title="Ajustes" description="El motor de IA, tu perfil, la apariencia y la privacidad de tus datos." />
+      <PageHeader title="Ajustes" description="El motor de IA, tu perfil, la apariencia, la búsqueda y la privacidad de tus datos." />
       <EngineSection status={status} />
       <div className="grid gap-6 md:grid-cols-2">
         <ProfileSection name={profileName} onSaved={onProfileSaved} onSessionLost={onSessionLost} />

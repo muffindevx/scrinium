@@ -181,8 +181,9 @@ Who uses the model, and in what order, is drawn in [rule-extraction.html](rule-e
 | v1 | `rules-map-1` | Title, category and the provisional statement "Pendiente de redactar. Código: …" | Phase 1 |
 | v2 | `rules-detail-1` | The statement ("When lives reach zero, the game ends."), with the same citations copied | Phase 2, in the background or on demand |
 | v3 | `rules-verdict-1` | `same`, `adjusted` (new statement) or `broken` | Only if the cited code changes |
+| any | (person) | A statement rewritten by a person ("Mal dicha"), with the same citations, born `human_verified` | When a person corrects the rule |
 
-Every version is immutable. `add_rule_version` also updates `name` and `summary` on `knowledge_entities`, which is what the rule list shows.
+Every version is immutable. Copying the citations to a new version is `copy_citations` ([`knowledge/corrections.py`](../runtime/src/scrinium/application/knowledge/corrections.py)); `correct_rule` there is the person's correction. `add_rule_version` also updates `name` and `summary` on `knowledge_entities`, which is what the rule list shows.
 
 A rule is an entity whose versions are only ever added. In a version, only these can change:
 
@@ -360,7 +361,8 @@ The number is the line where the function or constant starts at `b271a13`.
 | Sync | [`application/ingestion/sources.py:335`](../runtime/src/scrinium/application/ingestion/sources.py#L335) | `run_sync`, `_apply_plan` ([:248](../runtime/src/scrinium/application/ingestion/sources.py#L248)), `IngestionRunner` ([:413](../runtime/src/scrinium/application/ingestion/sources.py#L413)). |
 | Hybrid search | [`application/retrieval/search.py:152`](../runtime/src/scrinium/application/retrieval/search.py#L152) | `search`; `_RRF_K = 60` ([:30](../runtime/src/scrinium/application/retrieval/search.py#L30)). |
 | Answering | [`application/ai/answering.py:262`](../runtime/src/scrinium/application/ai/answering.py#L262) | `answer_question`; citation validation in `interpret` ([:172](../runtime/src/scrinium/application/ai/answering.py#L172)). |
-| Rules screen | [`ui/src/screens/RulesScreen.tsx:685`](../ui/src/screens/RulesScreen.tsx#L685) | `RuleView`: if the rule is pending ([:682](../ui/src/screens/RulesScreen.tsx#L682)), it requests the statement once on opening ([:704](../ui/src/screens/RulesScreen.tsx#L704)). The list is in `RuleList` ([:451](../ui/src/screens/RulesScreen.tsx#L451)). |
+| Rules screen | [`ui/src/screens/RulesScreen.tsx:763`](../ui/src/screens/RulesScreen.tsx#L763) | `RuleView`: if the rule is pending ([:760](../ui/src/screens/RulesScreen.tsx#L760)), it requests the statement once on opening ([:782](../ui/src/screens/RulesScreen.tsx#L782)). The list is `RuleList` ([:518](../ui/src/screens/RulesScreen.tsx#L518)); each card (`RuleItem`, [:393](../ui/src/screens/RulesScreen.tsx#L393)) shows the title, the statement and the cited code with context, and answers Válida, Mal dicha or No es regla. |
+| Cited code | [`ui/src/components/code-excerpt.tsx`](../ui/src/components/code-excerpt.tsx) | `CodeExcerpt` reads the cited lines ±4 from the stored revision when the card nears the screen, and colors them with Shiki ([`lib/highlight.ts`](../ui/src/lib/highlight.ts)): VS Code grammars and three themes (GitHub, One Dark Pro, Dracula), all loaded on first use. The theme is a per-browser setting in Settings → Apariencia. |
 | API client | [`ui/src/lib/api.ts:509`](../ui/src/lib/api.ts#L509) | `PENDING_STATEMENT_PREFIX` and `writeStatement` ([:510](../ui/src/lib/api.ts#L510)). |
 
 ## Decisions and their reasons

@@ -201,3 +201,36 @@ def test_engine_shows_memory_and_what_is_installed(api: Api) -> None:
     assert [(m["role"], m["installed"]) for m in engine["models"]] == [
         ("chat", False), ("embeddings", False),
     ]  # fmt: skip
+
+
+def test_a_badly_worded_rule_is_corrected_with_its_citations(api: Api) -> None:
+    entity_id = _extract(api)
+    client = api.runtime.client
+    base = f"/api/v1/projects/{api.project_id}/rules"
+    listed = client.get(base).json()["rules"][0]
+    # The list carries where the rule lives, so it can show those lines.
+    citation = listed["citation"]
+    assert citation["path"] == "src/billing.py" and citation["revision_id"]
+    assert citation["start_line"] <= citation["end_line"]
+
+    path = f"{base}/{entity_id}/correction"
+    text = "El total de la factura es la suma de sus lineas."
+    nameless = client.post(path, json={"statement": text}, headers=api.headers)
+    assert nameless.status_code == 422 and nameless.json()["error"] == "profile_name_required"
+    client.put("/api/v1/profile", json={"display_name": "Ana"}, headers=api.headers)
+    assert client.post(path, json={"statement": ""}, headers=api.headers).status_code == 422
+    missing = client.post(f"{base}/{uuid.uuid4()}/correction", json={"statement": text},
+                          headers=api.headers)  # fmt: skip
+    assert missing.status_code == 404
+
+    detail = client.post(path, json={"statement": text}, headers=api.headers).json()
+    current, previous = detail["versions"][0], detail["versions"][1]
+    assert current["content"]["statement"] == text
+    assert current["origin"] == "human" and current["verification_status"] == "human_verified"
+    assert current["reviewed_by"] == "Ana"
+    assert current["content"]["title"] == previous["content"]["title"]
+    lines = [(e["locator"]["path"], e["locator"]["start_line"]) for e in current["evidence"]]
+    assert lines == [
+        (e["locator"]["path"], e["locator"]["start_line"]) for e in previous["evidence"]
+    ]
+    assert client.get(base).json()["rules"][0]["evidence_count"] == listed["evidence_count"]

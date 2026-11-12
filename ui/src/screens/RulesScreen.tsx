@@ -1,7 +1,8 @@
-import { ArrowLeft, BookOpen, Check, ChevronDown, ListChecks, Pause, PenLine, Sparkles, X } from "lucide-react"
+import { ArrowLeft, BookOpen, Check, ListChecks, Pause, PenLine, Sparkles, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router"
 import { cn } from "cn"
+import { CodeExcerpt } from "@/components/code-excerpt"
 import { EmptyState, PageHeader, Section } from "@/components/page"
 import { StatusBadge, VerificationStatusBadge } from "@/components/status"
 import { VERIFIED_STATUSES } from "@/lib/status"
@@ -19,6 +20,7 @@ import {
   type RuleVersion,
   type VerificationStatus,
   cancelAnalysis,
+  correctRule,
   createRule,
   getExtractionStatus,
   getRule,
@@ -247,7 +249,7 @@ function ConsistencyPanel({ project, onSessionLost, onFinished }: ScreenProps & 
   return (
     <Section
       title="Revisar consistencia"
-      description="Busca reglas duplicadas, reglas que se contradicen y reglas ambiguas, y liga cada regla con los tests que llaman a su código. Todo queda como hallazgo para que decidas."
+      description="Busca reglas duplicadas, reglas que se contradicen y reglas ambiguas. Todo queda como hallazgo para que decidas."
     >
       {analysisId ? (
         <AnalysisDetail analysisId={analysisId} onSessionLost={onSessionLost} onFinished={onFinished} />
@@ -376,74 +378,139 @@ export function RuleEvidence({ project, entityId, onSessionLost }: ScreenProps &
   )
 }
 
+/** Left edge of a rule card: green once a person confirms it, red when it is not a rule. */
+function reviewEdge(status: VerificationStatus | undefined) {
+  if (status && VERIFIED_STATUSES.includes(status)) return "border-l-emerald-600 dark:border-l-emerald-400"
+  if (status === "rejected") return "border-l-destructive"
+  return "border-l-border"
+}
+
+/**
+ * One rule as it is reviewed: where it lives, its title, what it says and the code around the
+ * cited lines. Three answers: it is valid, it is real but badly worded (rewrite it), or it is
+ * not a rule.
+ */
 function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSummary; onChanged: () => void }) {
-  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState(rule.summary)
   const { error, setError, fail } = useErrors(props.onSessionLost)
   const version = rule.latest_version
-  const review = (status: VerificationStatus) => {
+  const status = version?.verification_status
+  const citation = rule.citation
+  const review = (next: VerificationStatus) => {
     if (!version) return
     setError(null)
-    setVerification(version.id, status).then(onChanged).catch(fail)
+    setVerification(version.id, next).then(onChanged).catch(fail)
   }
+  const save = (event: FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    correctRule(props.project.id, rule.entity_id, text.trim())
+      .then(() => {
+        setEditing(false)
+        onChanged()
+      })
+      .catch(fail)
+  }
+  const range = citation
+    ? `${citation.start_line}${citation.end_line !== citation.start_line ? `-${citation.end_line}` : ""}`
+    : ""
   return (
-    <li className="grid gap-3 rounded-xl border bg-card p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="grid gap-1.5">
-          <div className="flex flex-wrap items-center gap-2">
-            {version && <VerificationStatusBadge status={version.verification_status} />}
-            {rule.review_reason && (
-              <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? "Revisar"}</StatusBadge>
-            )}
-            <span className="text-xs text-muted-foreground">
-              {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} · importancia{" "}
-              {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
-            </span>
-          </div>
-          <Link to={`/reglas/${rule.entity_id}`} className="font-medium hover:underline">
-            {rule.name}
-          </Link>
+    <li className={cn("grid min-w-0 gap-3 rounded-xl border border-l-4 bg-card p-4", reviewEdge(status))}>
+      <div className="flex flex-wrap items-center gap-2">
+        {version && <VerificationStatusBadge status={version.verification_status} />}
+        {rule.review_reason && (
+          <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? "Revisar"}</StatusBadge>
+        )}
+        {citation && (
+          <code className="min-w-0 truncate text-xs text-muted-foreground" title={`${citation.path}:${range}`}>
+            {citation.path}:{range}
+          </code>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} · importancia{" "}
+          {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
+        </span>
+      </div>
+      <Link
+        to={`/reglas/${rule.entity_id}`}
+        className="text-xs font-semibold tracking-wide text-muted-foreground uppercase hover:text-foreground hover:underline"
+      >
+        {rule.name}
+      </Link>
+      <p className="font-heading text-lg leading-snug font-medium whitespace-pre-wrap">{rule.summary}</p>
+      {citation && (
+        <CodeExcerpt
+          revisionId={citation.revision_id}
+          path={citation.path}
+          startLine={citation.start_line}
+          endLine={citation.end_line}
+        />
+      )}
+      {version && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label={`Revisión de ${rule.name}`}>
+          <Button
+            size="sm"
+            variant={status === "human_verified" ? "default" : "outline"}
+            aria-pressed={status === "human_verified"}
+            onClick={() => review("human_verified")}
+          >
+            <Check data-icon="inline-start" />
+            Válida
+          </Button>
+          <Button
+            size="sm"
+            variant={editing ? "secondary" : "outline"}
+            aria-expanded={editing}
+            onClick={() => {
+              setText(rule.summary)
+              setEditing(!editing)
+            }}
+          >
+            <PenLine data-icon="inline-start" />
+            Mal dicha
+          </Button>
+          <Button
+            size="sm"
+            variant={status === "rejected" ? "destructive" : "outline"}
+            aria-pressed={status === "rejected"}
+            onClick={() => review("rejected")}
+          >
+            <X data-icon="inline-start" />
+            No es regla
+          </Button>
         </div>
-        {version && (
-          <div className="flex gap-1">
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={version.verification_status === "human_verified"}
-              onClick={() => review("human_verified")}
-            >
-              <Check data-icon="inline-start" />
-              Confirmar
+      )}
+      {editing && (
+        <form className="grid gap-2" onSubmit={save}>
+          <Label htmlFor={`fix-${rule.entity_id}`}>Cómo debería decirse</Label>
+          <Textarea
+            id={`fix-${rule.entity_id}`}
+            required
+            maxLength={4000}
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+          />
+          <p className="text-xs text-muted-foreground">
+            Se guarda como una versión nueva con tu nombre del perfil, con las mismas citas al código, y queda
+            confirmada.
+          </p>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={!text.trim() || text.trim() === rule.summary}>
+              Guardar
             </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={version.verification_status === "rejected"}
-              onClick={() => review("rejected")}
-            >
-              <X data-icon="inline-start" />
-              Falso positivo
+            <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              Cancelar
             </Button>
           </div>
-        )}
-      </div>
-      <p className="line-clamp-3 text-sm text-muted-foreground">{rule.summary}</p>
+        </form>
+      )}
       <ReviewError error={error} />
-      <div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
-          Evidencia ({rule.evidence_count})
-        </button>
-        {open && (
-          <div className="mt-2">
-            <RuleEvidence {...props} entityId={rule.entity_id} />
-          </div>
-        )}
-      </div>
+      {rule.evidence_count > 1 && (
+        <Link to={`/reglas/${rule.entity_id}`} className="text-xs font-medium text-muted-foreground hover:text-foreground">
+          {rule.evidence_count} citas · ver la regla completa
+        </Link>
+      )}
     </li>
   )
 }
@@ -553,7 +620,6 @@ function RuleList(props: ScreenProps) {
 const REVIEW_ACTIONS: { status: VerificationStatus; label: string }[] = [
   { status: "human_verified", label: "Confirmar" },
   { status: "source_supported", label: "Respaldada por el código" },
-  { status: "test_supported", label: "Respaldada por un test" },
   { status: "rejected", label: "Falso positivo" },
   { status: "unverified", label: "Volver a sin verificar" },
 ]
@@ -629,6 +695,18 @@ function VersionBlock({
             </StatusBadge>
           ))}
       </div>
+      {latest &&
+        version.evidence
+          .filter((item) => item.revision_id && item.locator.path && item.locator.start_line && item.type !== "test")
+          .map((item) => (
+            <CodeExcerpt
+              key={`code-${item.id}`}
+              revisionId={item.revision_id ?? ""}
+              path={item.locator.path ?? ""}
+              startLine={item.locator.start_line ?? 1}
+              endLine={item.locator.end_line ?? item.locator.start_line ?? 1}
+            />
+          ))}
       <div className="grid gap-2">
         <Eyebrow>Evidencia</Eyebrow>
         {version.evidence.length === 0 ? (

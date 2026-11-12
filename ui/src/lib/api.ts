@@ -329,6 +329,14 @@ export interface RuleSummary {
   latest_version: VersionSummary | null
   evidence_count: number
   review_reason: string | null
+  /** Where the rule lives in the code: its first citation. */
+  citation: {
+    revision_id: string
+    path: string
+    commit: string | null
+    start_line: number
+    end_line: number
+  } | null
 }
 
 export interface Evidence {
@@ -498,6 +506,10 @@ export const updateSearchSettings = async (includeTests: boolean) =>
   (await mutate("/api/v1/search/settings", { include_tests: includeTests }, "PUT")).json() as Promise<{
     include_tests: boolean
   }>
+
+/** The rule is real but badly worded: the text becomes a new version, confirmed by the profile. */
+export const correctRule = async (projectId: string, entityId: string, statement: string) =>
+  (await mutate(`/api/v1/projects/${projectId}/rules/${entityId}/correction`, { statement })).json() as Promise<RuleDetail>
 
 export const listRules = async (
   projectId: string,
