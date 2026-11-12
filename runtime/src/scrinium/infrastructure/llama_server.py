@@ -35,7 +35,8 @@ EMBEDDING_CONTEXT_TOKENS: Final = 8192
 # 512 MiB is enough to reuse the shared start of the prompts; embeddings do not use it.
 CHAT_CACHE_RAM_MIB: Final = 512
 # V9: input tokens the GPU processes at once when reading. Reading is ~40 % of an extraction
-# batch; llama-server's default is 512. Pinned with the V9 probe.
+# batch; llama-server's default is 512. Measured on a GTX 1060 (2026-11-12): 1024 and 2048 read
+# 1-3 % faster, within noise, and 2048 takes 250 MB more VRAM. Kept at 512.
 CHAT_UBATCH: Final = 512
 # S1: chat model slots, that is, batches it can generate at once. One by default.
 CHAT_SLOTS = 1
