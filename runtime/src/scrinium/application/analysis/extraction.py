@@ -55,6 +55,7 @@ from scrinium.application.knowledge.entities import (
     title_slug,
 )
 from scrinium.application.knowledge.evidence import cite_source
+from scrinium.application.knowledge.tickets import label_rules
 from scrinium.application.knowledge.watch import (
     REVIEW_CODE_CONTRADICTS,
     WatchedRule,
@@ -732,6 +733,7 @@ def extract_rules(
         run = session.get_one(AnalysisRun, run_id)
         project = session.get_one(Project, run.project_id)
         fragments, stats = select_work(session, project, path_prefix, min_score)
+        project_id = project.id
     groups = batches(fragments)
     result: dict[str, Any] = {
         "path_prefix": path_prefix, "min_score": min_score, **stats,
@@ -814,6 +816,9 @@ def extract_rules(
     else:
         status = AnalysisStatus.COMPLETED
     result["eta_seconds"] = None
+    if status in (AnalysisStatus.COMPLETED, AnalysisStatus.PARTIAL):
+        # IMP-2: the tickets the history names for each new or moved citation. Git only.
+        result["rules_with_tickets_checked"] = label_rules(database, project_id)
     finish_run(database, run_id, status, result, "model_error" if failed and not stopped else None)
 
 

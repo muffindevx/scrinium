@@ -253,6 +253,35 @@ class GitRepository:
             commits.append(Commit(sha, int(date), subject, tuple(parents.split())))
         return commits
 
+    def line_commits(self, revision: str, path: str, start: int, end: int) -> set[str]:
+        """The commits that last touched lines `start`-`end` of `path` at `revision` (blame)."""
+        if not _OBJECT_ID.match(revision) or start < 1 or end < start or path.startswith("-"):
+            raise GitError(GitErrorCode.FAILED)
+        output = self._run(
+            "blame", "--porcelain", "-L", f"{start},{end}", revision, "--", path
+        ).decode("utf-8", "replace")
+        return {
+            line[:40]
+            for line in output.splitlines()
+            if len(line) > 41 and line[40] == " " and _OBJECT_ID.match(line[:40])
+        }
+
+    def messages(self, commits: Iterable[str]) -> dict[str, str]:
+        """Each commit's full message (subject and body)."""
+        wanted = [commit for commit in commits if _OBJECT_ID.match(commit)]
+        if not wanted:
+            return {}
+        output = self._run(
+            "log", "--no-walk=unsorted", "--no-color", "--no-show-signature",
+            "--format=%H%x1f%B%x1e", "--end-of-options", *wanted,
+        )  # fmt: skip
+        found = {}
+        for record in output.split(b"\x1e"):
+            fields = record.strip(b"\n").split(b"\x1f", 1)
+            if len(fields) == 2:
+                found[fields[0].decode("ascii", "replace")] = fields[1].decode("utf-8", "replace")
+        return found
+
     def changed_files(self, base: str | None, target: str) -> list[ChangedFile]:
         """Files that change from `base` to `target`; without `base`, those that commit changed."""
         if not _OBJECT_ID.match(target) or (base is not None and not _OBJECT_ID.match(base)):

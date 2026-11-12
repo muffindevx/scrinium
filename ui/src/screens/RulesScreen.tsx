@@ -106,6 +106,23 @@ function ReviewError({ error }: { error: string | null }) {
 
 const STATUS_REFRESH_MS = 5000
 
+/** V8: an extraction takes minutes. Permission is asked when one starts (a click), never on load. */
+function askToNotify() {
+  if (typeof Notification === "undefined" || Notification.permission !== "default") return
+  Notification.requestPermission().catch(() => undefined)
+}
+
+/** A system notice only if the person is looking elsewhere; on screen the panel already says it. */
+function notifyIfAway(title: string, body: string) {
+  if (typeof Notification === "undefined" || Notification.permission !== "granted") return
+  if (document.visibilityState === "visible") return
+  try {
+    new Notification(title, { body, tag: "scrinium-extraction" })
+  } catch {
+    // Some browsers only allow notifications from a service worker: the panel is enough.
+  }
+}
+
 function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & { onFinished: () => void }) {
   const [prefix, setPrefix] = useState("")
   const [allFunctions, setAllFunctions] = useState(false)
@@ -131,6 +148,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
   const start = () => {
     setError(null)
     setPausing(false)
+    askToNotify()
     startExtraction(project.id, prefix.trim(), allFunctions)
       .then((analysis) => {
         setAnalysisId(analysis.id)
@@ -149,6 +167,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
     cancelAnalysis(analysisId).catch(fail)
   }
   const finished = useCallback(() => {
+    notifyIfAway("La extracción de reglas terminó", "Las reglas nuevas ya están en Reglas.")
     setRunning(false)
     setPausing(false)
     onFinished()
@@ -432,6 +451,15 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
           {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
           {!(status && VERIFIED_STATUSES.includes(status)) && " (propuesta)"}
         </span>
+        {rule.tickets.map((ticket) => (
+          <span
+            key={ticket}
+            className="rounded-full border px-2 py-0.5 font-mono text-xs text-muted-foreground"
+            title="Ticket nombrado por el commit que introdujo o cambió estas líneas"
+          >
+            {ticket}
+          </span>
+        ))}
       </div>
       <Link
         to={`/reglas/${rule.entity_id}`}

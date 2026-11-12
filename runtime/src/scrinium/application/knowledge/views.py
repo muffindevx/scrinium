@@ -94,11 +94,13 @@ def list_rules(
             func.lower(KnowledgeEntity.name).like(pattern)
             | func.lower(KnowledgeEntity.summary).like(pattern)
             | func.lower(KnowledgeEntity.canonical_key).like(pattern)
+            # A ticket key finds the rules it labels (IMP-2).
+            | func.lower(cast(KnowledgeEntity.metadata_["tickets"], String)).like(pattern)
         )
     rules = []
     for entity, rule, evidence in session.execute(query):
         version = latest_version(session, entity.id)
-        citation = None if version is None else _first_code_citation(session, version.id)
+        citation = None if version is None else first_code_citation(session, version.id)
         if verification is not None and (
             version is None or version.verification_status is not verification
         ):
@@ -111,12 +113,13 @@ def list_rules(
                 "rule_category": rule.rule_category.value, "criticality": rule.criticality.value,
                 "latest_version": _version_summary(version), "evidence_count": evidence,
                 "review_reason": entity.review_reason, "citation": citation,
+                "tickets": list(entity.metadata_.get("tickets", [])),
             }
         )  # fmt: skip
     return rules
 
 
-def _first_code_citation(session: Session, version_id: uuid.UUID) -> dict[str, Any] | None:
+def first_code_citation(session: Session, version_id: uuid.UUID) -> dict[str, Any] | None:
     """Where the rule lives in the code: the list shows those lines without opening the rule."""
     record = session.scalars(
         select(EvidenceRecord)

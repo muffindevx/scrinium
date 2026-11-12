@@ -2,13 +2,16 @@
 
 import json
 import uuid
+from pathlib import Path
 
 from scrinium.application.knowledge.content import FlowContent
 from scrinium.application.knowledge.entities import HUMAN, create_entity, create_flow
 from scrinium.application.knowledge.evidence import add_relationship
 from scrinium.domain.enums import EntityType, FlowType, RelationType
 from scrinium.infrastructure.sqlite.models import Project
+from tests.conftest import Runtime
 from tests.integration.test_analyses import Api, _extraction_reply, _rule, api, repo
+from tests.integration.test_ingestion import commit_all, git, write
 
 __all__ = ["api", "repo"]
 
@@ -234,3 +237,26 @@ def test_a_badly_worded_rule_is_corrected_with_its_citations(api: Api) -> None:
         (e["locator"]["path"], e["locator"]["start_line"]) for e in previous["evidence"]
     ]
     assert client.get(base).json()["rules"][0]["evidence_count"] == listed["evidence_count"]
+
+
+def test_rules_carry_the_tickets_their_commits_name(runtime: Runtime, tmp_path: Path) -> None:
+    """IMP-2: the commit that introduced the cited lines names PAY-142; the rule shows it and the
+    rule search finds it by that key."""
+    root = tmp_path / "pagos"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    write(root, "src/pagos.py", "def comision(total):\n    return 0\n")
+    commit_all(root, "inicio")
+    write(
+        root, "src/pagos.py",
+        "def comision(total):\n    if total > 100:\n        return total * RATE\n    return 0\n",
+    )  # fmt: skip
+    commit_all(root, "PAY-142: comision para ventas grandes")
+    runtime.chat.reply = _extraction_reply(_rule("Comision de ventas grandes"))
+    api = Api(runtime, root)
+    api.post(f"/api/v1/projects/{api.project_id}/extractions", {})
+    base = f"/api/v1/projects/{api.project_id}/rules"
+    rules = runtime.client.get(base).json()["rules"]
+    assert [r["tickets"] for r in rules] == [["PAY-142"]]
+    assert len(runtime.client.get(base, params={"q": "pay-142"}).json()["rules"]) == 1
+    assert runtime.client.get(base, params={"q": "OPS-1"}).json()["rules"] == []

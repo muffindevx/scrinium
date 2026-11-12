@@ -329,6 +329,8 @@ export interface RuleSummary {
   latest_version: VersionSummary | null
   evidence_count: number
   review_reason: string | null
+  /** Ticket keys named by the commits that introduced or changed the cited lines. */
+  tickets: string[]
   /** Where the rule lives in the code: its first citation. */
   citation: {
     revision_id: string
