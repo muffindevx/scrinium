@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from scrinium.application.knowledge.common import KnowledgeNotFoundError
-from scrinium.application.knowledge.content import RuleContent
+from scrinium.application.knowledge.content import RuleContent, shaped
 from scrinium.application.knowledge.entities import (
     Provenance,
     add_rule_version,
@@ -72,7 +72,7 @@ def correct_rule(
     content = RuleContent.model_validate(
         {
             "title": (title or previous.title).strip(),
-            "statement": statement.strip(),
+            **shaped(statement),
             "rationale": previous.rationale,
             "scope": previous.scope,
         }

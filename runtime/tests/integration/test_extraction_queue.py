@@ -234,3 +234,32 @@ def test_unfinished_work_resumes_at_startup(api: Api, monkeypatch: pytest.Monkey
     with api.runtime.database.session() as session:
         assert {task.status for task in session.query(ExtractionTask)} == {"done"}
     assert extraction.resume_pending(api.runtime.database, api.runtime.llm, analyses) == 0
+
+
+def test_a_failed_batch_with_several_functions_is_retried_in_halves(
+    runtime: Runtime, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F9: the batch goes again at once in two halves; nothing waits for the next run."""
+    root = tmp_path / "small"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    for index in range(4):
+        write(
+            root,
+            f"src/pequena_{index}.py",
+            f"def regla_{index}(v):\n    if v > {index + 10}:\n        raise ValueError('x')\n",
+        )
+    commit_all(root, "inicio")
+    runtime.chat.reply = _extraction_reply()
+    api = Api(runtime, root)
+    _fail_calls(runtime, monkeypatch, {0})
+    done = _extract(api)
+    result = done["result"]
+    assert done["status"] == "completed", result
+    assert result["batches_split"] == 1 and result["batches_failed"] == 0
+    assert result["failure_reasons"] == {"ModelError": 1}
+    # The first call held all four; then each half, with its own numbering from F1.
+    sent = _sent(runtime)
+    assert len(sent) == 3 and sent[0].count("<<FUENTE") == 4
+    assert sent[1].count("<<FUENTE") == 2 and sent[2].count("<<FUENTE") == 2
+    assert _status(api)["pending"] == 0 and _status(api)["failed"] == 0

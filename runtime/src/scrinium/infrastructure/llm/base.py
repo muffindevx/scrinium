@@ -33,6 +33,11 @@ class ChatMessage:
     content: str
 
 
+# Generation settings for every local model (F9): deterministic, so a batch can be repeated.
+DEFAULT_TEMPERATURE: Final = 0.0
+DEFAULT_SEED: Final = 1
+
+
 @dataclass(frozen=True)
 class Completion:
     text: str

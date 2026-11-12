@@ -430,6 +430,7 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
         <span className="text-xs text-muted-foreground">
           {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} · importancia{" "}
           {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
+          {!(status && VERIFIED_STATUSES.includes(status)) && " (propuesta)"}
         </span>
       </div>
       <Link
@@ -662,15 +663,25 @@ function VersionBlock({
         <div className="grid gap-3 text-sm">
           <p className="text-base whitespace-pre-wrap">{content.statement}</p>
           {content.rationale && <Muted>{content.rationale}</Muted>}
-          {content.expected_behavior.length > 0 && (
-            <div className="grid gap-1">
-              <Eyebrow>Comportamiento esperado</Eyebrow>
-              <ul className="list-disc pl-5">
-                {content.expected_behavior.map((item) => (
-                  <li key={item.description}>{item.description}</li>
+          {content.trigger_conditions.length > 0 && (
+            <dl className="grid gap-2 sm:grid-cols-2">
+              <div className="grid content-start gap-1">
+                <dt>
+                  <Eyebrow>Cuándo</Eyebrow>
+                </dt>
+                {content.trigger_conditions.map((item) => (
+                  <dd key={item.description}>{item.description}</dd>
                 ))}
-              </ul>
-            </div>
+              </div>
+              <div className="grid content-start gap-1">
+                <dt>
+                  <Eyebrow>Entonces</Eyebrow>
+                </dt>
+                {content.expected_behavior.map((item) => (
+                  <dd key={item.description}>{item.description}</dd>
+                ))}
+              </div>
+            </dl>
           )}
           {content.exceptions.length > 0 && (
             <div className="grid gap-1">
@@ -798,7 +809,9 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
         description={
           <>
             {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} · importancia{" "}
-            {CRITICALITY_LABELS[rule.criticality].toLowerCase()} · <code className="text-xs">{rule.canonical_key}</code>
+            {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
+            {!VERIFIED_STATUSES.includes(rule.versions[0]?.verification_status ?? "unverified") && " (propuesta)"} ·{" "}
+            <code className="text-xs">{rule.canonical_key}</code>
           </>
         }
       />

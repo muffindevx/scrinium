@@ -11,6 +11,8 @@ from collections.abc import Callable
 from typing import Any, Final
 
 from scrinium.infrastructure.llm.base import (
+    DEFAULT_SEED,
+    DEFAULT_TEMPERATURE,
     THINK_TAGS,
     ChatMessage,
     Completion,
@@ -73,14 +75,15 @@ class OpenAICompatibleChat:
         api_key: str | None = None,
         provider: str = "llama",
         before_request: Callable[[], None] | None = None,
-        temperature: float = 0.2,
-        seed: int | None = None,
+        temperature: float = DEFAULT_TEMPERATURE,
+        seed: int | None = DEFAULT_SEED,
         slot: int = _SLOT,
     ) -> None:
         """Without `base_url` (llama-server could not start), the model shows as unavailable.
 
         `before_request` is called before each generation: with llama-server, `ChatFirst`.
-        `temperature` and `seed` exist for the benchmark, which needs repeatable outputs."""
+        Temperature 0 and a fixed seed by default (F9): the same input gives the same rules, so
+        a batch can be repeated and two runs compared. At 0.2 the output varied by 20 %."""
         self._client = LocalHttpClient(base_url, api_key) if base_url is not None else None
         self._model = model
         self._provider = provider
@@ -141,10 +144,12 @@ class OpenAICompatibleChat:
         message = choice.get("message")
         if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             raise ModelError
+        # Cut by length, the JSON is incomplete even if there is text: always a failure, with its
+        # own reason, so the batch is retried smaller (F9).
+        if choice.get("finish_reason") == "length":
+            raise OutputBudgetExceededError
         text = THINK_TAGS.sub("", message["content"]).strip()
         if not text:
-            if choice.get("finish_reason") == "length":
-                raise OutputBudgetExceededError
             raise ModelError
         usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
         return Completion(

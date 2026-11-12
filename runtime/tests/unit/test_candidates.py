@@ -154,3 +154,18 @@ def test_a_constraint_opened_on_its_own_line_is_cited_whole() -> None:
         "  ],\n"
     )
     assert decision_groups(schema) == [(1, 4)]
+
+
+def test_criticality_is_proposed_high_for_permissions_security_and_money() -> None:
+    """F7: fixed rules, never the model's guess; a person confirms it."""
+    from scrinium.application.analysis.extraction import proposed_criticality
+    from scrinium.domain.enums import Criticality, RuleCategory
+
+    assert proposed_criticality(RuleCategory.AUTHORIZATION, "if (!user.isActive)") is (
+        Criticality.HIGH
+    )
+    assert proposed_criticality(RuleCategory.SECURITY_CONSTRAINT, "x") is Criticality.HIGH
+    assert proposed_criticality(RuleCategory.CALCULATION, "total = subtotal * TAX_RATE") is (
+        Criticality.HIGH
+    )
+    assert proposed_criticality(RuleCategory.VALIDATION, "if (lives <= 0)") is Criticality.MEDIUM

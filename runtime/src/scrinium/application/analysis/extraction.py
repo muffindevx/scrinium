@@ -17,6 +17,7 @@ import logging
 import secrets
 import time
 import uuid
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, Final, Literal
@@ -35,6 +36,7 @@ from scrinium.application.analysis.candidates import (
     decision_groups,
     is_domain_decision,
     select_candidates,
+    touches_money,
 )
 from scrinium.application.analysis.rule_detail import MAP_EXTRACTOR_VERSION, pending_statement
 from scrinium.application.analysis.runs import (
@@ -45,7 +47,7 @@ from scrinium.application.analysis.runs import (
     start_run,
 )
 from scrinium.application.knowledge.common import KnowledgeError
-from scrinium.application.knowledge.content import RuleContent
+from scrinium.application.knowledge.content import RuleContent, shaped
 from scrinium.application.knowledge.entities import (
     Provenance,
     add_rule_version,
@@ -417,6 +419,17 @@ def batches(fragments: list[Fragment]) -> list[list[Fragment]]:
     return [[replace(f, number=n) for n, f in enumerate(group, 1)] for group in groups]
 
 
+def split_batch(group: list[Fragment]) -> list[list[Fragment]]:
+    """A failed batch in two halves, each numbered from 1 again (F9). One fragment stays whole."""
+    if len(group) < 2:
+        return [group]
+    middle = len(group) // 2
+    return [
+        [replace(f, number=n) for n, f in enumerate(half, 1)]
+        for half in (group[:middle], group[middle:])
+    ]
+
+
 def _existing_block(fragment: Fragment, nonce: str) -> str:
     if not fragment.existing:
         return ""
@@ -531,6 +544,18 @@ def _decision_line(decision: Decision) -> str:
     return lines[decision.start_line - decision.fragment.start_line]
 
 
+# F7: what usually hurts most when it breaks. A proposal with fixed rules, never the model's:
+# a person confirms or changes it when reviewing.
+_HIGH_CATEGORIES: Final = frozenset({RuleCategory.AUTHORIZATION, RuleCategory.SECURITY_CONSTRAINT})
+
+
+def proposed_criticality(category: RuleCategory, decision_line: str) -> Criticality:
+    """High for permissions, security and money; medium for the rest."""
+    if category in _HIGH_CATEGORIES or touches_money(decision_line):
+        return Criticality.HIGH
+    return Criticality.MEDIUM
+
+
 def interpret(raw: str, fragments: list[Fragment]) -> tuple[list[ValidRule], int]:
     """Valid rules and how many were dropped. Raises ModelError if it is not the requested JSON.
 
@@ -570,7 +595,9 @@ def interpret(raw: str, fragments: list[Fragment]) -> tuple[list[ValidRule], int
             continue
         citation = (decision.fragment, decision.start_line, decision.end_line)
         # Criticality is decided by a person when reviewing; the model no longer proposes it.
-        valid.append(ValidRule(content, CATEGORY_CODES[rule.c], Criticality.MEDIUM, [citation]))
+        category = CATEGORY_CODES[rule.c]
+        criticality = proposed_criticality(category, _decision_line(decision))
+        valid.append(ValidRule(content, category, criticality, [citation]))
     return valid, dropped
 
 
@@ -643,7 +670,7 @@ def apply_verdicts(
             if item.verdict == "adjusted" and item.statement:
                 content = RuleContent.model_validate(
                     {
-                        "title": item.rule.title, "statement": item.statement,
+                        "title": item.rule.title, **shaped(item.statement),
                         "rationale": (
                             f"Ajustada porque cambio el codigo. Antes: {item.rule.statement}"
                         )[:4000],
@@ -709,6 +736,7 @@ def extract_rules(
     result: dict[str, Any] = {
         "path_prefix": path_prefix, "min_score": min_score, **stats,
         "batches_total": len(groups), "batches": 0, "batches_failed": 0, "dropped_rules": 0,
+        "batches_split": 0, "failure_reasons": {},
         "seconds_per_batch": None, "eta_seconds": None,
         "created": [], "updated": [], "unchanged": [], "kept": [], "adjusted": [], "broken": [],
         "label": "llm_proposal", "tokens": TokenUsage().as_dict(),
@@ -724,7 +752,9 @@ def extract_rules(
     result["tokens"] = usage.as_dict()
     durations: list[float] = []
     stopped = False
-    for group in groups:
+    pending = deque(groups)
+    while pending:
+        group = pending.popleft()
         if not _wait_for_turn(llm, should_stop):
             stopped = True
             break
@@ -741,7 +771,18 @@ def extract_rules(
             rules, dropped = interpret(completion.text, group)
             verdicts = interpret_verdicts(completion.text, group)
         except ModelError as error:
-            logger.warning("extraction_batch_failed run=%s type=%s", run_id, type(error).__name__)
+            reason = type(error).__name__
+            logger.warning("extraction_batch_failed run=%s type=%s", run_id, reason)
+            reasons = result["failure_reasons"]
+            reasons[reason] = reasons.get(reason, 0) + 1
+            halves = split_batch(group)
+            if len(halves) > 1:
+                # F9: a batch that fails (too long an answer, invalid JSON) goes again in two
+                # halves, right away; only a single fragment that fails is left for later.
+                result["batches_split"] += 1
+                result["batches_total"] += 1
+                pending.extendleft(reversed(halves))
+                continue
             result["batches_failed"] += 1
             with database.session() as session:
                 queue.fail_tasks(session, task_ids)
@@ -760,12 +801,13 @@ def extract_rules(
         # Progress and time left, from this machine's real average.
         average = sum(durations) / len(durations)
         result["seconds_per_batch"] = round(average, 1)
-        result["eta_seconds"] = round(average * (len(groups) - result["batches"]))
+        result["eta_seconds"] = round(average * len(pending))
         report_progress(database, run_id, result)
     failed = result["batches_failed"]
     if stopped:
         status = AnalysisStatus.CANCELLED
-    elif failed == result["batches"]:
+    # A split attempt is not a result: nothing came out if every remaining half failed too.
+    elif failed and failed + result["batches_split"] == result["batches"]:
         status = AnalysisStatus.FAILED
     elif failed:
         status = AnalysisStatus.PARTIAL

@@ -303,6 +303,11 @@ def is_domain_decision(line: str) -> bool:
     )
 
 
+def touches_money(text: str) -> bool:
+    """A price, an amount, a tax or a payment in the text (F7: proposed criticality)."""
+    return _MONEY.search(text) is not None
+
+
 def is_visual(path: str, symbol: str | None = None) -> bool:
     """UI, drawing, animation or sound, by path, file name or function."""
     stem = path.rsplit("/", 1)[-1].split(".", 1)[0]

@@ -104,6 +104,8 @@ def test_chat_request_shape_and_reply(server: str) -> None:
     assert authorization == f"Bearer {KEY}"
     assert body["model"] == CHAT_MODEL.name
     assert body["max_tokens"] == 64
+    # F9: deterministic, so a batch can be repeated and two runs compared.
+    assert (body["temperature"], body["seed"]) == (0.0, 1)
     assert body["messages"] == [
         {"role": "system", "content": "s"}, {"role": "user", "content": "u"}
     ]  # fmt: skip
@@ -144,6 +146,13 @@ def test_reasoning_is_discarded(server: str) -> None:
 
 def test_running_out_of_tokens_is_reported(server: str) -> None:
     _FakeOpenAI.replies["/v1/chat/completions"] = _chat_reply("", finish="length")
+    with pytest.raises(OutputBudgetExceededError):
+        OpenAICompatibleChat(server, CHAT_MODEL.name, KEY).complete([ChatMessage("user", "u")])
+
+
+def test_an_answer_cut_by_length_is_a_failure_even_with_text(server: str) -> None:
+    # F9: the JSON is incomplete; the batch must go again smaller, not be half read.
+    _FakeOpenAI.replies["/v1/chat/completions"] = _chat_reply('{"d":[{"i":"D1"', finish="length")
     with pytest.raises(OutputBudgetExceededError):
         OpenAICompatibleChat(server, CHAT_MODEL.name, KEY).complete([ChatMessage("user", "u")])
 

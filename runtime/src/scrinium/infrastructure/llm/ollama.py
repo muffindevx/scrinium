@@ -12,6 +12,8 @@ from typing import Any, Final
 
 from scrinium.infrastructure.llm.base import (
     CONTEXT_TOKENS,
+    DEFAULT_SEED,
+    DEFAULT_TEMPERATURE,
     THINK_TAGS,
     ChatMessage,
     Completion,
@@ -62,7 +64,12 @@ class OllamaChat:
             "model": self._model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": False,
-            "options": {"num_ctx": CONTEXT_TOKENS, "num_predict": max_tokens, "temperature": 0.2},
+            "options": {
+                "num_ctx": CONTEXT_TOKENS,
+                "num_predict": max_tokens,
+                "temperature": DEFAULT_TEMPERATURE,
+                "seed": DEFAULT_SEED,
+            },
         }
         if json_schema is not None:
             body["format"] = json_schema

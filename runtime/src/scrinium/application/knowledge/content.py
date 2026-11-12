@@ -4,8 +4,9 @@ What does not pass these models is not stored. Arbitrary JSON, from a person or 
 does not become a rule the agent can use.
 """
 
+import re
 import uuid
-from typing import Annotated, Final, Self
+from typing import Annotated, Any, Final, Self
 
 from pydantic import (
     AfterValidator,
@@ -133,3 +134,47 @@ class FlowContent(_Content):
                 raise ValueError("duplicate_transition")
             seen.add(edge)
         return self
+
+
+# F3: a statement written as "Si <when>, <then>." is split into its two halves.
+_CONDITION_START: Final = re.compile(
+    r"^(?:si|cuando|mientras|al|en cuanto|solo si)\b", re.IGNORECASE
+)
+_PART_MAX_CHARS: Final = 1000
+
+
+def split_statement(statement: str) -> tuple[str | None, str]:
+    """(when, then) of a statement. Without a leading condition, the whole statement is what
+    the rule demands. Cuts at the first comma outside parentheses and quotes."""
+    text = statement.strip()
+    if not _CONDITION_START.match(text):
+        return None, text
+    depth, quoted = 0, None
+    for index, char in enumerate(text):
+        if quoted:
+            quoted = None if char == quoted else quoted
+        elif char in "\"'«":
+            quoted = "»" if char == "«" else char
+        elif char in "([":
+            depth += 1
+        elif char in ")]":
+            depth -= 1
+        elif char == "," and depth == 0:
+            when, then = text[:index].strip(), text[index + 1 :].strip().rstrip(".")
+            if when and then:
+                return when, then[0].upper() + then[1:] + "."
+            break
+    return None, text
+
+
+def shaped(statement: str) -> dict[str, Any]:
+    """The statement and, split from it, when the rule applies and what it demands (F3)."""
+    when, then = split_statement(statement)
+    if len(then) > _PART_MAX_CHARS or (when and len(when) > _PART_MAX_CHARS):
+        # A long text written by a person: kept whole, not split.
+        when, then = None, statement.strip()[:_PART_MAX_CHARS]
+    return {
+        "statement": statement.strip(),
+        "trigger_conditions": [{"description": when}] if when else [],
+        "expected_behavior": [{"description": then}],
+    }
