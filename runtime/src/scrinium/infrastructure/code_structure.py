@@ -302,19 +302,15 @@ def parse_imports(path: str, text: str) -> list[Import]:
     return _python_imports(root) if language == "python" else _js_imports(root)
 
 
-def innermost_function(path: str, text: str, start: int, end: int) -> tuple[str, int, int] | None:
-    """The smallest function, method or arrow function assigned to a name that holds lines
-    `start`-`end`, nested or not: (name, first line, last line). The structural map only keeps
-    top-level functions; a game wrapped in one huge closure needs this to show the real one."""
+def all_functions(path: str, text: str) -> list[tuple[str, int, int]]:
+    """Every function, method or named arrow function of a file, nested ones included:
+    (name, first line, last line). Parsed once, for many lookups."""
     language = language_for(path)
     if language is None:
-        return None
+        return []
     root = _parser(language).parse(text.encode("utf-8")).root_node
-    best: tuple[str, int, int] | None = None
+    found = []
     for node in _walk(root):
-        first, last = node.start_point[0] + 1, node.end_point[0] + 1
-        if first > start or last < end:
-            continue
         name = ""
         if node.type in _FUNCTIONS:
             name = _name_of(node)
@@ -322,6 +318,21 @@ def innermost_function(path: str, text: str, start: int, end: int) -> tuple[str,
             value = node.child_by_field_name("value")
             if value is not None and value.type in _FUNCTION_VALUES:
                 name = _name_of(node)
-        if name and (best is None or last - first < best[2] - best[1]):
-            best = (name, first, last)
-    return best
+        if name:
+            found.append((name, node.start_point[0] + 1, node.end_point[0] + 1))
+    return found
+
+
+def smallest_holding(
+    functions: list[tuple[str, int, int]], start: int, end: int
+) -> tuple[str, int, int] | None:
+    """Of `all_functions`, the smallest that holds lines `start`-`end`."""
+    holding = [f for f in functions if f[1] <= start and f[2] >= end]
+    return min(holding, key=lambda f: f[2] - f[1]) if holding else None
+
+
+def innermost_function(path: str, text: str, start: int, end: int) -> tuple[str, int, int] | None:
+    """The smallest function, method or arrow function assigned to a name that holds lines
+    `start`-`end`, nested or not: (name, first line, last line). The structural map only keeps
+    top-level functions; a game wrapped in one huge closure needs this to show the real one."""
+    return smallest_holding(all_functions(path, text), start, end)

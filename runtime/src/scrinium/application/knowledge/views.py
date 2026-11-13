@@ -217,6 +217,7 @@ def _neighbours(session: Session, entity_id: uuid.UUID) -> list[dict[str, Any]]:
             "direction": "out" if rel.from_entity_id == entity_id else "in",
             "other": {"id": str(other.id), "name": other.name,
                       "entity_type": other.entity_type.value},
+            "basis": rel.basis,
             "evidence_id": str(rel.evidence_record_id) if rel.evidence_record_id else None,
         }
         for rel, other in rows

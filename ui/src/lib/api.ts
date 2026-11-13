@@ -387,6 +387,8 @@ export interface Relationship {
   direction: "in" | "out"
   other: { id: string; name: string; entity_type: string }
   evidence_id: string | null
+  /** Why Scrinium related them from the code ("same_function:end", "calls:2", "constant:MAX"). */
+  basis: string | null
 }
 
 export interface RuleDetail extends Omit<RuleSummary, "latest_version" | "evidence_count"> {

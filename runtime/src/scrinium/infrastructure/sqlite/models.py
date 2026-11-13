@@ -609,6 +609,10 @@ class EntityRelationship(ProjectScoped, Base):
     relation_type: Mapped[RelationType] = mapped_column(_enum(RelationType, "relation_type"))
     to_entity_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
     evidence_record_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    # Why Scrinium related them from the code (stage 3, phase C), like "same_function",
+    # "calls:2" or "constant:MAX_LIVES"; empty for a relationship a person created. The ones
+    # with a basis are rebuilt after each extraction.
+    basis: Mapped[str | None] = mapped_column(String(200))
     valid_from: Mapped[datetime | None] = mapped_column(UtcDateTime)
     valid_until: Mapped[datetime | None] = mapped_column(UtcDateTime)
     created_by: Mapped[str | None] = mapped_column(String(200))

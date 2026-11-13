@@ -39,6 +39,7 @@ from scrinium.application.analysis.candidates import (
     touches_money,
 )
 from scrinium.application.analysis.rule_detail import MAP_EXTRACTOR_VERSION, pending_statement
+from scrinium.application.analysis.rule_relations import rebuild_relations
 from scrinium.application.analysis.runs import (
     AnalysisRunner,
     create_run,
@@ -822,6 +823,8 @@ def extract_rules(
     if status in (AnalysisStatus.COMPLETED, AnalysisStatus.PARTIAL):
         # IMP-2: the tickets the history names for each new or moved citation. Git only.
         result["rules_with_tickets_checked"] = label_rules(database, project_id)
+        # Stage 3, phase C: how the rules relate, from the code.
+        result["relationships"] = rebuild_relations(database, project_id)
     finish_run(database, run_id, status, result, "model_error" if failed and not stopped else None)
 
 

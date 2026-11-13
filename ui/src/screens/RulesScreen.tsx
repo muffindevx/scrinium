@@ -18,6 +18,7 @@ import {
   type NewRule,
   type RuleCategory,
   type RuleDetail,
+  type Relationship,
   type RuleSummary,
   type RuleVersion,
   type VerificationStatus,
@@ -898,6 +899,24 @@ function VersionBlock({
   )
 }
 
+/** A relationship in words, from this rule's side. */
+function relationLabel(relation: Relationship): string {
+  const [kind, detail] = (relation.basis ?? "").split(":", 2)
+  if (kind === "duplicate") return "Misma decisión, en otro sitio:"
+  if (kind === "same_function") return `Junto a ella en ${detail}:`
+  if (kind === "constant") return `Comparte ${detail} con:`
+  if (kind === "constraint") return `Misma restricción (${detail}) en otro sitio:`
+  if (kind === "permission") return `Exige el mismo permiso «${detail}» que:`
+  if (kind === "same_data") return `Sobre la misma tabla (${detail}):`
+  if (kind === "calls") {
+    const hops = detail === "1" ? "directamente" : `a través de ${Number(detail) - 1} función(es)`
+    return relation.direction === "out" ? `Su código llama, ${hops}, al de:` : `La usa, ${hops}:`
+  }
+  if (relation.relation_type === "depends_on") return relation.direction === "out" ? "Depende de:" : "Dependen de ella:"
+  if (relation.relation_type === "contradicts") return "Contradice:"
+  return "Relacionada con:"
+}
+
 const isPending = (rule: RuleDetail | null) =>
   rule?.versions[0]?.content?.statement.startsWith(PENDING_STATEMENT_PREFIX) ?? false
 
@@ -963,12 +982,21 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
         </div>
       )}
       {rule.relationships.length > 0 && (
-        <Section title="Relaciones">
-          <ul className="grid gap-1 text-sm">
+        <Section
+          title="Relaciones"
+          description="Lo que el código dice de cómo se relaciona esta regla con otras. Sale del análisis del código, sin IA."
+        >
+          <ul className="grid gap-2 text-sm">
             {rule.relationships.map((relation) => (
-              <li key={relation.id}>
-                {relation.direction === "out" ? "→" : "←"} {relation.relation_type}{" "}
-                <span className="font-medium">{relation.other.name}</span>
+              <li key={relation.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-muted-foreground">{relationLabel(relation)}</span>
+                {relation.other.entity_type === "business_rule" ? (
+                  <Link to={`/reglas/${relation.other.id}`} className="font-medium hover:underline">
+                    {relation.other.name}
+                  </Link>
+                ) : (
+                  <span className="font-medium">{relation.other.name}</span>
+                )}
               </li>
             ))}
           </ul>

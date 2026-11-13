@@ -169,3 +169,12 @@ def test_criticality_is_proposed_high_for_permissions_security_and_money() -> No
         Criticality.HIGH
     )
     assert proposed_criticality(RuleCategory.VALIDATION, "if (lives <= 0)") is Criticality.MEDIUM
+
+
+def test_constraints_in_a_row_are_separate_decisions() -> None:
+    migration = (
+        'ALTER TABLE "grc"."app_users" ADD CONSTRAINT "ck_email" CHECK (email ~ \'@\');\n'
+        'ALTER TABLE "grc"."app_users" ADD CONSTRAINT "ck_role" CHECK (role in (\'ADMIN\'));\n'
+        'ALTER TABLE "grc"."documents" ADD CONSTRAINT "ck_hash" CHECK (hash is null);\n'
+    )
+    assert decision_groups(migration) == [(0, 0), (1, 1), (2, 2)]

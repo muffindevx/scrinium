@@ -363,13 +363,18 @@ def decision_groups(text: str) -> list[tuple[int, int]]:
         if not line.strip() or line.strip().startswith(_COMMENT) or not is_domain_decision(line):
             continue
         end = _call_end(lines, index)
-        if groups and index - groups[-1][1] <= _GROUP_GAP:
+        # Each declaration is its own rule, however close: five CHECKs in a row are five rules.
+        declaration = _DECLARATION.match(line) is not None
+        if groups and index - groups[-1][1] <= _GROUP_GAP and not declaration:
             groups[-1][1] = max(groups[-1][1], end)
         else:
             groups.append([index, end])
     return [(start, end) for start, end in groups] or [(0, len(lines) - 1)]
 
 
+# A schema declaration starts its own decision: a Drizzle `check(`, a SQL CONSTRAINT, ALTER or
+# CREATE statement.
+_DECLARATION: Final = re.compile(r"(?i:\s*(?:check\s*\(|constraint\b|alter\s+table\b|create\b))")
 # A call opened on a decision line (`check(` with its condition below) is cited whole, up to
 # this many lines: otherwise the citation is just "check(" (Q1).
 _MAX_CALL_LINES: Final = 6
