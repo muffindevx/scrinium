@@ -541,6 +541,32 @@ export const getNeighbours = (projectId: string, symbolId: string) =>
     `/api/v1/projects/${projectId}/symbols/${symbolId}/neighbours`,
   )
 
+export interface ArchitectureModule {
+  key: string
+  name: string
+  kind: "folder" | "file" | "function"
+  files: number
+  functions: number
+  rules_count: number
+  rules: { entity_id: string; name: string; verification_status: VerificationStatus | null }[]
+  calls_in: number
+  calls_out: number
+  start_line: number | null
+  end_line: number | null
+  revision_id: string | null
+}
+
+export interface Architecture {
+  path: string
+  level: "folder" | "file"
+  modules: ArchitectureModule[]
+  dependencies: { from: string; to: string; calls: number }[]
+}
+
+/** One level of the code as modules with their calls (stage 3, phase D). */
+export const getArchitecture = (projectId: string, path = "") =>
+  getJson<Architecture>(`/api/v1/projects/${projectId}/architecture?${new URLSearchParams({ path })}`)
+
 export const listRules = async (
   projectId: string,
   filters: { verification?: VerificationStatus; lifecycle?: string; q?: string } = {},

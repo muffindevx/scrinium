@@ -200,3 +200,33 @@ def test_calls_resolve_across_files_and_ignore_builtin_methods(
         f"/api/v1/projects/{other.json()['id']}/symbols/{check.id}/neighbours"
     )
     assert hidden.status_code == 404
+
+
+def test_architecture_goes_from_folders_to_a_files_functions(
+    runtime: Runtime, tmp_path: Path
+) -> None:
+    """Phase D: modules with their calls at each level; a single wrapping folder is skipped."""
+    root = tmp_path / "arch"
+    root.mkdir()
+    git(root, "init", "-q", "-b", "main")
+    write(root, "src/billing/tax.ts", "export function rate(n: number) {\n  return n > 3\n}\n")
+    write(
+        root, "src/api/routes.ts",
+        "import { rate } from '../billing/tax'\n\n"
+        "export function handle(n: number) {\n  return check(n) && rate(n)\n}\n"
+        "function check(n: number) {\n  return n > 0\n}\n",
+    )  # fmt: skip
+    commit_all(root, "inicio")
+    api = Api(runtime, root)
+    base = f"/api/v1/projects/{api.project_id}/architecture"
+    top = runtime.client.get(base).json()
+    assert top["path"] == "src/" and top["level"] == "folder"
+    assert {m["name"]: m["kind"] for m in top["modules"]} == {"api": "folder", "billing": "folder"}
+    assert top["dependencies"] == [{"from": "src/api/", "to": "src/billing/", "calls": 1}]
+    inner = runtime.client.get(base, params={"path": "src/api/routes.ts"}).json()
+    assert inner["level"] == "file"
+    assert {m["name"] for m in inner["modules"]} == {"handle", "check"}
+    assert inner["dependencies"] == [{"from": "handle", "to": "check", "calls": 1}]
+    handle = next(m for m in inner["modules"] if m["name"] == "handle")
+    assert handle["calls_out"] == 2 and handle["start_line"] == 3
+    assert runtime.client.get(base, params={"path": "nada/"}).status_code == 404

@@ -7,6 +7,7 @@ import {
   type LucideIcon,
   Map as MapIcon,
   MessageSquare,
+  Network,
   ScanSearch,
   ScrollText,
   Settings,
@@ -36,6 +37,7 @@ import {
 import { AskScreen } from "@/screens/AskScreen"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
+import { ArchitectureScreen } from "@/screens/ArchitectureScreen"
 import { MapScreen } from "@/screens/MapScreen"
 import { RulesScreen } from "@/screens/RulesScreen"
 import { SettingsScreen } from "@/screens/SettingsScreen"
@@ -86,6 +88,7 @@ const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
       { path: "/preguntar", label: "Preguntar", icon: MessageSquare },
       { path: "/reglas", label: "Reglas", icon: BookOpen },
       { path: "/mapa", label: "Mapa", icon: MapIcon },
+      { path: "/arquitectura", label: "Arquitectura", icon: Network },
     ],
   },
   {
@@ -269,6 +272,10 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                 element={needsProject((c) => <RulesScreen key={c.id} {...props(c)} />)}
               />
               <Route path="/mapa/:entityId?" element={needsProject((c) => <MapScreen key={c.id} {...props(c)} />)} />
+              <Route
+                path="/arquitectura"
+                element={needsProject((c) => <ArchitectureScreen key={c.id} {...props(c)} />)}
+              />
               <Route
                 path="/impacto/:analysisId?"
                 element={needsProject((c) => <ImpactScreen key={c.id} {...props(c)} />)}

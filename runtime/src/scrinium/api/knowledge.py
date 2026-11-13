@@ -17,6 +17,7 @@ from scrinium.application.analysis.consistency import merge_rules
 from scrinium.application.analysis.extraction import write_statement_now
 from scrinium.application.ingestion import sources
 from scrinium.application.knowledge import views
+from scrinium.application.knowledge.architecture import architecture
 from scrinium.application.knowledge.common import KnowledgeError, KnowledgeNotFoundError
 from scrinium.application.knowledge.content import RuleContent
 from scrinium.application.knowledge.corrections import correct_rule
@@ -250,6 +251,18 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
                 "verification_status": updated.verification_status.value,
                 "reviewed_by": updated.reviewed_by,
             }
+
+    @router.get("/api/v1/projects/{project_id}/architecture")
+    def project_architecture(
+        project_id: uuid.UUID, path: Annotated[str, Query(max_length=1000)] = ""
+    ) -> dict[str, Any]:
+        """One level of the code as modules with dependencies (stage 3, phase D)."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            try:
+                return architecture(session, project.id, path)
+            except LookupError:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
 
     @router.get("/api/v1/projects/{project_id}/symbols/{symbol_id}/neighbours")
     def symbol_neighbours(project_id: uuid.UUID, symbol_id: uuid.UUID) -> dict[str, Any]:

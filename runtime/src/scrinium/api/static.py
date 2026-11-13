@@ -14,7 +14,7 @@ from starlette.types import Scope
 
 # The same routes the UI defines in ui/src/App.tsx.
 UI_ROUTES: Final = frozenset(
-    {"preguntar", "reglas", "mapa", "impacto", "versiones", "fuentes", "ajustes"}
+    {"preguntar", "reglas", "mapa", "arquitectura", "impacto", "versiones", "fuentes", "ajustes"}
 )
 
 
