@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from scrinium.domain.enums import ItemLifecycle
 from scrinium.domain.paths import is_test_path
-from scrinium.infrastructure.code_structure import language_for
+from scrinium.infrastructure.code_structure import NESTED, language_for
 from scrinium.infrastructure.sqlite.models import (
     CodeSymbol,
     ContentChunk,
@@ -507,7 +507,7 @@ def select_candidates(
     for symbol in session.scalars(
         select(CodeSymbol).where(
             CodeSymbol.source_revision_id.in_([r.id for r in code]),
-            CodeSymbol.kind != "class",
+            CodeSymbol.kind.not_in(("class", NESTED)),
         )
     ):
         symbols[symbol.source_revision_id].append(symbol)

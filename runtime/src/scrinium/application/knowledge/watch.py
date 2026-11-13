@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from scrinium.domain.enums import EntityLifecycle, EntityType, ItemLifecycle
+from scrinium.infrastructure.code_structure import NESTED
 from scrinium.infrastructure.sqlite.models import (
     BusinessRuleVersion,
     CodeSymbol,
@@ -72,7 +73,8 @@ def _symbols(session: Session, revision_id: uuid.UUID) -> list[CodeSymbol]:
     return list(
         session.scalars(
             select(CodeSymbol).where(
-                CodeSymbol.source_revision_id == revision_id, CodeSymbol.kind != "class"
+                CodeSymbol.source_revision_id == revision_id,
+                CodeSymbol.kind.not_in(("class", NESTED)),
             )
         )
     )

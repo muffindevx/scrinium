@@ -28,7 +28,11 @@ import tree_sitter_typescript
 from tree_sitter import Language, Node, Parser
 
 # 2: a member call keeps its receiver ("usersRepository.findByEmail"), for phase B.
-STRUCTURE_VERSION: Final = "2"
+# 3: functions nested inside others are kept too, as kind "nested" (stage 3).
+STRUCTURE_VERSION: Final = "3"
+# A function inside another: rule extraction and rule watch keep working on the top-level ones;
+# the call graph, the rule's function and its relationships use these too.
+NESTED: Final = "nested"
 MAX_CALLS: Final = 200
 
 _GRAMMARS: Final[dict[str, Callable[[], Any]]] = {
@@ -88,7 +92,7 @@ _NAMES: Final = frozenset(
 
 @dataclass(frozen=True)
 class Symbol:
-    kind: str  # "function", "method" or "class"
+    kind: str  # "function", "method", "class" or "nested"
     name: str
     qualified_name: str
     start_line: int
@@ -183,11 +187,35 @@ def _symbol(node: Node, kind: str, name: str, scope: list[str]) -> Symbol:
     )
 
 
+def _function_name(node: Node) -> str:
+    if node.type in _FUNCTIONS:
+        return _name_of(node)
+    if node.type in _DECLARATORS:
+        value = node.child_by_field_name("value")
+        if value is not None and value.type in _FUNCTION_VALUES:
+            return _name_of(node)
+    return ""
+
+
+def _nested(outer: Node, scope: list[str]) -> list[Symbol]:
+    """The named functions inside `outer`, at any depth, as kind "nested"."""
+    found: list[Symbol] = []
+    stack: list[tuple[Node, list[str]]] = [(child, scope) for child in reversed(outer.children)]
+    while stack:
+        node, inner = stack.pop()
+        name = _function_name(node)
+        if name:
+            found.append(_symbol(node, NESTED, name, inner))
+            inner = [*inner, name]
+        stack.extend((child, inner) for child in reversed(node.children))
+    return found
+
+
 def parse_symbols(path: str, text: str) -> list[Symbol]:
     """Symbols of a code file; an empty list if the language is not supported.
 
-    It does not enter function bodies: a nested function is part of the one that
-    contains it. It does enter classes, to find their methods.
+    It enters classes, to find their methods. Functions inside a function are kept as kind
+    "nested", with the outer name in their qualified name (`start.scareAdult`).
     """
     language = language_for(path)
     if language is None:
@@ -201,12 +229,14 @@ def parse_symbols(path: str, text: str) -> list[Symbol]:
             name = _name_of(node)
             if name:
                 symbols.append(_symbol(node, "method" if scope else "function", name, scope))
+                symbols += _nested(node, [*scope, name])
             continue
         if node.type in _DECLARATORS:
             value = node.child_by_field_name("value")
             name = _name_of(node)
             if value is not None and value.type in _FUNCTION_VALUES and name:
                 symbols.append(_symbol(node, "method" if scope else "function", name, scope))
+                symbols += _nested(value, [*scope, name])
                 continue
         inner = scope
         if node.type in _CLASSES:

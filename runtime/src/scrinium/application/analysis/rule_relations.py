@@ -7,7 +7,8 @@ Reasons, strongest first; a pair of rules gets only the strongest one:
   counts: a game wrapped in one closure would otherwise relate everything); in a function over
   150 lines, only if they are within 40 lines;
 - `calls:<hops>`: A's function calls B's, directly or through up to 3 hops (`depends_on`,
-  from A to B). Only for ordinary functions, never a huge wrapper;
+  from A to B). Only for ordinary functions, never a huge wrapper; never through a utility
+  called from more than 10 functions; the 6 closest per rule;
 - business code relates rules through data: `constraint:<name>` (the same constraint in the
   schema and in a migration), `permission:<name>` (the same permission required in several
   places) and `same_data:<table>` (rules on the same table, as a chain in code order).
@@ -21,7 +22,7 @@ evidence; after each extraction the ones with a basis are rebuilt, and a person'
 import logging
 import re
 import uuid
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from itertools import combinations, pairwise
 from typing import Final
@@ -33,7 +34,7 @@ from scrinium.application.knowledge.common import KnowledgeError
 from scrinium.application.knowledge.entities import latest_version
 from scrinium.application.knowledge.evidence import add_relationship
 from scrinium.domain.enums import EntityType, EvidenceType, RelationType
-from scrinium.infrastructure.code_structure import all_functions, smallest_holding
+from scrinium.infrastructure.code_structure import NESTED, all_functions, smallest_holding
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
     CodeEdge,
@@ -48,6 +49,10 @@ from scrinium.infrastructure.sqlite.models import (
 logger = logging.getLogger("scrinium.relations")
 
 MAX_HOPS: Final = 3
+# Called from more functions than this, a function is a utility (see `_reached`).
+_MAX_CALLERS: Final = 10
+# The closest dependencies of a rule that are kept: beyond, a rule's list stops being read.
+_MAX_DEPENDENCIES: Final = 6
 # A function this long is a wrapper (a whole game in one closure): no call chains through it.
 _WRAPPER_LINES: Final = 150
 # A constraint or permission many rules share says little about how two of them relate.
@@ -153,7 +158,9 @@ def _rules(session: Session, project_id: uuid.UUID) -> list[_Rule]:
                 select(CodeSymbol)
                 .where(
                     CodeSymbol.source_revision_id == revision_id,
-                    CodeSymbol.kind != "class",
+                    # Call chains only between top-level functions: between nested ones, a hand
+                    # review found 20 of 20 wrong (closures of one game loop calling each other).
+                    CodeSymbol.kind.not_in(("class", NESTED)),
                     CodeSymbol.start_line <= start,
                     CodeSymbol.end_line >= end,
                     CodeSymbol.end_line - CodeSymbol.start_line <= _WRAPPER_LINES,
@@ -193,6 +200,11 @@ def _reached(session: Session, project_id: uuid.UUID) -> dict[uuid.UUID, dict[uu
     ):
         if edge.to_symbol_id is not None:
             calls[edge.from_symbol_id].add(edge.to_symbol_id)
+    # A utility many functions call (`tileAt`, `el`) connects everything to everything: chains
+    # neither go through it nor end in it.
+    callers = Counter(target for targets in calls.values() for target in targets)
+    hubs = {target for target, count in callers.items() if count > _MAX_CALLERS}
+    calls = {source: targets - hubs for source, targets in calls.items()}
     reached: dict[uuid.UUID, dict[uuid.UUID, int]] = {}
     for start in calls:
         hops = {start: 0}
@@ -254,11 +266,16 @@ def derive(session: Session, project_id: uuid.UUID) -> list[Relation]:
             if not long or b.first_line - a.first_line <= _NEAR_LINES:
                 offer(a, b, "same_function", name)
     reached = _reached(session, project_id)
-    for symbol, callers in by_symbol.items():
+    dependencies: dict[uuid.UUID, list[tuple[int, _Rule, _Rule]]] = defaultdict(list)
+    for symbol, holders in by_symbol.items():
         for target, hops in reached.get(symbol, {}).items():
-            for a in callers:
+            for a in holders:
                 for b in by_symbol.get(target, []):
-                    offer(a, b, "calls", str(hops), depends=True)
+                    dependencies[a.entity_id].append((hops, a, b))
+    for found in dependencies.values():
+        closest = sorted(found, key=lambda item: (item[0], str(item[2].entity_id)))
+        for hops, a, b in closest[:_MAX_DEPENDENCIES]:
+            offer(a, b, "calls", str(hops), depends=True)
     for kind, attribute in (("constraint", "constraints"), ("permission", "permissions")):
         grouped: dict[str, list[_Rule]] = defaultdict(list)
         for rule in rules:
