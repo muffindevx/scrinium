@@ -391,11 +391,35 @@ export interface Relationship {
   basis: string | null
 }
 
-export interface RuleDetail extends Omit<RuleSummary, "latest_version" | "evidence_count"> {
+/** Another rule (or entity) as the impact of a rule names it. */
+export interface ImpactedEntity {
+  id: string
+  name: string
+  entity_type: string
+  criticality: RuleSummary["criticality"] | null
+  tickets: string[]
+  basis: string | null
+}
+
+/** N7: what may break if this rule changes, read backwards from the relationships. */
+export interface RuleImpact {
+  /** The same decision written in another place: it has to change with this one. */
+  same_decision: ImpactedEntity[]
+  /** Rules whose code calls this one's, directly or through others (`via`), closest first. */
+  dependents: (ImpactedEntity & { depth: number; via: { id: string; name: string } | null })[]
+  truncated: boolean
+  max_depth: number
+  /** Processes with a step on this rule or on one of those rules (`through`). */
+  flows: { id: string; name: string; through: string[] }[]
+  tickets: string[]
+}
+
+export interface RuleDetail extends Omit<RuleSummary, "latest_version" | "evidence_count" | "citation"> {
   owner_ref: string | null
   versions: RuleVersion[]
   entity_evidence: Evidence[]
   relationships: Relationship[]
+  impact: RuleImpact
 }
 
 export interface Finding {

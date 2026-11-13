@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from scrinium.application.knowledge.common import get_in_project
 from scrinium.application.knowledge.entities import FLOW_ENTITY_TYPES, latest_version, list_versions
 from scrinium.application.knowledge.evidence import evidence_profile
+from scrinium.application.knowledge.rule_impact import rule_impact
 from scrinium.domain.enums import (
     EntityLifecycle,
     EvidenceType,
@@ -278,6 +279,8 @@ def rule_detail(session: Session, project: Project, entity_id: uuid.UUID) -> dic
         "review_reason": entity.review_reason,
         "entity_evidence": [_evidence(r) for r in entity_evidence],
         "relationships": _neighbours(session, entity.id),
+        "tickets": list(entity.metadata_.get("tickets", [])),
+        "impact": rule_impact(session, project, entity),
     }  # fmt: skip
 
 

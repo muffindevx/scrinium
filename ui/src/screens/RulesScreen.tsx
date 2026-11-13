@@ -18,6 +18,7 @@ import {
   type NewRule,
   type RuleCategory,
   type RuleDetail,
+  type RuleImpact,
   type Relationship,
   type RuleSummary,
   type RuleVersion,
@@ -413,6 +414,17 @@ function reviewEdge(status: VerificationStatus | undefined) {
  * cited lines. Three answers: it is valid, it is real but badly worded (rewrite it), or it is
  * not a rule.
  */
+function TicketChip({ ticket }: { ticket: string }) {
+  return (
+    <span
+      className="rounded-full border px-2 py-0.5 font-mono text-xs text-muted-foreground"
+      title="Ticket nombrado por el commit que introdujo o cambió estas líneas"
+    >
+      {ticket}
+    </span>
+  )
+}
+
 function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSummary; onChanged: () => void }) {
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(rule.summary)
@@ -456,13 +468,7 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
           {!(status && VERIFIED_STATUSES.includes(status)) && " (propuesta)"}
         </span>
         {rule.tickets.map((ticket) => (
-          <span
-            key={ticket}
-            className="rounded-full border px-2 py-0.5 font-mono text-xs text-muted-foreground"
-            title="Ticket nombrado por el commit que introdujo o cambió estas líneas"
-          >
-            {ticket}
-          </span>
+          <TicketChip key={ticket} ticket={ticket} />
         ))}
       </div>
       <Link
@@ -917,6 +923,113 @@ function relationLabel(relation: Relationship): string {
   return "Relacionada con:"
 }
 
+function ImpactName({ id, name, entityType }: { id: string; name: string; entityType: string }) {
+  return entityType === "business_rule" ? (
+    <Link to={`/reglas/${id}`} className="font-medium hover:underline">
+      {name}
+    </Link>
+  ) : (
+    <span className="font-medium">{name}</span>
+  )
+}
+
+/** N7: what may break if this rule changes. The relationships, read backwards; no AI. */
+function RuleImpactSection({ impact }: { impact: RuleImpact }) {
+  const nothing =
+    impact.same_decision.length === 0 && impact.dependents.length === 0 && impact.flows.length === 0
+  return (
+    <Section
+      title="Si cambia esta regla"
+      description="Lo que depende de ella según el código: las reglas cuyo código llama al suyo, los procesos que pasan por ellas y sus tickets. Sin IA."
+    >
+      <div className="grid gap-4 text-sm">
+        {impact.tickets.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-muted-foreground">Tickets que la nombran:</span>
+            {impact.tickets.map((ticket) => (
+              <TicketChip key={ticket} ticket={ticket} />
+            ))}
+          </div>
+        )}
+        {nothing && <Muted>Según el código, ninguna otra regla ni proceso depende de esta.</Muted>}
+        {impact.same_decision.length > 0 && (
+          <div className="grid gap-1">
+            <Eyebrow>La misma decisión en otro sitio: cambia con ella</Eyebrow>
+            <ul className="grid gap-1">
+              {impact.same_decision.map((other) => (
+                <li key={other.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <ImpactName id={other.id} name={other.name} entityType={other.entity_type} />
+                  {other.tickets.map((ticket) => (
+                    <TicketChip key={ticket} ticket={ticket} />
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {impact.dependents.length > 0 && (
+          <div className="grid gap-1">
+            <Eyebrow>Dependen de ella ({impact.dependents.length}{impact.truncated ? "+" : ""})</Eyebrow>
+            <ul className="grid gap-1">
+              {impact.dependents.map((dependent) => (
+                <li key={dependent.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <ImpactName id={dependent.id} name={dependent.name} entityType={dependent.entity_type} />
+                  {dependent.criticality && (
+                    <span
+                      className={cn(
+                        "text-xs",
+                        dependent.criticality === "high" || dependent.criticality === "critical"
+                          ? "font-medium text-foreground"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      importancia {CRITICALITY_LABELS[dependent.criticality].toLowerCase()}
+                    </span>
+                  )}
+                  {dependent.via && (
+                    <span className="text-xs text-muted-foreground">
+                      a través de{" "}
+                      <Link to={`/reglas/${dependent.via.id}`} className="hover:underline">
+                        {dependent.via.name}
+                      </Link>
+                    </span>
+                  )}
+                  {dependent.tickets.map((ticket) => (
+                    <TicketChip key={ticket} ticket={ticket} />
+                  ))}
+                </li>
+              ))}
+            </ul>
+            {impact.truncated && (
+              <Muted>Hay más; se muestran las más cercanas (hasta {impact.max_depth} pasos).</Muted>
+            )}
+          </div>
+        )}
+        {impact.flows.length > 0 && (
+          <div className="grid gap-1">
+            <Eyebrow>Procesos afectados</Eyebrow>
+            <ul className="grid gap-1">
+              {impact.flows.map((flow) => (
+                <li key={flow.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <Link to={`/mapa/${flow.id}`} className="font-medium hover:underline">
+                    {flow.name}
+                  </Link>
+                  <span className="text-xs text-muted-foreground">por {flow.through.join(", ")}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+function shownAsImpact(relation: Relationship): boolean {
+  const kind = (relation.basis ?? "").split(":", 1)[0]
+  return (relation.relation_type === "depends_on" && relation.direction === "in") || kind === "duplicate" || kind === "constraint"
+}
+
 const isPending = (rule: RuleDetail | null) =>
   rule?.versions[0]?.content?.statement.startsWith(PENDING_STATEMENT_PREFIX) ?? false
 
@@ -947,6 +1060,8 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
   const pending = isPending(rule)
   if (error) return <ErrorText>{error}</ErrorText>
   if (rule === null) return <Muted>Cargando…</Muted>
+  // What depends on this rule, and the same decision elsewhere, are under "Si cambia esta regla".
+  const relationships = rule.relationships.filter((relation) => !shownAsImpact(relation))
   return (
     <>
       <Link to="/reglas" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
@@ -981,13 +1096,13 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
           )}
         </div>
       )}
-      {rule.relationships.length > 0 && (
+      {relationships.length > 0 && (
         <Section
           title="Relaciones"
           description="Lo que el código dice de cómo se relaciona esta regla con otras. Sale del análisis del código, sin IA."
         >
           <ul className="grid gap-2 text-sm">
-            {rule.relationships.map((relation) => (
+            {relationships.map((relation) => (
               <li key={relation.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="text-muted-foreground">{relationLabel(relation)}</span>
                 {relation.other.entity_type === "business_rule" ? (
@@ -1002,6 +1117,7 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
           </ul>
         </Section>
       )}
+      <RuleImpactSection impact={rule.impact} />
       {rule.versions.map((version, index) => (
         <VersionBlock
           key={version.id}
