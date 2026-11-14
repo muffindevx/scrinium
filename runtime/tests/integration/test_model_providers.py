@@ -45,6 +45,10 @@ def client(runtime: Runtime) -> Client:
     return Client(runtime)
 
 
+def _mode(state: dict[str, Any]) -> tuple[str, list[Any]]:
+    return state["ai_mode"], state["consents"]
+
+
 def _provider(runtime: Runtime, provider_id: str) -> ModelProvider:
     with runtime.database.session() as session:
         provider = session.get_one(ModelProvider, uuid.UUID(provider_id))
@@ -138,7 +142,7 @@ def test_retention_is_shown_only_as_checked() -> None:
 def test_a_project_sends_nothing_until_someone_consents(client: Client) -> None:
     provider = client.register()
     project = f"/api/v1/projects/{client.project_id}/ai"
-    assert client.send("GET", project) == {"ai_mode": "local_only", "consents": []}
+    assert _mode(client.send("GET", project)) == ("local_only", [])
     notice = client.send(
         "GET", f"/api/v1/model-providers/{provider['id']}/retention?model=claude-opus-5-5"
     )
@@ -172,7 +176,7 @@ def test_a_project_sends_nothing_until_someone_consents(client: Client) -> None:
 
     revoked = client.send("DELETE", f"{project}/consents")
     assert revoked == {"revoked": 2, "ai_mode": "local_only"}
-    assert client.send("GET", project) == {"ai_mode": "local_only", "consents": []}
+    assert _mode(client.send("GET", project)) == ("local_only", [])
     with client.runtime.database.session() as session:
         # Revoked consents are kept: they record what was allowed, and when. The first one, its
         # remainder after rule statements moved to GLM, and GLM's.
@@ -194,7 +198,7 @@ def test_removing_a_provider_deletes_its_key_and_revokes_its_consents(client: Cl
     client.send("DELETE", f"/api/v1/model-providers/{provider['id']}", None, 204)
     assert ref is not None and client.runtime.environment.secret_store.get(ref) is None
     state = client.send("GET", f"/api/v1/projects/{client.project_id}/ai")
-    assert state == {"ai_mode": "local_only", "consents": []}
+    assert _mode(state) == ("local_only", [])
     with client.runtime.database.session() as session:
         kept = session.scalars(select(AiConsent)).one()
         # The record still says where data could go, even without the provider.

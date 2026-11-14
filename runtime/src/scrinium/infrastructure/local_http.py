@@ -54,6 +54,8 @@ class Outcome(StrEnum):
     INVALID = "invalid"
     # No answer: network, timeout, rate limit or a server error.
     UNAVAILABLE = "unavailable"
+    # Not sent: the project's monthly token budget for remote models is spent (T6).
+    BUDGET = "budget"
     # Anything else the model got wrong.
     ERROR = "error"
 

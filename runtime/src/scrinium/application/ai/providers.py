@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai.retention import notice_for
+from scrinium.application.ingestion.policy import validate_user_patterns
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
 from scrinium.domain.enums import AiMode, AiTask, AuditResult, ProviderKind
 from scrinium.infrastructure.secret_store import SecretStore, SecretStoreUnavailableError
@@ -185,12 +186,42 @@ def describe_consent(consent: AiConsent) -> dict[str, Any]:
     }  # fmt: skip
 
 
-def project_ai(session: Session, project: Project) -> dict[str, Any]:
-    """The project's mode and the consents in force: which task goes to which model."""
+def project_ai(session: Session, project: Project, spent: int = 0) -> dict[str, Any]:
+    """The project's mode, the consents in force (which task goes to which model), the paths it
+    never sends and its monthly token budget with what this month used."""
     return {
         "ai_mode": project.ai_mode.value,
         "consents": [describe_consent(consent) for consent in _active(session, project)],
+        "never_send": list(project.never_send or []),
+        "remote_token_budget": project.remote_token_budget,
+        "remote_tokens_this_month": spent,
     }
+
+
+MAX_BUDGET: Final = 10_000_000_000
+
+
+def update_settings(
+    session: Session,
+    project: Project,
+    never_send: list[str],
+    remote_token_budget: int | None,
+    request_id: str | None = None,
+) -> None:
+    """Paths never sent (source exclusion patterns) and the monthly budget (None: no limit)."""
+    try:
+        patterns = validate_user_patterns(never_send)
+    except ValueError:
+        raise ProviderError("invalid_patterns") from None
+    if remote_token_budget is not None and not 0 <= remote_token_budget <= MAX_BUDGET:
+        raise ProviderError("invalid_budget")
+    project.never_send = patterns
+    project.remote_token_budget = remote_token_budget
+    record_audit(
+        session, project.workspace_id, "ai_settings.update", "project", str(project.id),
+        AuditResult.SUCCESS, request_id,
+        {"never_send": len(patterns), "budget": remote_token_budget},
+    )  # fmt: skip
 
 
 def give_consent(

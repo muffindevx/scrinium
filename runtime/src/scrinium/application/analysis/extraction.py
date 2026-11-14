@@ -80,7 +80,12 @@ from scrinium.domain.enums import (
 )
 from scrinium.domain.paths import is_test_path
 from scrinium.infrastructure.llm.base import ChatMessage, TokenUsage, key_line
-from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus
+from scrinium.infrastructure.local_http import (
+    InvalidOutputError,
+    ModelError,
+    ModelStatus,
+    Outcome,
+)
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
@@ -795,6 +800,12 @@ def extract_rules(
             rules, dropped = interpret(completion.text, group)
             verdicts = interpret_verdicts(completion.text, group)
         except ModelError as error:
+            if error.outcome is Outcome.BUDGET:
+                # T6: the month's remote budget is spent. Nothing was sent; this batch and the
+                # rest stay queued for when there is budget again (or the task goes local).
+                result["batches"] -= 1
+                result["remote_budget_spent"] = True
+                break
             # The same reasons from every provider (ADR-010): length, refused, invalid…
             reason = error.outcome.value
             logger.warning("extraction_batch_failed run=%s outcome=%s", run_id, reason)
@@ -831,6 +842,8 @@ def extract_rules(
     failed = result["batches_failed"]
     if stopped:
         status = AnalysisStatus.CANCELLED
+    elif result.get("remote_budget_spent"):
+        status = AnalysisStatus.PARTIAL
     # A split attempt is not a result: nothing came out if every remaining half failed too.
     elif failed and failed + result["batches_split"] == result["batches"]:
         status = AnalysisStatus.FAILED
@@ -844,7 +857,11 @@ def extract_rules(
         result["rules_with_tickets_checked"] = label_rules(database, project_id)
         # Stage 3, phase C: how the rules relate, from the code.
         result["relationships"] = rebuild_relations(database, project_id)
-    finish_run(database, run_id, status, result, "model_error" if failed and not stopped else None)
+    code = (
+        "remote_budget_spent" if result.get("remote_budget_spent")
+        else "model_error" if failed and not stopped else None
+    )  # fmt: skip
+    finish_run(database, run_id, status, result, code)
 
 
 def _write_statements(
@@ -878,6 +895,11 @@ def _write_statements(
             result["tokens"] = usage.as_dict()
             statements = detail.interpret_details(completion.text, group)
         except ModelError as error:
+            if error.outcome is Outcome.BUDGET:
+                # T6: stop without yielding, or the statements would be queued again at once.
+                result["batches"] -= 1
+                result["remote_budget_spent"] = True
+                return False
             logger.warning("detail_batch_failed run=%s outcome=%s", run_id, error.outcome.value)
             result["batches_failed"] += 1
             continue
@@ -934,7 +956,13 @@ def statements_task(
             else AnalysisStatus.FAILED if failed == result["batches"]
             else AnalysisStatus.PARTIAL
         )  # fmt: skip
-        finish_run(database, run_id, status, result, "model_error" if failed else None)
+        if result.get("remote_budget_spent"):
+            status = AnalysisStatus.PARTIAL
+        code = (
+            "remote_budget_spent" if result.get("remote_budget_spent")
+            else "model_error" if failed else None
+        )  # fmt: skip
+        finish_run(database, run_id, status, result, code)
         if yielded:
             # Another analysis was waiting: it goes first and the statements follow.
             with database.session() as session:

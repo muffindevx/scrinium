@@ -112,6 +112,8 @@ class Rule:
     title: str
     statement: str
     code: str = ""
+    # The cited file, for the record of what was sent and "never send" paths (ADR-010).
+    path: str = ""
 
 
 def _rules(session: Session, project_id: uuid.UUID) -> list[Rule]:
@@ -226,6 +228,7 @@ def _mark(session: Session, entity_id: uuid.UUID, reason: str) -> None:
 
 def _code_of(session: Session, rule: Rule) -> str:
     for evidence, revision in _cited_code(session, rule):
+        rule.path = str(evidence.locator.get("path", ""))
         start = int(evidence.locator.get("start_line", 1))
         end = min(int(evidence.locator.get("end_line", start)), start + MAX_CODE_LINES - 1)
         lines = (revision.text_content or "").split("\n")[start - 1 : end]
@@ -279,8 +282,8 @@ def review_consistency(
         nonce = secrets.token_hex(8)
         try:
             # Rules travel by title and statement, with their code: the record names them.
-            sent = [r.title for pair in batch_pairs for r in pair] + [r.title for r in batch_rules]
-            with sending([f"regla: {title}" for title in sent]):
+            sent = [r for pair in batch_pairs for r in pair] + batch_rules
+            with sending([r.path or f"regla: {r.title}" for r in sent]):
                 completion = model.complete(
                     _messages(batch_pairs, batch_rules, nonce), MAX_OUTPUT_TOKENS, REVIEW_SCHEMA
                 )

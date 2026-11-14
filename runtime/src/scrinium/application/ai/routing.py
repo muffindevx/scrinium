@@ -11,14 +11,21 @@ Deciding on every call means a consent revoked during an extraction takes effect
 batch: the rest runs locally. A failure is the task's failed batch, never a retry elsewhere.
 """
 
+import logging
+import re
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Final
+from datetime import UTC, datetime
+from typing import Any, ClassVar, Final
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from scrinium.application.ai.providers import ProviderError, consent_for_task, provider_key
+from scrinium.application.ingestion.policy import matches_user_pattern
 from scrinium.core.secret_patterns import redact_tokens
 from scrinium.domain.enums import AiTask, ProviderKind
 from scrinium.infrastructure.llm.anthropic_chat import AnthropicChat
@@ -28,7 +35,14 @@ from scrinium.infrastructure.local_http import ModelError, ModelStatus, Outcome
 from scrinium.infrastructure.remote_http import ProviderAuthError
 from scrinium.infrastructure.secret_store import SecretStore
 from scrinium.infrastructure.sqlite.database import Database
-from scrinium.infrastructure.sqlite.models import AiConsent, AiRequest, ModelProvider, Project
+from scrinium.infrastructure.sqlite.models import (
+    AiRequest,
+    ModelProvider,
+    Project,
+    utc_now,
+)
+
+logger = logging.getLogger("scrinium.ai")
 
 MAX_SOURCES: Final = 200
 # Reasoning depth for models that take it (Claude): the rule map is many short classifications.
@@ -53,6 +67,36 @@ def passage(path: str, start: int, end: int) -> str:
     return f"{path}:{start}-{end}" if end != start else f"{path}:{start}"
 
 
+class BudgetExceededError(ModelError):
+    """The project's monthly token budget for remote models is spent: nothing was sent (T6)."""
+
+    outcome: ClassVar[Outcome] = Outcome.BUDGET
+
+
+_PASSAGE: Final = re.compile(r"^(?P<path>.+?):\d+(?:-\d+)?$")
+
+
+def path_of(source: str) -> str:
+    """The file a recorded passage comes from: `src/a.py:3-9` and `src/a.py (diff)` alike."""
+    source = source.removesuffix(" (diff)")
+    match = _PASSAGE.match(source)
+    return match.group("path") if match else source
+
+
+def month_start(now: datetime) -> datetime:
+    return now.astimezone(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def tokens_spent(session: Session, project_id: uuid.UUID, now: datetime) -> int:
+    """Tokens the project's remote requests used this calendar month (UTC), in and out."""
+    total = session.scalar(
+        select(
+            func.coalesce(func.sum(AiRequest.prompt_tokens + AiRequest.completion_tokens), 0)
+        ).where(AiRequest.project_id == project_id, AiRequest.created_at >= month_start(now))
+    )
+    return int(total or 0)
+
+
 @dataclass(frozen=True)
 class _Route:
     consent_id: uuid.UUID
@@ -61,20 +105,30 @@ class _Route:
     host: str
     model: str
     adapter: LLMProvider
+    never_send: tuple[str, ...]
+    budget: int | None
+
+    def keeps_local(self, sources: tuple[str, ...]) -> bool:
+        """True if a passage of this request is in a path the project never sends."""
+        return any(
+            matches_user_pattern(path_of(source), pattern)
+            for source in sources
+            for pattern in self.never_send
+        )
 
 
-AdapterFactory = Callable[[ModelProvider, AiConsent, AiTask, Callable[[], str]], LLMProvider]
+AdapterFactory = Callable[[ModelProvider, str, AiTask, Callable[[], str]], LLMProvider]
 
 
 def build_adapter(
-    provider: ModelProvider, consent: AiConsent, task: AiTask, api_key: Callable[[], str]
+    provider: ModelProvider, model: str, task: AiTask, api_key: Callable[[], str]
 ) -> LLMProvider:
     if provider.kind is ProviderKind.ANTHROPIC:
         return AnthropicChat(
-            provider.name, provider.base_url, consent.model, api_key,
+            provider.name, provider.base_url, model, api_key,
             effort=_EFFORT.get(task, _DEFAULT_EFFORT),
         )  # fmt: skip
-    return RemoteOpenAIChat(provider.name, provider.base_url, consent.model, api_key)
+    return RemoteOpenAIChat(provider.name, provider.base_url, model, api_key)
 
 
 class Router:
@@ -91,7 +145,9 @@ class Router:
     def route(self, project_id: uuid.UUID, task: AiTask) -> _Route | None:
         with self._database.session() as session:
             project = session.get(Project, project_id)
-            consent = None if project is None else consent_for_task(session, project, task)
+            if project is None:
+                return None
+            consent = consent_for_task(session, project, task)
             if consent is None or consent.provider_id is None:
                 return None
             provider = session.get(ModelProvider, consent.provider_id)
@@ -105,11 +161,15 @@ class Router:
                 def api_key(registered: ModelProvider = provider) -> str:
                     return provider_key(store, registered, registered.host)
 
-                self._adapters[key] = self._factory(provider, consent, task, api_key)
+                self._adapters[key] = self._factory(provider, consent.model, task, api_key)
             return _Route(
                 consent.id, project_id, consent.workspace_id, consent.host, consent.model,
-                self._adapters[key],
+                self._adapters[key], tuple(project.never_send or ()), project.remote_token_budget,
             )  # fmt: skip
+
+    def spent(self, project_id: uuid.UUID, now: datetime) -> int:
+        with self._database.session() as session:
+            return tokens_spent(session, project_id, now)
 
     def record(
         self, route: _Route, task: AiTask, messages: list[ChatMessage],
@@ -171,6 +231,15 @@ class TaskModel:
         route = self._route()
         if route is None or self._router is None:
             return self._local.complete(messages, max_tokens, json_schema)
+        if route.keeps_local(_SOURCES.get()):
+            # A path the project never sends: this request runs here, and nothing leaves.
+            logger.info("remote_kept_local project=%s task=%s", self._project_id, self._task.value)
+            return self._local.complete(messages, max_tokens, json_schema)
+        if (
+            route.budget is not None
+            and self._router.spent(self._project_id, utc_now()) >= route.budget
+        ):
+            raise BudgetExceededError
         # Secrets in a format Scrinium knows never leave, whatever passed ingestion.
         sent = [ChatMessage(m.role, redact_tokens(m.content)) for m in messages]
         try:

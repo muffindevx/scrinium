@@ -140,6 +140,11 @@ class Project(Timestamps, Base):
     ai_mode: Mapped[AiMode] = mapped_column(
         _enum(AiMode, "ai_mode"), default=AiMode.LOCAL_ONLY, server_default=AiMode.LOCAL_ONLY.value
     )
+    # Paths indexed and searched here but never sent to a remote model (ADR-010), as source
+    # exclusion patterns: `contracts/`, `*.sql`.
+    never_send: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
+    # Tokens per calendar month (UTC) for remote calls; None: no limit (T6).
+    remote_token_budget: Mapped[int | None] = mapped_column(Integer)
 
 
 class ModelProvider(Timestamps, Base):

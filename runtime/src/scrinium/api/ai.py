@@ -14,11 +14,13 @@ from sqlalchemy.orm import Session
 
 from scrinium.application.ai import providers
 from scrinium.application.ai.providers import ProviderError
+from scrinium.application.ai.routing import build_adapter, tokens_spent
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion import sources
-from scrinium.domain.enums import AiTask, ProviderKind
+from scrinium.application.workspaces import record_audit
+from scrinium.domain.enums import AiTask, AuditResult, ProviderKind
 from scrinium.infrastructure.sqlite.database import Database
-from scrinium.infrastructure.sqlite.models import ModelProvider, Project
+from scrinium.infrastructure.sqlite.models import ModelProvider, Project, utc_now
 
 
 class ProviderBody(BaseModel):
@@ -28,6 +30,19 @@ class ProviderBody(BaseModel):
     kind: ProviderKind
     base_url: str = Field(min_length=1, max_length=500)
     api_key: str = Field(min_length=1, max_length=providers.MAX_KEY_LENGTH, repr=False)
+
+
+class SettingsBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    never_send: list[str] = Field(default_factory=list, max_length=100)
+    remote_token_budget: int | None = Field(default=None, ge=0)
+
+
+class CheckBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(min_length=1, max_length=200)
 
 
 class ConsentBody(BaseModel):
@@ -104,11 +119,53 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
             return providers.retention_notice(provider, model[:200], date.today())
 
+    @router.post("/api/v1/model-providers/{provider_id}/check")
+    def check(provider_id: uuid.UUID, body: CheckBody, request: Request) -> dict[str, Any]:
+        """ "Probar conexión": one short fixed request, nothing from any project."""
+        with database.session() as session:
+            provider = session.get(ModelProvider, provider_id)
+            if provider is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+            session.expunge(provider)
+        if provider.secret_ref is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "key_missing")
+        adapter = build_adapter(
+            provider, body.model.strip(), AiTask.QUESTIONS,
+            lambda: providers.provider_key(store, provider, provider.host),
+        )  # fmt: skip
+        try:
+            result = adapter.check()  # type: ignore[attr-defined]
+        except ProviderError as error:
+            raise _error(error) from None
+        with database.session() as session:
+            record_audit(
+                session, provider.workspace_id, "model_provider.check", "model_provider",
+                str(provider.id), AuditResult.SUCCESS, _request_id(request),
+                {"model": body.model.strip(), "status": result.value},
+            )  # fmt: skip
+        return {"status": result.value}
+
     @router.get("/api/v1/projects/{project_id}/ai")
     def project_ai(project_id: uuid.UUID) -> dict[str, Any]:
         with database.session() as session:
             project = _project(session, project_id)
-            return providers.project_ai(session, project)
+            spent = tokens_spent(session, project.id, utc_now())
+            return providers.project_ai(session, project, spent)
+
+    @router.put("/api/v1/projects/{project_id}/ai/settings")
+    def settings(project_id: uuid.UUID, body: SettingsBody, request: Request) -> dict[str, Any]:
+        """Paths this project never sends to a remote model, and its monthly token budget."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            try:
+                providers.update_settings(
+                    session, project, body.never_send, body.remote_token_budget,
+                    _request_id(request),
+                )  # fmt: skip
+            except ProviderError as error:
+                raise _error(error) from None
+            spent = tokens_spent(session, project.id, utc_now())
+            return providers.project_ai(session, project, spent)
 
     @router.post("/api/v1/projects/{project_id}/ai/consents", status_code=201)
     def consent(project_id: uuid.UUID, body: ConsentBody, request: Request) -> dict[str, Any]:

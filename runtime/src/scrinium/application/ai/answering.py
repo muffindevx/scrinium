@@ -43,7 +43,7 @@ from scrinium.infrastructure.llm.base import (
     key_line,
     provider_name,
 )
-from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus
+from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus, Outcome
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import AnalysisRun, Project, utc_now
 
@@ -325,7 +325,12 @@ def answer_question(
         interpretation = interpret(completion.text, sources)
     except ModelError as error:
         logger.warning("question_failed run=%s type=%s", run_id, type(error).__name__)
-        code = "budget_exceeded" if isinstance(error, OutputBudgetExceededError) else "model_error"
+        code = (
+            "budget_exceeded" if isinstance(error, OutputBudgetExceededError)
+            # T6: the project's monthly budget for remote models is spent; nothing was sent.
+            else "remote_budget_spent" if error.outcome is Outcome.BUDGET
+            else "model_error"
+        )  # fmt: skip
         _finish(database, run_id, AnalysisStatus.FAILED, error=code)
         return
     result = interpretation.result

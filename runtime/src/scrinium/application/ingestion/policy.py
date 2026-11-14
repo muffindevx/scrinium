@@ -143,7 +143,7 @@ def validate_user_patterns(patterns: list[str]) -> list[str]:
     return cleaned
 
 
-def _matches_user_pattern(path: str, pattern: str) -> bool:
+def matches_user_pattern(path: str, pattern: str) -> bool:
     """`docs/` excludes that folder wherever it is; `*.log` matches the path and the name."""
     if pattern.endswith("/"):
         return path.startswith(pattern) or f"/{pattern}" in f"/{path}"
@@ -189,7 +189,7 @@ def check_path(path: str, kind: SourceKind, user_patterns: list[str]) -> Exclusi
         if fnmatch.fnmatchcase(lowered, glob):
             return Exclusion(ExclusionReason.DEFAULT_PATH, glob)
     for pattern in user_patterns:
-        if _matches_user_pattern(path, pattern):
+        if matches_user_pattern(path, pattern):
             return Exclusion(ExclusionReason.USER_PATTERN, pattern)
 
     if kind is SourceKind.FOLDER:

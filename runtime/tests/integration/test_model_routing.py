@@ -8,14 +8,17 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+import pytest
 from sqlalchemy import select
 
 from scrinium.application.ai.routing import Router
+from scrinium.application.analysis import extraction_queue as queue
 from scrinium.application.analysis.extraction import answered_by
 from scrinium.infrastructure.llm.base import ChatMessage, Completion, ModelRefusedError
 from scrinium.infrastructure.local_http import ModelStatus
 from scrinium.infrastructure.sqlite.models import AiRequest, AnalysisRun
 from tests.conftest import ORIGIN, Runtime
+from tests.integration.test_analyses import Api
 from tests.integration.test_questions import GH_TOKEN, _ask, _reply, _setup, repo
 
 __all__ = ["repo"]
@@ -54,7 +57,7 @@ def _remote(runtime: Runtime, reply: str) -> FakeRemote:
     remote = FakeRemote("modelo-remoto", reply)
     runtime.llm.router = Router(
         runtime.database, runtime.environment.secret_store,
-        factory=lambda provider, consent, task, key: remote,
+        factory=lambda provider, model, task, key: remote,
     )  # fmt: skip
     return remote
 
@@ -174,3 +177,107 @@ def test_provenance_names_the_model_that_answered() -> None:
     run = AnalysisRun(model_provider="llama", model_name="llama:qwen3-4b")
     assert answered_by(run, "Nube:modelo-remoto") == ("Nube", "Nube:modelo-remoto")
     assert answered_by(run, None) == ("llama", "llama:qwen3-4b")
+
+
+def _settings(
+    runtime: Runtime, csrf: str, project: str, body: dict[str, Any], code: int = 200
+) -> Any:
+    response = runtime.client.put(
+        f"/api/v1/projects/{project}/ai/settings", json=body,
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf},
+    )  # fmt: skip
+    assert response.status_code == code, response.text
+    return response.json()
+
+
+def test_never_send_paths_keep_that_request_local(runtime: Runtime, repo: Path) -> None:
+    remote = _remote(runtime, _reply(summary="remoto"))
+    runtime.chat.reply = _reply(summary="local")
+    csrf, project = _setup(runtime, repo)
+    _consent(runtime, csrf, project, ["questions"])
+    state = _settings(runtime, csrf, project, {"never_send": ["src/"]})
+    assert state["never_send"] == ["src/"]
+    local_calls = len(runtime.chat.received)
+    # The passages come from src/: the question runs here, and nothing leaves.
+    assert _ask(runtime, csrf, project, "¿Cómo se calcula el total?")["status"] == "completed"
+    assert remote.received == [] and _requests(runtime) == []
+    assert len(runtime.chat.received) == local_calls + 1
+    # Another path does not stop it.
+    _settings(runtime, csrf, project, {"never_send": ["contracts/", "*.sql"]})
+    _ask(runtime, csrf, project, "¿Cómo se calcula el total?")
+    assert len(remote.received) == 1
+
+
+def test_a_spent_budget_sends_nothing(runtime: Runtime, repo: Path) -> None:
+    remote = _remote(runtime, _reply(summary="remoto"))
+    csrf, project = _setup(runtime, repo)
+    _consent(runtime, csrf, project, ["questions"])
+    _settings(runtime, csrf, project, {"remote_token_budget": 1000})
+    _ask(runtime, csrf, project, "¿Cómo se calcula el total?")
+    state = runtime.client.get(f"/api/v1/projects/{project}/ai").json()
+    # 900 in and 30 out: under 1000, so this one went.
+    assert state["remote_tokens_this_month"] == 930 and len(remote.received) == 1
+    _ask(runtime, csrf, project, "¿Cómo se calcula el total?")
+    detail = _ask(runtime, csrf, project, "¿Y los descuentos?")
+    # 1860 spent after the second: the third is refused before sending anything.
+    assert detail["status"] == "failed" and detail["error_summary"] == "remote_budget_spent"
+    assert len(remote.received) == 2 and len(_requests(runtime)) == 2
+
+
+def test_settings_are_checked(runtime: Runtime, repo: Path) -> None:
+    csrf, project = _setup(runtime, repo)
+    assert _settings(runtime, csrf, project, {"remote_token_budget": -1}, 422)["error"] == (
+        "invalid_request"
+    )
+    assert _settings(runtime, csrf, project, {"never_send": [""]}, 422) == {
+        "error": "invalid_patterns"
+    }
+    state = _settings(
+        runtime, csrf, project, {"never_send": ["/contracts/"], "remote_token_budget": 5}
+    )
+    assert state["never_send"] == ["contracts/"] and state["remote_token_budget"] == 5
+
+
+def test_check_sends_one_fixed_request(
+    runtime: Runtime, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    remote = FakeRemote("modelo-remoto", "listo")
+
+    class Checked(FakeRemote):
+        def check(self) -> ModelStatus:
+            self.complete([ChatMessage("user", "Responde solo con la palabra: listo")], 16)
+            return ModelStatus.READY
+
+    checked = Checked("modelo-remoto", "listo")
+    monkeypatch.setattr("scrinium.api.ai.build_adapter", lambda *args: checked)
+    csrf, _project = _setup(runtime, repo)
+    headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf}
+    provider = runtime.client.post("/api/v1/model-providers", headers=headers, json={
+        "name": "Nube", "kind": "openai_compatible", "base_url": "https://api.example.com/v1",
+        "api_key": "sk-nube-0123456789"}).json()  # fmt: skip
+    response = runtime.client.post(
+        f"/api/v1/model-providers/{provider['id']}/check", headers=headers,
+        json={"model": "modelo-remoto"},
+    )  # fmt: skip
+    assert response.json() == {"status": "ready"}
+    assert [[m.content for m in sent] for sent in checked.received] == [
+        ["Responde solo con la palabra: listo"]
+    ]
+    assert remote.received == []
+
+
+def test_a_spent_budget_pauses_extraction_and_keeps_its_queue(runtime: Runtime, repo: Path) -> None:
+    """T6: the rule map stops without sending; its tasks wait for budget, none fail."""
+    remote = _remote(runtime, _reply())
+    api = Api(runtime, repo)
+    csrf = api.headers["X-CSRF-Token"]
+    _consent(runtime, csrf, api.project_id, ["rule_map"])
+    _settings(runtime, csrf, api.project_id, {"remote_token_budget": 0})
+    done = api.read(api.post(f"/api/v1/projects/{api.project_id}/extractions", {})["id"])
+    assert done["status"] == "partial", done
+    assert done["error_summary"] == "remote_budget_spent"
+    assert done["result"]["remote_budget_spent"] is True and done["result"]["batches"] == 0
+    assert remote.received == [] and _requests(runtime) == []
+    with runtime.database.session() as session:
+        left = queue.counts(session, uuid.UUID(api.project_id))
+    assert left["pending"] > 0 and left["failed"] == 0
