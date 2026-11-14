@@ -22,7 +22,13 @@ from scrinium.application.ingestion.policy import validate_user_patterns
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
 from scrinium.domain.enums import AiMode, AiTask, AuditResult, ProviderKind
 from scrinium.infrastructure.secret_store import SecretStore, SecretStoreUnavailableError
-from scrinium.infrastructure.sqlite.models import AiConsent, ModelProvider, Project, utc_now
+from scrinium.infrastructure.sqlite.models import (
+    AiConsent,
+    AiRequest,
+    ModelProvider,
+    Project,
+    utc_now,
+)
 
 MIN_KEY_LENGTH: Final = 8
 MAX_KEY_LENGTH: Final = 4096
@@ -196,6 +202,42 @@ def project_ai(session: Session, project: Project, spent: int = 0) -> dict[str, 
         "remote_token_budget": project.remote_token_budget,
         "remote_tokens_this_month": spent,
     }
+
+
+def remote_destinations(session: Session) -> list[str]:
+    """Each provider some project may send to now, as "name (host)": for the privacy summary."""
+    rows = session.execute(
+        select(AiConsent.provider_name, AiConsent.host)
+        .where(AiConsent.revoked_at.is_(None))
+        .distinct()
+        .order_by(AiConsent.provider_name, AiConsent.host)
+    )
+    return [f"{name} ({host})" for name, host in rows]
+
+
+MAX_REQUESTS: Final = 200
+
+
+def recent_requests(session: Session, project: Project, limit: int = 50) -> list[dict[str, Any]]:
+    """The local record of what this project sent: when, where, which passages, and tokens.
+    Never the content, which stays only in the sources it came from."""
+    rows = session.scalars(
+        select(AiRequest)
+        .where(AiRequest.project_id == project.id)
+        .order_by(AiRequest.created_at.desc())
+        .limit(max(1, min(limit, MAX_REQUESTS)))
+    )
+    return [_describe_request(row) for row in rows]
+
+
+def _describe_request(row: AiRequest) -> dict[str, Any]:
+    return {
+        "id": str(row.id), "task": row.task, "host": row.host, "model": row.model,
+        "answered_by": row.answered_by, "outcome": row.outcome, "sources": list(row.sources),
+        "sent_chars": row.sent_chars, "prompt_tokens": row.prompt_tokens,
+        "cached_tokens": row.cached_tokens, "completion_tokens": row.completion_tokens,
+        "created_at": row.created_at.isoformat(),
+    }  # fmt: skip
 
 
 MAX_BUDGET: Final = 10_000_000_000

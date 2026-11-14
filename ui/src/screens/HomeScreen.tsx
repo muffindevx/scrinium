@@ -75,6 +75,7 @@ const SYNC_POLL_MS = 3000
 export function HomeScreen({
   project,
   status,
+  localOnly = true,
   onProjectCreated,
   drop,
   onDropUsed,
@@ -82,6 +83,7 @@ export function HomeScreen({
 }: {
   project: Project | null
   status: SecurityStatus
+  localOnly?: boolean
   onProjectCreated: (project: Project) => void
   drop: Drop | null
   onDropUsed: () => void
@@ -269,7 +271,11 @@ export function HomeScreen({
               </dd>
             </div>
           </dl>
-          <p className="text-xs text-muted-foreground">Todo se calcula en este equipo. Nada sale de aquí.</p>
+          <p className="text-xs text-muted-foreground">
+            {localOnly
+              ? "Todo se calcula en este equipo. Nada sale de aquí."
+              : "La búsqueda se calcula aquí. Algunas tareas de este proyecto van a un proveedor externo: míralo en Ajustes."}
+          </p>
         </HealthCard>
         <HealthCard
           icon={ScanSearch}

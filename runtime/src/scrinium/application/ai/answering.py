@@ -44,6 +44,7 @@ from scrinium.infrastructure.llm.base import (
     provider_name,
 )
 from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus, Outcome
+from scrinium.infrastructure.remote_http import ProviderAuthError
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import AnalysisRun, Project, utc_now
 
@@ -329,6 +330,10 @@ def answer_question(
             "budget_exceeded" if isinstance(error, OutputBudgetExceededError)
             # T6: the project's monthly budget for remote models is spent; nothing was sent.
             else "remote_budget_spent" if error.outcome is Outcome.BUDGET
+            # A remote provider that rejected the key or is not answering: said apart, since
+            # rewording the question does not help.
+            else "remote_auth" if isinstance(error, ProviderAuthError)
+            else "remote_unavailable" if error.outcome is Outcome.UNAVAILABLE
             else "model_error"
         )  # fmt: skip
         _finish(database, run_id, AnalysisStatus.FAILED, error=code)

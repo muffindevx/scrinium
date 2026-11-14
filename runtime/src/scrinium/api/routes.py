@@ -18,6 +18,7 @@ from scrinium.api.search import build_search_router
 from scrinium.api.sources import build_sources_router
 from scrinium.application import workspaces
 from scrinium.application.ai.answering import QuestionRunner
+from scrinium.application.ai.providers import remote_destinations
 from scrinium.application.ai.service import LlmService
 from scrinium.application.engine import engine_info
 from scrinium.application.environment import LocalEnvironment
@@ -80,13 +81,13 @@ class SecurityStatusResponse(BaseModel):
     runtime: RuntimeStatus
     providers: ProviderStatus
     storage: StorageStatus
-    ai_mode: Literal["local_only"] = "local_only"
+    ai_mode: Literal["local_only", "remote_allowed"] = "local_only"
     connected_sources: int
     limits: list[str]
 
 
 class DataFlowResponse(BaseModel):
-    ai_mode: Literal["local_only"] = "local_only"
+    ai_mode: Literal["local_only", "remote_allowed"] = "local_only"
     remote_ai_providers: list[str]
     outbound_destinations: list[str]
     stored_locally: list[str]
@@ -294,6 +295,7 @@ def build_router(
                 secret_store="available" if backend else "unavailable",
                 secret_store_backend=backend,
             ),
+            ai_mode="remote_allowed" if remote_destinations(db) else "local_only",
             connected_sources=workspaces.count_connections(db, workspaces.local_workspace(db)),
             limits=_limits(environment),
         )
@@ -314,10 +316,13 @@ def build_router(
         )
 
     @router.get("/api/v1/privacy/data-flow")
-    def data_flow() -> DataFlowResponse:
+    def data_flow(db: Db) -> DataFlowResponse:
+        # Embeddings and search never leave; only the tasks a project consented to (ADR-010).
+        remote = remote_destinations(db)
         return DataFlowResponse(
-            remote_ai_providers=[],
-            outbound_destinations=[],
+            ai_mode="remote_allowed" if remote else "local_only",
+            remote_ai_providers=remote,
+            outbound_destinations=remote,
             stored_locally=[
                 "Workspace, proyectos y registro de auditoria, en SQLite",
                 "Texto de los archivos indexados de tus fuentes, en SQLite",

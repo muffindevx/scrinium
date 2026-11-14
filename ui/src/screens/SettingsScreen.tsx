@@ -13,6 +13,7 @@ import {
   type Project,
   type SecurityStatus,
   checkLlm,
+  getDataFlow,
   getEngine,
   getSearchSettings,
   updateProfile,
@@ -22,6 +23,7 @@ import { CODE_THEMES, type CodeThemeId, setCodeTheme } from "@/lib/highlight"
 import { type ThemePreference, setTheme, storedTheme } from "@/lib/theme"
 import { useCodeTheme } from "@/lib/use-code-theme"
 import { PrivacyCard } from "@/screens/PrivacyCard"
+import { RemoteAiSections } from "@/screens/RemoteAiSection"
 import { useErrors } from "@/screens/hooks"
 import { ErrorText, Eyebrow, Muted } from "@/screens/shared"
 
@@ -328,7 +330,11 @@ function PrivacySection({ status, dataFlow }: { status: SecurityStatus; dataFlow
     >
       <dl className="divide-y">
         <InfoRow label="Modo de IA">
-          <StatusBadge tone="verified">Solo local</StatusBadge>
+          {dataFlow.ai_mode === "local_only" ? (
+            <StatusBadge tone="verified">Solo local</StatusBadge>
+          ) : (
+            <StatusBadge tone="attention">Algún proyecto usa un proveedor externo</StatusBadge>
+          )}
         </InfoRow>
         <InfoRow label="Servicios de IA externos">{listOrNone(dataFlow.remote_ai_providers)}</InfoRow>
         <InfoRow label="Envíos fuera del equipo">{listOrNone(dataFlow.outbound_destinations)}</InfoRow>
@@ -371,11 +377,13 @@ export function SettingsScreen({
   onProjectDeleted,
   onWiped,
   onEndSession,
+  onAiChanged,
   onSessionLost,
 }: {
   project: Project | null
   status: SecurityStatus
   dataFlow: DataFlow
+  onAiChanged: () => void
   profileName: string | null
   onProfileSaved: (name: string) => void
   onProjectDeleted: (projectId: string) => void
@@ -383,16 +391,26 @@ export function SettingsScreen({
   onEndSession: () => void
   onSessionLost: (error: unknown) => void
 }) {
+  // What the privacy summary says follows consents given or revoked on this screen.
+  const [flow, setFlow] = useState(dataFlow)
+  const aiChanged = () => {
+    getDataFlow().then(setFlow).catch(onSessionLost)
+    onAiChanged()
+  }
   return (
     <>
-      <PageHeader title="Ajustes" description="El motor de IA, tu perfil, la apariencia, la búsqueda y la privacidad de tus datos." />
+      <PageHeader
+        title="Ajustes"
+        description="El motor de IA, los proveedores externos, tu perfil, la apariencia, la búsqueda y la privacidad de tus datos."
+      />
       <EngineSection status={status} />
+      <RemoteAiSections project={project} onAiChanged={aiChanged} onSessionLost={onSessionLost} />
       <div className="grid gap-6 md:grid-cols-2">
         <ProfileSection name={profileName} onSaved={onProfileSaved} onSessionLost={onSessionLost} />
         <AppearanceSection />
       </div>
       <SearchSection onSessionLost={onSessionLost} />
-      <PrivacySection status={status} dataFlow={dataFlow} />
+      <PrivacySection status={status} dataFlow={flow} />
       <PrivacyCard
         project={project}
         onProjectDeleted={onProjectDeleted}

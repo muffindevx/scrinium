@@ -18,13 +18,15 @@ export interface SecurityStatus {
     secret_store: "available" | "unavailable"
     secret_store_backend: string | null
   }
-  ai_mode: "local_only"
+  ai_mode: AiMode
   connected_sources: number
   limits: string[]
 }
 
+export type AiMode = "local_only" | "remote_allowed"
+
 export interface DataFlow {
-  ai_mode: "local_only"
+  ai_mode: AiMode
   remote_ai_providers: string[]
   outbound_destinations: string[]
   stored_locally: string[]
@@ -794,3 +796,100 @@ export const mergeRules = async (projectId: string, keepId: string, duplicateId:
     merged: string
     evidence_moved: number
   }>
+
+// Remote model providers and each project's consent (ADR-010). The API key is sent once, on
+// registration, and never comes back: only whether there is one and its last characters.
+export type ProviderKind = "openai_compatible" | "anthropic"
+export type AiTask = "questions" | "rule_map" | "rule_statements" | "consistency" | "change_impact"
+
+export interface ModelProvider {
+  id: string
+  name: string
+  kind: ProviderKind
+  base_url: string
+  host: string
+  has_key: boolean
+  key_hint: string | null
+  created_at: string
+}
+
+export interface RetentionNotice {
+  verified: boolean
+  key: string | null
+  notice: string
+  sources: string[]
+  checked_on: string | null
+  stale: boolean
+}
+
+export interface AiConsent {
+  id: string
+  provider_id: string | null
+  provider_name: string
+  host: string
+  model: string
+  tasks: AiTask[]
+  retention: RetentionNotice
+  consented_by: string | null
+  created_at: string
+  revoked_at: string | null
+}
+
+export interface ProjectAi {
+  ai_mode: AiMode
+  consents: AiConsent[]
+  never_send: string[]
+  remote_token_budget: number | null
+  remote_tokens_this_month: number
+}
+
+export interface AiRequestRecord {
+  id: string
+  task: AiTask
+  host: string
+  model: string
+  answered_by: string
+  outcome: string
+  sources: string[]
+  sent_chars: number
+  prompt_tokens: number
+  cached_tokens: number
+  completion_tokens: number
+  created_at: string
+}
+
+export const listModelProviders = () =>
+  getJson<{ providers: ModelProvider[]; keyring: boolean }>("/api/v1/model-providers")
+export const registerModelProvider = async (provider: {
+  name: string
+  kind: ProviderKind
+  base_url: string
+  api_key: string
+}) => (await mutate("/api/v1/model-providers", provider)).json() as Promise<ModelProvider>
+export const removeModelProvider = async (providerId: string) => {
+  await mutate(`/api/v1/model-providers/${providerId}`, undefined, "DELETE")
+}
+export const getRetention = (providerId: string, model: string) =>
+  getJson<RetentionNotice>(
+    `/api/v1/model-providers/${providerId}/retention?model=${encodeURIComponent(model)}`,
+  )
+export const checkModelProvider = async (providerId: string, model: string) =>
+  (await mutate(`/api/v1/model-providers/${providerId}/check`, { model })).json() as Promise<{
+    status: "ready" | "model_missing" | "unavailable"
+  }>
+export const getProjectAi = (projectId: string) => getJson<ProjectAi>(`/api/v1/projects/${projectId}/ai`)
+export const updateProjectAiSettings = async (
+  projectId: string,
+  settings: { never_send: string[]; remote_token_budget: number | null },
+) => (await mutate(`/api/v1/projects/${projectId}/ai/settings`, settings, "PUT")).json() as Promise<ProjectAi>
+export const giveAiConsent = async (
+  projectId: string,
+  consent: { provider_id: string; model: string; tasks: AiTask[]; retention_acknowledged: boolean },
+) => (await mutate(`/api/v1/projects/${projectId}/ai/consents`, consent)).json() as Promise<AiConsent>
+export const revokeAiConsents = async (projectId: string) =>
+  (await mutate(`/api/v1/projects/${projectId}/ai/consents`, undefined, "DELETE")).json() as Promise<{
+    revoked: number
+    ai_mode: AiMode
+  }>
+export const listAiRequests = async (projectId: string) =>
+  (await getJson<{ requests: AiRequestRecord[] }>(`/api/v1/projects/${projectId}/ai/requests`)).requests

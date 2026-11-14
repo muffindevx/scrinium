@@ -1,5 +1,6 @@
 import {
   BookOpen,
+  Cloud,
   FolderGit2,
   House,
   LockKeyhole,
@@ -24,11 +25,13 @@ import { EmptyState } from "@/components/page"
 import {
   type DataFlow,
   type Project,
+  type ProjectAi,
   type SecurityStatus,
   SessionRequiredError,
   type Workspace,
   getDataFlow,
   getProfile,
+  getProjectAi,
   getProjects,
   getSecurityStatus,
   getWorkspace,
@@ -180,12 +183,27 @@ function Sidebar() {
   )
 }
 
-export function PrivacyPill() {
+/** Says what really leaves: local unless the current project consented to a remote model. */
+export function PrivacyPill({ ai }: { ai: ProjectAi | null }) {
+  const remote = ai?.consents ?? []
+  if (remote.length === 0) {
+    return (
+      <span className="inline-flex h-7 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium whitespace-nowrap text-emerald-600 dark:text-emerald-400">
+        <LockKeyhole className="size-3.5" aria-hidden="true" />
+        <span className="max-sm:sr-only">100% local y privado</span>
+      </span>
+    )
+  }
+  const names = [...new Set(remote.map((consent) => consent.provider_name))].join(", ")
   return (
-    <span className="inline-flex h-7 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium text-emerald-600 dark:text-emerald-400">
-      <LockKeyhole className="size-3.5" aria-hidden="true" />
-      100% local y privado
-    </span>
+    <NavLink
+      to="/ajustes"
+      title={`Este proyecto envía tareas a ${names}. Ver o cambiar en Ajustes.`}
+      className="inline-flex h-7 items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium whitespace-nowrap text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
+    >
+      <Cloud className="size-3.5" aria-hidden="true" />
+      <span className="max-sm:sr-only">IA externa: {names}</span>
+    </NavLink>
   )
 }
 
@@ -194,6 +212,17 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
   const project =
     data.projects.find((candidate) => candidate.id === projectId) ?? data.projects[0] ?? null
   const sessionLost = useCallback((error: unknown) => setView(errorState(error)), [setView])
+  // The current project's AI mode, for the privacy pill; only ever shown for that project.
+  const [loadedAi, setLoadedAi] = useState<{ projectId: string; ai: ProjectAi } | null>(null)
+  const projectKey = project?.id ?? null
+  const projectAi = loadedAi?.projectId === projectKey ? loadedAi.ai : null
+  const loadAi = useCallback(() => {
+    if (!projectKey) return
+    getProjectAi(projectKey)
+      .then((ai) => setLoadedAi({ projectId: projectKey, ai }))
+      .catch(() => setLoadedAi(null))
+  }, [projectKey])
+  useEffect(loadAi, [loadAi])
   const [drop, clearDrop] = useFolderDrop()
   const navigate = useNavigate()
   // A folder dropped anywhere opens the Home screen with its path ready to read, once per drop:
@@ -259,7 +288,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
           )}
         </div>
         <div className="flex items-center gap-2">
-          <PrivacyPill />
+          <PrivacyPill ai={projectAi} />
           <Button variant="ghost" size="icon-sm" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={endSession}>
             <LogOut />
           </Button>
@@ -277,6 +306,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                     key={project?.id ?? "none"}
                     project={project}
                     status={data.status}
+                    localOnly={(projectAi?.consents.length ?? 0) === 0}
                     onProjectCreated={addProject}
                     drop={drop}
                     onDropUsed={clearDrop}
@@ -336,6 +366,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                       window.location.assign("/fuentes")
                     }}
                     onEndSession={endSession}
+                    onAiChanged={loadAi}
                     onSessionLost={sessionLost}
                   />
                 }

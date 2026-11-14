@@ -152,6 +152,13 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
             spent = tokens_spent(session, project.id, utc_now())
             return providers.project_ai(session, project, spent)
 
+    @router.get("/api/v1/projects/{project_id}/ai/requests")
+    def requests(project_id: uuid.UUID, limit: int = 50) -> dict[str, Any]:
+        """What this project sent to remote models, newest first (never the content)."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            return {"requests": providers.recent_requests(session, project, limit)}
+
     @router.put("/api/v1/projects/{project_id}/ai/settings")
     def settings(project_id: uuid.UUID, body: SettingsBody, request: Request) -> dict[str, Any]:
         """Paths this project never sends to a remote model, and its monthly token budget."""

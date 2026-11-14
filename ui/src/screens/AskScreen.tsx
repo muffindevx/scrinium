@@ -20,6 +20,7 @@ import {
   rebuildIndex,
   searchProject,
 } from "@/lib/api"
+import { ERROR_LABELS } from "@/lib/labels"
 import { POLL_MS } from "@/screens/hooks"
 import { ErrorText, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
@@ -28,6 +29,9 @@ const FAILURES: Record<string, string> = {
   model_error: "El modelo no devolvió una respuesta válida. Prueba a reformular la pregunta.",
   budget_exceeded:
     "El modelo agotó su límite razonando antes de responder. Prueba con una pregunta más concreta.",
+  remote_budget_spent: ERROR_LABELS.remote_budget_spent,
+  remote_auth: ERROR_LABELS.remote_auth,
+  remote_unavailable: ERROR_LABELS.remote_unavailable,
   interrupted: "Se interrumpió al cerrar Scrinium.",
   internal_error: "Error interno.",
 }

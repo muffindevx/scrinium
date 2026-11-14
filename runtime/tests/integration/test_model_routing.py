@@ -123,6 +123,27 @@ def test_a_consented_task_goes_remote_redacted_and_recorded(runtime: Runtime, re
     assert request.sent_chars > 0 and GH_TOKEN not in json.dumps(request.sources)
 
 
+def test_the_record_and_the_privacy_summary_say_what_left(runtime: Runtime, repo: Path) -> None:
+    _remote(runtime, _reply(summary="remoto"))
+    csrf, project = _setup(runtime, repo)
+    client = runtime.client
+    assert client.get("/api/v1/privacy/data-flow").json()["ai_mode"] == "local_only"
+    _consent(runtime, csrf, project, ["questions"])
+    flow = client.get("/api/v1/privacy/data-flow").json()
+    assert flow["ai_mode"] == "remote_allowed"
+    assert flow["remote_ai_providers"] == ["Nube (api.example.com)"]
+    assert client.get("/api/v1/system/security-status").json()["ai_mode"] == "remote_allowed"
+
+    _ask(runtime, csrf, project, "¿Cómo se calcula el total?")
+    [entry] = client.get(f"/api/v1/projects/{project}/ai/requests").json()["requests"]
+    assert (entry["task"], entry["host"], entry["outcome"]) == (
+        "questions", "api.example.com", "completed",
+    )  # fmt: skip
+    assert any(source.startswith("src/billing.py:") for source in entry["sources"])
+    # Passages and counts only: never what was sent.
+    assert not {"content", "messages", "text"} & set(entry)
+
+
 def test_a_failure_is_recorded_and_revoking_brings_the_task_home(
     runtime: Runtime, repo: Path
 ) -> None:
