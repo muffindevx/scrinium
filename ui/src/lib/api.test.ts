@@ -70,9 +70,9 @@ describe("api", () => {
       Response.json({ csrf_token: "t" }),
       new Response(null, { status: 204 }),
     )
-    await deleteSource("abc", true)
+    await deleteSource("abc", true, true)
     const [path, init] = fetchMock.mock.calls[1]
-    expect(path).toBe("/api/v1/sources/abc?delete_citing=true")
+    expect(path).toBe("/api/v1/sources/abc?delete_citing=true&delete_reviewed=true")
     expect(init?.method).toBe("DELETE")
     expect(init?.headers).toEqual({ "X-CSRF-Token": "t" })
   })

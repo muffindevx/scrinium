@@ -138,6 +138,7 @@ function SourceRow({
 }) {
   const [impact, setImpact] = useState<DeletionImpact | null>(null)
   const [deleteCiting, setDeleteCiting] = useState(true)
+  const [deleteReviewed, setDeleteReviewed] = useState(true)
   const citing = impact ? impact.citing_questions + impact.citing_analyses : 0
   const askImpact = () => {
     getDeletionImpact(source.id).then(setImpact).catch(onError)
@@ -182,9 +183,21 @@ function SourceRow({
             {plural(impact.releases, "release", "releases")}.
             {impact.entities_to_delete > 0 &&
               ` También ${plural(impact.entities_to_delete, "regla que propuso", "reglas que propuso")} el LLM solo a partir de esta fuente.`}
-            {impact.entities_to_review > 0 &&
-              ` ${plural(impact.entities_to_review, "regla se conserva, marcada", "reglas se conservan, marcadas")} para revisar.`}
+            {impact.entities_to_review - impact.entities_reviewed_here > 0 &&
+              ` ${plural(impact.entities_to_review - impact.entities_reviewed_here, "regla que también cita otras fuentes se conserva, marcada", "reglas que también citan otras fuentes se conservan, marcadas")} para revisar.`}
           </p>
+          {impact.entities_reviewed_here > 0 && (
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={deleteReviewed}
+                onChange={(event) => setDeleteReviewed(event.target.checked)}
+              />
+              Borrar también{" "}
+              {plural(impact.entities_reviewed_here, "regla revisada o escrita por una persona", "reglas revisadas o escritas por personas")}{" "}
+              que solo citan esta fuente (si no, se conservan marcadas para revisar)
+            </label>
+          )}
           {citing > 0 && (
             <label className="flex items-center gap-2">
               <input
@@ -207,7 +220,9 @@ function SourceRow({
               size="sm"
               variant="destructive"
               disabled={busy}
-              onClick={() => run(deleteSource(source.id, citing > 0 && deleteCiting))}
+              onClick={() =>
+                run(deleteSource(source.id, citing > 0 && deleteCiting, impact.entities_reviewed_here > 0 && deleteReviewed))
+              }
             >
               <Trash2 data-icon="inline-start" />
               Borrar fuente
@@ -233,6 +248,8 @@ export function SourcesCard({
   const [sources, setSources] = useState<Source[]>([])
   const [kind, setKind] = useState<SourceKind>("git_repository")
   const [path, setPath] = useState("")
+  // A repository's address on a server (https, ssh, git@…) instead of a folder of this machine.
+  const looksLikeUrl = /^(https?:\/\/|ssh:\/\/|git@|git:\/\/)/i.test(path.trim())
   const [patterns, setPatterns] = useState("")
   const [preview, setPreview] = useState<SourcePreview | null>(null)
   const [previewedInput, setPreviewedInput] = useState<SourceRequest | null>(null)
@@ -344,15 +361,30 @@ export function SourcesCard({
             </TabsList>
           </Tabs>
           <div className="grid gap-1.5">
-            <Label htmlFor="source-path">Ruta de la carpeta</Label>
+            <Label htmlFor="source-path">
+              {kind === "git_repository" ? "Ruta de la carpeta del proyecto" : "Ruta de la carpeta de documentos"}
+            </Label>
             <Input
               id="source-path"
               required
               maxLength={4096}
-              placeholder="/home/tu-usuario/proyecto"
+              placeholder={
+                kind === "git_repository" ? "/home/tu-usuario/repos/mi-aplicacion" : "/home/tu-usuario/Documentos/especificaciones"
+              }
               value={path}
               onChange={(event) => setPath(event.target.value)}
             />
+            {looksLikeUrl && (
+              <p role="alert" className="text-xs text-amber-700 dark:text-amber-400">
+                Eso es la dirección del repositorio en un servidor. Escribe la ruta de la carpeta del proyecto en este
+                equipo, por ejemplo /home/tu-usuario/repos/mi-aplicacion.
+              </p>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {kind === "git_repository"
+                ? "La carpeta de tu proyecto en este equipo, que use Git (tiene una carpeta .git). Scrinium lee lo confirmado en la rama actual; no se conecta a GitHub ni a ningún otro servidor."
+                : "Una carpeta con documentos de texto (Markdown, .txt, reStructuredText, AsciiDoc), leída tal como está en el disco."}
+            </p>
           </div>
           <div className="grid gap-1.5">
             <Label htmlFor="source-patterns">Exclusiones extra (una por línea, opcional)</Label>

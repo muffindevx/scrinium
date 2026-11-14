@@ -119,6 +119,7 @@ def test_sdk_errors_map_to_the_contract(
         chat.complete(MESSAGES, 64)
     assert raised.value.outcome is outcome
     assert KEY not in str(raised.value) and raised.value.__cause__ is None
+    assert KEY not in getattr(raised.value, "detail", "")
 
 
 def test_the_real_sdk_uses_only_the_key_it_is_given(monkeypatch: pytest.MonkeyPatch) -> None:

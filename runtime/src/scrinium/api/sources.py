@@ -245,14 +245,19 @@ def build_sources_router(
 
     @router.delete("/api/v1/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
     def delete_source(
-        source_id: uuid.UUID, request: Request, delete_citing: bool = False
+        source_id: uuid.UUID,
+        request: Request,
+        delete_citing: bool = False,
+        delete_reviewed: bool = False,
     ) -> Response:
         # Deletes rows and vectors and purges the disk. With delete_citing, also the questions and
-        # analyses that cite it (see GET .../deletion-impact).
+        # analyses that cite it; with delete_reviewed, also the reviewed rules only it backs
+        # (see GET .../deletion-impact).
         with _http_errors():
             erasure.delete_source(
-                database, runner.indexer, source_id, _request_id(request), delete_citing
-            )
+                database, runner.indexer, source_id, _request_id(request), delete_citing,
+                delete_reviewed,
+            )  # fmt: skip
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @router.get("/api/v1/sources/{source_id}/deletion-impact")

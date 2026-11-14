@@ -52,6 +52,8 @@ _UUID: Final = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 class EntityFate:
     delete: set[uuid.UUID]
     review: set[uuid.UUID]
+    # Of `review`: rules a person wrote or reviewed whose only evidence is in these revisions.
+    reviewed_here: frozenset[uuid.UUID] = frozenset()
 
 
 def _without_human_involvement(session: Session, entity_id: uuid.UUID) -> bool:
@@ -80,8 +82,13 @@ def _without_human_involvement(session: Session, entity_id: uuid.UUID) -> bool:
     )
 
 
-def entity_fate(session: Session, revision_ids: Select[uuid.UUID]) -> EntityFate:
-    """Which entities would be deleted, and which flagged, if those revisions disappear."""
+def entity_fate(
+    session: Session, revision_ids: Select[uuid.UUID], delete_reviewed: bool = False
+) -> EntityFate:
+    """Which entities would be deleted, and which flagged, if those revisions disappear.
+
+    Rules backed elsewhere too are always kept, flagged. A rule backed only here goes with
+    them if no person wrote or reviewed it; with `delete_reviewed`, even if one did."""
     cited = select(EvidenceRecord.target_entity_id).where(
         EvidenceRecord.source_revision_id.in_(revision_ids)
     )
@@ -104,7 +111,17 @@ def entity_fate(session: Session, revision_ids: Select[uuid.UUID]) -> EntityFate
         for entity_id in affected - elsewhere
         if _without_human_involvement(session, entity_id)
     }
-    return EntityFate(removable, affected - removable)
+    reviewed_here = frozenset(
+        entity_id for entity_id in affected - elsewhere - removable if _is_rule(session, entity_id)
+    )
+    if delete_reviewed:
+        removable |= reviewed_here
+    return EntityFate(removable, affected - removable, reviewed_here)
+
+
+def _is_rule(session: Session, entity_id: uuid.UUID) -> bool:
+    entity = session.get(KnowledgeEntity, entity_id)
+    return entity is not None and entity.entity_type is EntityType.BUSINESS_RULE
 
 
 def delete_entities(session: Session, entity_ids: Iterable[uuid.UUID]) -> int:
@@ -174,12 +191,14 @@ def delete_entities(session: Session, entity_ids: Iterable[uuid.UUID]) -> int:
     return deleted.rowcount  # type: ignore[attr-defined, no-any-return]
 
 
-def forget_revisions(session: Session, revision_ids: Select[uuid.UUID]) -> dict[str, int]:
+def forget_revisions(
+    session: Session, revision_ids: Select[uuid.UUID], delete_reviewed: bool = False
+) -> dict[str, int]:
     """Deletes the evidence of those revisions and applies to each entity what it needs.
 
     Call before deleting the revisions.
     """
-    fate = entity_fate(session, revision_ids)
+    fate = entity_fate(session, revision_ids, delete_reviewed)
     entities_deleted = delete_entities(session, fate.delete)
     evidence = select(EvidenceRecord.id).where(EvidenceRecord.source_revision_id.in_(revision_ids))
     versions = {

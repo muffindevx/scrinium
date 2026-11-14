@@ -197,11 +197,16 @@ def source_references(session: Session, connection: SourceConnection) -> set[str
 
 
 def delete_source(
-    session: Session, source_id: uuid.UUID, request_id: str | None, delete_citing: bool = False
+    session: Session,
+    source_id: uuid.UUID,
+    request_id: str | None,
+    delete_citing: bool = False,
+    delete_reviewed: bool = False,
 ) -> dict[str, int]:
     """Deletes the source and everything derived: files, revisions, sync history,
     evidence citing it, releases, and extracted rules that relied on it alone.
-    With `delete_citing`, also the questions and analyses that cite it."""
+    With `delete_citing`, also the questions and analyses that cite it; with `delete_reviewed`,
+    also the rules a person wrote or reviewed whose only evidence is in it."""
     connection = _connection(session, source_id)
     running = select(SyncRun.id).where(
         SyncRun.source_connection_id == connection.id, SyncRun.status.in_(_ACTIVE)
@@ -216,7 +221,7 @@ def delete_source(
     delete_chunks_of_source(session, connection.id)
     delete_symbols_of_source(session, connection.id)
     delete_tasks_of_revisions(session, source_revision_ids(connection.id))
-    summary.update(forget_revisions(session, source_revision_ids(connection.id)))
+    summary.update(forget_revisions(session, source_revision_ids(connection.id), delete_reviewed))
     summary["releases_deleted"] = forget_releases(session, connection.id)
     session.execute(
         update(SourceItem)

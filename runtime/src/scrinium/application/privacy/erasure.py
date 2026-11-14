@@ -109,6 +109,9 @@ def source_deletion_impact(session: Session, source_id: uuid.UUID) -> dict[str, 
         ),
         "entities_to_delete": len(fate.delete),
         "entities_to_review": len(fate.review),
+        # Of those, rules a person wrote or reviewed that only this source backs: they can go
+        # too, if the person says so (`delete_reviewed`).
+        "entities_reviewed_here": len(fate.reviewed_here),
         "citing_questions": questions or 0,
         "citing_analyses": len(citing) - (questions or 0),
     }
@@ -126,9 +129,12 @@ def delete_source(
     source_id: uuid.UUID,
     request_id: str | None,
     delete_citing: bool,
+    delete_reviewed: bool = False,
 ) -> dict[str, int]:
     with database.session() as session:
-        summary = sources.delete_source(session, source_id, request_id, delete_citing)
+        summary = sources.delete_source(
+            session, source_id, request_id, delete_citing, delete_reviewed
+        )
     # After committing: if it fails, orphan vectors remain, which search discards.
     indexer.delete_source(source_id)
     database.purge()

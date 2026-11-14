@@ -17,16 +17,14 @@ from typing import Any, Final
 
 from scrinium.infrastructure.llm.base import ChatMessage, Completion, check_request
 from scrinium.infrastructure.llm.openai_compatible import json_schema_format, parse_chat_completion
-from scrinium.infrastructure.local_http import ModelError, ModelStatus
+from scrinium.infrastructure.local_http import ModelStatus
 from scrinium.infrastructure.remote_http import (
-    ProviderAuthError,
     ProviderRequestError,
     RemoteHttpsClient,
 )
 
 _TIMEOUT_SECONDS: Final = 300
 _STATUS_TIMEOUT_SECONDS: Final = 15
-_STATUS_PROMPT: Final = [ChatMessage("user", "Responde solo con la palabra: listo")]
 
 
 class RemoteOpenAIChat:
@@ -59,16 +57,6 @@ class RemoteOpenAIChat:
     def status(self) -> ModelStatus:
         """No request: asking a paid provider every few seconds would spend tokens. Whether it
         answers is known from `check()` ("Probar conexión") and from each task's batches."""
-        return ModelStatus.READY
-
-    def check(self) -> ModelStatus:
-        """A one-word request: whether the host, the key and the model answer."""
-        try:
-            self.complete(_STATUS_PROMPT, 16)
-        except (ProviderAuthError, ProviderRequestError):
-            return ModelStatus.MODEL_MISSING
-        except ModelError:
-            return ModelStatus.UNAVAILABLE
         return ModelStatus.READY
 
     def _body(

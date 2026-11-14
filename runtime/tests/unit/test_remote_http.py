@@ -95,6 +95,9 @@ def test_statuses_map_to_the_contract(
     assert raised.value.outcome is outcome
     # Never the body, which may quote the request or the key.
     assert KEY not in str(raised.value) and raised.value.__cause__ is None
+    if isinstance(raised.value, ProviderRequestError):
+        # The provider's message is kept for "Probar conexión", with the key taken out.
+        assert raised.value.detail == "clave [REDACTADO] rechazada"
 
 
 @pytest.mark.parametrize(

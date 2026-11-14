@@ -30,12 +30,11 @@ from scrinium.infrastructure.remote_http import (
     ProviderAuthError,
     ProviderRequestError,
     check_https_url,
+    error_detail,
 )
 
 _TIMEOUT_SECONDS: Final = 300
 _RETRIES: Final = 2
-_STATUS_PROMPT: Final = [ChatMessage("user", "Responde solo con la palabra: listo")]
-
 ClientFactory = Callable[..., Any]
 
 
@@ -83,20 +82,10 @@ class AnthropicChat:
         """No request: it would spend tokens. See `check()`."""
         return ModelStatus.READY
 
-    def check(self) -> ModelStatus:
-        """A one-word request: whether the host, the key and the model answer."""
-        try:
-            self.complete(_STATUS_PROMPT, 16)
-        except (ProviderAuthError, ProviderRequestError):
-            return ModelStatus.MODEL_MISSING
-        except ModelError:
-            return ModelStatus.UNAVAILABLE
-        return ModelStatus.READY
-
     def _send(self, request: dict[str, Any]) -> Any:
+        key = self._api_key()
         client = self._factory(
-            api_key=self._api_key(), base_url=self._base_url, max_retries=_RETRIES,
-            timeout=_TIMEOUT_SECONDS,
+            api_key=key, base_url=self._base_url, max_retries=_RETRIES, timeout=_TIMEOUT_SECONDS,
         )  # fmt: skip
         try:
             return client.messages.create(**request)
@@ -107,7 +96,9 @@ class AnthropicChat:
         except anthropic.APIStatusError as error:
             if error.status_code >= 500:
                 raise ProviderUnavailableError from None
-            raise ProviderRequestError(error.status_code) from None
+            raise ProviderRequestError(
+                error.status_code, *error_detail(error.body, (key,))
+            ) from None
         except (anthropic.APIConnectionError, anthropic.APITimeoutError):
             raise ProviderUnavailableError from None
         except anthropic.AnthropicError:

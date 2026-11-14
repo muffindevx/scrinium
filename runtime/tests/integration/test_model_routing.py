@@ -15,7 +15,8 @@ from scrinium.application.ai.routing import Router
 from scrinium.application.analysis import extraction_queue as queue
 from scrinium.application.analysis.extraction import answered_by
 from scrinium.infrastructure.llm.base import ChatMessage, Completion, ModelRefusedError
-from scrinium.infrastructure.local_http import ModelStatus
+from scrinium.infrastructure.local_http import ModelStatus, ProviderUnavailableError
+from scrinium.infrastructure.remote_http import ProviderAuthError, ProviderRequestError
 from scrinium.infrastructure.sqlite.models import AiCacheEntry, AiRequest, AnalysisRun
 from tests.conftest import ORIGIN, Runtime
 from tests.integration.test_analyses import Api
@@ -266,13 +267,7 @@ def test_check_sends_one_fixed_request(
     runtime: Runtime, repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     remote = FakeRemote("modelo-remoto", "listo")
-
-    class Checked(FakeRemote):
-        def check(self) -> ModelStatus:
-            self.complete([ChatMessage("user", "Responde solo con la palabra: listo")], 16)
-            return ModelStatus.READY
-
-    checked = Checked("modelo-remoto", "listo")
+    checked = FakeRemote("modelo-remoto", "listo")
     monkeypatch.setattr("scrinium.api.ai.build_adapter", lambda *args: checked)
     csrf, _project = _setup(runtime, repo)
     headers = {"Origin": ORIGIN, "X-CSRF-Token": csrf}
@@ -283,7 +278,11 @@ def test_check_sends_one_fixed_request(
         f"/api/v1/model-providers/{provider['id']}/check", headers=headers,
         json={"model": "modelo-remoto"},
     )  # fmt: skip
-    assert response.json() == {"status": "ready"}
+    assert response.json() == {
+        "status": "ready",
+        "reason": "ok",
+        "answered_by": "Nube:modelo-remoto",
+    }
     assert [[m.content for m in sent] for sent in checked.received] == [
         ["Responde solo con la palabra: listo"]
     ]
@@ -386,3 +385,25 @@ def test_the_estimate_says_what_an_extraction_would_send_and_changes_nothing(
     local = runtime.client.get(url).json()
     assert local["remote_batches"] == 0 and local["local_batches"] == estimate["batches"]
     assert local["input_tokens"] == 0
+
+
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (ProviderAuthError(), "key_rejected"),
+        (ProviderRequestError(404, "not_found_error", "model: claude-x"), "model_not_found"),
+        (ProviderRequestError(400, "invalid_request_error", "effort: no admitido"),
+         "request_rejected"),
+        (ProviderUnavailableError(), "unavailable"),
+    ],
+)  # fmt: skip
+def test_check_says_which_part_failed(error: Exception, reason: str) -> None:
+    from scrinium.application.ai.connection import check_connection
+
+    remote = FakeRemote("m", "")
+    remote.fail = error
+    result = check_connection(remote)
+    assert result["reason"] == reason
+    if isinstance(error, ProviderRequestError):
+        assert (result["http_status"], result["error_type"]) == (error.status, error.kind)
+        assert result["detail"] == error.detail

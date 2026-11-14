@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai import providers
+from scrinium.application.ai.connection import check_connection
 from scrinium.application.ai.providers import ProviderError
 from scrinium.application.ai.routing import build_adapter, tokens_spent
 from scrinium.application.environment import LocalEnvironment
@@ -136,16 +137,17 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
             lambda: providers.provider_key(store, provider, provider.host),
         )  # fmt: skip
         try:
-            result = adapter.check()  # type: ignore[attr-defined]
+            result = check_connection(adapter)
         except ProviderError as error:
             raise _error(error) from None
         with database.session() as session:
             record_audit(
                 session, provider.workspace_id, "model_provider.check", "model_provider",
                 str(provider.id), AuditResult.SUCCESS, _request_id(request),
-                {"model": body.model.strip(), "status": result.value},
+                {"model": body.model.strip(), "status": result["status"],
+                 "reason": result["reason"], "http_status": result.get("http_status")},
             )  # fmt: skip
-        return {"status": result.value}
+        return result
 
     @router.get("/api/v1/projects/{project_id}/ai")
     def project_ai(project_id: uuid.UUID) -> dict[str, Any]:

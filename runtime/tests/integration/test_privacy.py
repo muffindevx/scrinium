@@ -81,6 +81,8 @@ def test_source_deletion_drops_extracted_rules_and_marks_the_rest(api: Api) -> N
     impact = client.get(f"/api/v1/sources/{api.source_id}/deletion-impact").json()
     assert impact["entities_to_delete"] == 1
     assert impact["entities_to_review"] == 1
+    # The human rule cites only this source: it could go too, if asked.
+    assert impact["entities_reviewed_here"] == 1
     assert impact["citing_questions"] == 1
     assert impact["files"] == 3 and impact["revisions"] == 3
 
@@ -114,6 +116,25 @@ def test_source_deletion_drops_extracted_rules_and_marks_the_rest(api: Api) -> N
     )
     with api.runtime.database.session() as session:
         assert session.get_one(KnowledgeEntity, human).review_reason is None
+
+
+def test_source_deletion_can_also_take_the_reviewed_rules_it_alone_backs(
+    api: Api,
+) -> None:
+    api.runtime.chat.reply = _extraction_reply(_rule("Regla extraida"))
+    api.post(f"/api/v1/projects/{api.project_id}/extractions", {})
+    api.rule("billing.human", "Escrita por una persona.")
+    response = api.runtime.client.delete(
+        f"/api/v1/sources/{api.source_id}", params={"delete_reviewed": "true"},
+        headers=api.headers,
+    )  # fmt: skip
+    assert response.status_code == 204, response.text
+    with api.runtime.database.session() as session:
+        assert session.scalars(select(KnowledgeEntity)).all() == []
+        audit = session.scalars(
+            select(AuditEvent.metadata_).where(AuditEvent.action == "source.delete")
+        ).one()
+        assert audit["entities_deleted"] == 2
 
 
 def test_deleting_a_project_needs_its_key_and_leaves_others_alone(api: Api) -> None:

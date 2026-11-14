@@ -201,9 +201,10 @@ export const createSource = async (projectId: string, source: SourceRequest) =>
   }>
 export const syncSource = async (sourceId: string) =>
   (await mutate(`/api/v1/sources/${sourceId}/sync`)).json() as Promise<SyncRun>
-export const deleteSource = async (sourceId: string, deleteCiting = false) => {
+export const deleteSource = async (sourceId: string, deleteCiting = false, deleteReviewed = false) => {
+  const query = new URLSearchParams({ delete_citing: String(deleteCiting), delete_reviewed: String(deleteReviewed) })
   await mutate(
-    `/api/v1/sources/${sourceId}?${new URLSearchParams({ delete_citing: String(deleteCiting) })}`,
+    `/api/v1/sources/${sourceId}?${query}`,
     undefined,
     "DELETE",
   )
@@ -684,6 +685,8 @@ export interface DeletionImpact {
   evidence: number
   entities_to_delete: number
   entities_to_review: number
+  /** Of `entities_to_review`: rules a person wrote or reviewed that only this source backs. */
+  entities_reviewed_here: number
   citing_questions: number
   citing_analyses: number
 }
@@ -904,10 +907,16 @@ export const getRetention = (providerId: string, model: string) =>
   getJson<RetentionNotice>(
     `/api/v1/model-providers/${providerId}/retention?model=${encodeURIComponent(model)}`,
   )
+export interface ProviderCheck {
+  status: "ready" | "model_missing" | "unavailable"
+  reason: "ok" | "key_rejected" | "model_not_found" | "request_rejected" | "unavailable" | "no_room" | "no_answer"
+  answered_by?: string
+  http_status?: number
+  error_type?: string
+  detail?: string
+}
 export const checkModelProvider = async (providerId: string, model: string) =>
-  (await mutate(`/api/v1/model-providers/${providerId}/check`, { model })).json() as Promise<{
-    status: "ready" | "model_missing" | "unavailable"
-  }>
+  (await mutate(`/api/v1/model-providers/${providerId}/check`, { model })).json() as Promise<ProviderCheck>
 export const getProjectAi = (projectId: string) => getJson<ProjectAi>(`/api/v1/projects/${projectId}/ai`)
 export const updateProjectAiSettings = async (
   projectId: string,

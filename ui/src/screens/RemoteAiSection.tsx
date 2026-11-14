@@ -4,6 +4,7 @@ import { InfoRow, Section } from "@/components/page"
 import { StatusBadge } from "@/components/status"
 import { Button } from "@/components/ui/button"
 import { Input, Label, Textarea } from "@/components/ui/input"
+import { InfoPopover } from "@/components/ui/info-popover"
 import { Select } from "@/components/ui/select"
 import {
   type AiConsent,
@@ -12,6 +13,7 @@ import {
   type ModelProvider,
   type Project,
   type ProjectAi,
+  type ProviderCheck,
   type ProviderKind,
   type RetentionNotice,
   checkModelProvider,
@@ -60,11 +62,15 @@ const OUTCOME_LABELS: Record<string, { label: string; tone: "verified" | "attent
   error: { label: "Error", tone: "discarded" },
 }
 
-const CHECK_LABELS = {
-  ready: "Responde",
-  model_missing: "Rechazó la clave o el modelo",
-  unavailable: "No responde",
-} as const
+const CHECK_LABELS: Record<ProviderCheck["reason"], string> = {
+  ok: "Responde",
+  key_rejected: "Rechazó la clave: revísala o vuelve a registrar el proveedor",
+  model_not_found: "No encuentra ese modelo, o tu clave no tiene acceso a él",
+  request_rejected: "Rechazó la petición",
+  unavailable: "No responde ahora",
+  no_room: "No le bastó el espacio de respuesta",
+  no_answer: "No dio una respuesta válida",
+}
 
 function tokens(value: number) {
   return value.toLocaleString("es")
@@ -79,20 +85,20 @@ function useDebounced<T>(value: T, ms: number): T {
   return debounced
 }
 
-/** What the provider says it keeps, read before consenting (ADR-010). */
-function RetentionBox({ name, notice }: { name: string; notice: RetentionNotice }) {
+function RetentionBadge({ notice }: { notice: RetentionNotice }) {
+  if (!notice.verified) return <StatusBadge tone="attention">Sin verificar</StatusBadge>
   return (
-    <div className="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">Qué guarda {name}</span>
-        {notice.verified ? (
-          <StatusBadge tone={notice.stale ? "attention" : "verified"}>
-            {notice.stale ? "Comprobado hace más de 6 meses" : `Comprobado el ${notice.checked_on}`}
-          </StatusBadge>
-        ) : (
-          <StatusBadge tone="attention">Sin verificar</StatusBadge>
-        )}
-      </div>
+    <StatusBadge tone={notice.stale ? "attention" : "verified"}>
+      {notice.stale ? "Comprobado hace más de 6 meses" : `Comprobado el ${notice.checked_on}`}
+    </StatusBadge>
+  )
+}
+
+/** What the provider says it keeps, read before consenting (ADR-010), in a popover. */
+function RetentionDetails({ notice }: { notice: RetentionNotice }) {
+  return (
+    <>
+      <RetentionBadge notice={notice} />
       <p className="whitespace-pre-line">{notice.notice}</p>
       {notice.sources.length > 0 && (
         <ul className="grid gap-0.5 text-xs text-muted-foreground">
@@ -103,8 +109,19 @@ function RetentionBox({ name, notice }: { name: string; notice: RetentionNotice 
           ))}
         </ul>
       )}
-    </div>
+    </>
   )
+}
+
+// Hosts whose own API Scrinium speaks; any other provider is reached through its
+// OpenAI-compatible endpoint, which nearly all of them offer.
+function kindFor(url: string): ProviderKind {
+  try {
+    const host = new URL(url).hostname
+    return host === "anthropic.com" || host.endsWith(".anthropic.com") ? "anthropic" : "openai_compatible"
+  } catch {
+    return "openai_compatible"
+  }
 }
 
 function ProvidersSection({
@@ -201,7 +218,27 @@ function ProvidersSection({
               <Input id="provider-name" required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="provider-kind">Tipo de API</Label>
+              <span className="flex items-center gap-1">
+                <Label htmlFor="provider-kind">Tipo de API</Label>
+                <InfoPopover label="Qué tipo de API elegir" title="Qué tipo de API elegir">
+                  <p>
+                    Es el formato en que Scrinium habla con el proveedor, no la marca del modelo. Se elige solo al
+                    escribir la dirección.
+                  </p>
+                  <p>
+                    <strong>Compatible con OpenAI</strong> es el formato que ofrecen casi todos: DeepSeek, GLM (Z.ai),
+                    Mistral, Groq, OpenRouter, Together y muchos más. Su documentación lo dice como «OpenAI
+                    compatible» o muestra una dirección que termina en <code>/v1</code> con <code>/chat/completions</code>.
+                  </p>
+                  <p>
+                    <strong>Anthropic</strong> es solo para Claude, con su API propia.
+                  </p>
+                  <p className="text-muted-foreground">
+                    Si un proveedor solo tiene su propia API, sin modo compatible con OpenAI, Scrinium todavía no puede
+                    usarlo.
+                  </p>
+                </InfoPopover>
+              </span>
               <Select
                 id="provider-kind"
                 value={kind}
@@ -217,7 +254,10 @@ function ProvidersSection({
                 type="url"
                 placeholder="https://api.ejemplo.com/v1"
                 value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                onChange={(e) => {
+                  setBaseUrl(e.target.value)
+                  setKind(kindFor(e.target.value))
+                }}
               />
             </div>
             <div className="grid gap-1.5">
@@ -266,12 +306,13 @@ function ConsentForm({
   const [tasks, setTasks] = useState<AiTask[]>(["questions"])
   const [loaded, setLoaded] = useState<{ key: string; notice: RetentionNotice } | null>(null)
   const [acknowledged, setAcknowledged] = useState(false)
-  const [check, setCheck] = useState<keyof typeof CHECK_LABELS | "running" | null>(null)
+  const [check, setCheck] = useState<ProviderCheck | "running" | null>(null)
   const { error, setError, fail } = useErrors(onSessionLost)
   const provider = providers.find((candidate) => candidate.id === providerId) ?? null
   const current = `${providerId}\n${model.trim()}`
   const chosen = useDebounced(current, 400)
-  // The notice shown is always the one for what is chosen now: a stale one is never shown.
+  // The notice shown is always the one for what is chosen now: a stale one is never shown. The
+  // layout does not move while it loads: only the popover's content and the checkbox wait.
   const notice = loaded?.key === current ? loaded.notice : null
 
   // Choosing another provider or model asks to read its notice and test it again.
@@ -304,7 +345,7 @@ function ConsentForm({
     setError(null)
     setCheck("running")
     checkModelProvider(provider.id, model.trim())
-      .then((result) => setCheck(result.status))
+      .then(setCheck)
       .catch((failure: unknown) => {
         setCheck(null)
         fail(failure)
@@ -371,24 +412,40 @@ function ConsentForm({
         </div>
         <Muted>La búsqueda y los vectores se calculan siempre aquí. Las demás tareas siguen en local.</Muted>
       </fieldset>
-      {provider && notice && <RetentionBox name={provider.name} notice={notice} />}
-      {provider && notice && (
-        <p className="text-sm">
-          Trata lo que se envíe como compartido con un tercero: los pasajes de código y documentos que
-          necesite cada tarea salen a <strong>{provider.host}</strong>. Scrinium quita antes las claves que
-          reconoce, nunca envía las rutas que marques abajo y guarda aquí un registro de cada envío.
-        </p>
-      )}
-      {notice && (
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="mt-0.5 size-4 accent-primary"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-          />
-          He leído qué guarda el proveedor y acepto enviarle esas tareas de este proyecto.
-        </label>
+      {provider && (
+        <div className="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+          <p className="flex items-start gap-1.5">
+            <span>
+              Lo que se envíe queda en manos de un tercero: los pasajes que necesite cada tarea salen a{" "}
+              <strong>{provider.host}</strong>.
+            </span>
+            <InfoPopover label={`Qué guarda ${provider.name}`} title={`Qué guarda ${provider.name}`}>
+              {notice ? (
+                <RetentionDetails notice={notice} />
+              ) : (
+                <p className="text-muted-foreground">
+                  {model.trim() ? "Cargando el aviso de este modelo…" : "Escribe el modelo para ver su aviso."}
+                </p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Antes de enviar, Scrinium quita las claves que reconoce y nunca envía las rutas marcadas en Límites. Cada
+                envío queda anotado en el registro de abajo.
+              </p>
+            </InfoPopover>
+          </p>
+          <label className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 accent-primary"
+              checked={acknowledged}
+              disabled={notice === null}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+            />
+            <span>
+              He leído qué guarda {provider.name} (en el ⓘ) y acepto enviarle esas tareas de este proyecto.
+            </span>
+          </label>
+        </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={!ready || !acknowledged || tasks.length === 0}>
@@ -398,9 +455,16 @@ function ConsentForm({
           {check === "running" ? "Probando…" : "Probar conexión"}
         </Button>
         {check !== null && check !== "running" && (
-          <StatusBadge tone={check === "ready" ? "verified" : "attention"}>{CHECK_LABELS[check]}</StatusBadge>
+          <StatusBadge tone={check.status === "ready" ? "verified" : "attention"}>{CHECK_LABELS[check.reason]}</StatusBadge>
         )}
       </div>
+      {check !== null && check !== "running" && check.status !== "ready" && (check.detail || check.http_status) && (
+        <p className="text-xs break-words text-muted-foreground">
+          Respuesta del proveedor{check.http_status ? ` (HTTP ${check.http_status}` : ""}
+          {check.error_type ? `, ${check.error_type}` : ""}
+          {check.http_status ? ")" : ""}: {check.detail || "sin detalle"}
+        </p>
+      )}
       {ready && <Muted>Probar conexión envía una sola frase fija, nada del proyecto.</Muted>}
       <ErrorText>{error}</ErrorText>
     </form>
