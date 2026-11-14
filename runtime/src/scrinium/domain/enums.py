@@ -21,6 +21,25 @@ class AiMode(StrEnum):
     REMOTE_ALLOWED = "remote_allowed"
 
 
+class ProviderKind(StrEnum):
+    """How Scrinium talks to a remote model provider (ADR-010)."""
+
+    # `/v1/chat/completions` over HTTPS: DeepSeek, GLM and other compatible APIs.
+    OPENAI_COMPATIBLE = "openai_compatible"
+    # Anthropic's Messages API, through its official SDK.
+    ANTHROPIC = "anthropic"
+
+
+class AiTask(StrEnum):
+    """The tasks that use a chat model; each can be sent to its own model (M2, ADR-010)."""
+
+    QUESTIONS = "questions"
+    RULE_MAP = "rule_map"
+    RULE_STATEMENTS = "rule_statements"
+    CONSISTENCY = "consistency"
+    CHANGE_IMPACT = "change_impact"
+
+
 class ConnectionStatus(StrEnum):
     PENDING = "pending"
     ACTIVE = "active"

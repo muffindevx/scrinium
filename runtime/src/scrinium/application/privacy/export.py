@@ -40,7 +40,11 @@ SCRYPT_P: Final = 1
 _DERIVED_TABLES: Final = frozenset(
     {"content_chunks", "code_symbols", "code_edges", "extraction_tasks"}
 )
-_SECRET_COLUMNS: Final = {"source_connections": frozenset({"secret_ref"})}
+_SECRET_COLUMNS: Final = {
+    "source_connections": frozenset({"secret_ref"}),
+    # A provider's key stays in this machine's keyring; restored, it must be typed again.
+    "model_providers": frozenset({"secret_ref"}),
+}
 
 
 class ExportError(ValueError):

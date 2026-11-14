@@ -1,0 +1,292 @@
+"""Remote model providers and per-project consent to use them (ADR-010).
+
+- A provider is registered once, with its API key. The key goes to the OS keyring
+  (`SecretStore`, ADR-006); the database keeps an opaque reference, the provider's host and the
+  key's last four characters. Without a secure keyring nothing is registered.
+- A key is only ever handed out for the host it was registered with (`provider_key`).
+- A project sends nothing until a person consents for it: a provider, a model, the tasks, and
+  the retention notice they read. Revoking returns the project to `local_only`.
+"""
+
+import ipaddress
+import uuid
+from datetime import date
+from typing import Any, Final
+from urllib.parse import urlsplit
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from scrinium.application.ai.retention import notice_for
+from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
+from scrinium.domain.enums import AiMode, AiTask, AuditResult, ProviderKind
+from scrinium.infrastructure.secret_store import SecretStore, SecretStoreUnavailableError
+from scrinium.infrastructure.sqlite.models import AiConsent, ModelProvider, Project, utc_now
+
+MIN_KEY_LENGTH: Final = 8
+MAX_KEY_LENGTH: Final = 4096
+
+
+class ProviderError(ValueError):
+    """A request about providers or consent that Scrinium refuses. `code` is stable."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
+def check_base_url(url: str) -> tuple[str, str]:
+    """`(base URL without trailing slash, host)`. HTTPS to a named host only.
+
+    No user or password in the URL, no query or fragment, and no IP address: a provider is a
+    named service. A machine on this network is a different case, not covered (ADR-010).
+    """
+    parts = urlsplit(url.strip())
+    host = (parts.hostname or "").lower()
+    if parts.scheme != "https" or not host or parts.username or parts.password:
+        raise ProviderError("invalid_base_url")
+    if parts.query or parts.fragment or "." not in host:
+        raise ProviderError("invalid_base_url")
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        pass
+    else:
+        raise ProviderError("invalid_base_url")
+    return f"{parts.scheme}://{parts.netloc.lower()}{parts.path.rstrip('/')}", host
+
+
+def _clean_key(api_key: str) -> str:
+    key = api_key.strip()
+    if not MIN_KEY_LENGTH <= len(key) <= MAX_KEY_LENGTH or any(c.isspace() for c in key):
+        raise ProviderError("invalid_api_key")
+    return key
+
+
+def describe(provider: ModelProvider) -> dict[str, Any]:
+    """What the UI may know about a provider. Never the key or its reference."""
+    return {
+        "id": str(provider.id), "name": provider.name, "kind": provider.kind.value,
+        "base_url": provider.base_url, "host": provider.host,
+        "has_key": provider.secret_ref is not None, "key_hint": provider.key_hint,
+        "created_at": provider.created_at.isoformat(),
+    }  # fmt: skip
+
+
+def list_providers(session: Session) -> list[dict[str, Any]]:
+    return [
+        describe(provider)
+        for provider in session.scalars(select(ModelProvider).order_by(ModelProvider.name))
+    ]
+
+
+def register_provider(
+    session: Session,
+    store: SecretStore,
+    name: str,
+    kind: ProviderKind,
+    base_url: str,
+    api_key: str,
+    request_id: str | None = None,
+) -> ModelProvider:
+    """A new provider. The key is checked, put in the keyring, and never read back here."""
+    name = name.strip()
+    if not 1 <= len(name) <= 100:
+        raise ProviderError("invalid_name")
+    url, host = check_base_url(base_url)
+    key = _clean_key(api_key)
+    if store.backend_name is None:
+        raise ProviderError("keyring_unavailable")
+    workspace = local_workspace(session)
+    if session.scalars(
+        select(ModelProvider.id).where(
+            ModelProvider.workspace_id == workspace.id, ModelProvider.name == name
+        )
+    ).first():
+        raise ProviderError("name_taken")
+    try:
+        ref = store.put(key)
+    except SecretStoreUnavailableError:
+        raise ProviderError("keyring_unavailable") from None
+    provider = ModelProvider(
+        workspace_id=workspace.id, name=name, kind=kind, base_url=url, host=host,
+        secret_ref=ref, key_hint=key[-4:],
+    )  # fmt: skip
+    session.add(provider)
+    session.flush()
+    record_audit(
+        session, workspace.id, "model_provider.register", "model_provider", str(provider.id),
+        AuditResult.SUCCESS, request_id, {"kind": kind.value, "host": host},
+    )  # fmt: skip
+    return provider
+
+
+def remove_provider(
+    session: Session, store: SecretStore, provider_id: uuid.UUID, request_id: str | None = None
+) -> None:
+    """Deletes the key from the keyring and the provider; consents that used it are revoked."""
+    provider = session.get(ModelProvider, provider_id)
+    if provider is None:
+        raise LookupError
+    for consent in session.scalars(
+        select(AiConsent).where(
+            AiConsent.provider_id == provider.id, AiConsent.revoked_at.is_(None)
+        )
+    ):
+        _revoke(session, consent, request_id)
+    if provider.secret_ref is not None:
+        try:
+            store.delete(provider.secret_ref)
+        except SecretStoreUnavailableError:
+            raise ProviderError("keyring_unavailable") from None
+    record_audit(
+        session, provider.workspace_id, "model_provider.remove", "model_provider",
+        str(provider.id), AuditResult.SUCCESS, request_id, {"host": provider.host},
+    )  # fmt: skip
+    session.flush()
+    session.delete(provider)
+
+
+def provider_key(store: SecretStore, provider: ModelProvider, host: str) -> str:
+    """The provider's key, only to send it to the host it was registered for."""
+    if host.lower() != provider.host or provider.secret_ref is None:
+        raise ProviderError("key_not_for_this_host")
+    try:
+        key = store.get(provider.secret_ref)
+    except SecretStoreUnavailableError:
+        raise ProviderError("keyring_unavailable") from None
+    if not key:
+        raise ProviderError("key_missing")
+    return key
+
+
+def retention_notice(provider: ModelProvider, model: str, today: date) -> dict[str, Any]:
+    return notice_for(provider.kind, provider.host, model.strip(), today)
+
+
+def _active(session: Session, project: Project) -> list[AiConsent]:
+    return list(
+        session.scalars(
+            select(AiConsent)
+            .where(AiConsent.project_id == project.id, AiConsent.revoked_at.is_(None))
+            .order_by(AiConsent.created_at)
+        )
+    )
+
+
+def describe_consent(consent: AiConsent) -> dict[str, Any]:
+    return {
+        "id": str(consent.id),
+        "provider_id": str(consent.provider_id) if consent.provider_id else None,
+        "provider_name": consent.provider_name, "host": consent.host, "model": consent.model,
+        "tasks": list(consent.tasks), "retention": dict(consent.retention),
+        "consented_by": consent.consented_by, "created_at": consent.created_at.isoformat(),
+        "revoked_at": consent.revoked_at.isoformat() if consent.revoked_at else None,
+    }  # fmt: skip
+
+
+def project_ai(session: Session, project: Project) -> dict[str, Any]:
+    """The project's mode and the consents in force: which task goes to which model."""
+    return {
+        "ai_mode": project.ai_mode.value,
+        "consents": [describe_consent(consent) for consent in _active(session, project)],
+    }
+
+
+def give_consent(
+    session: Session,
+    project: Project,
+    provider_id: uuid.UUID,
+    model: str,
+    tasks: list[AiTask],
+    retention_acknowledged: bool,
+    today: date,
+    request_id: str | None = None,
+) -> AiConsent:
+    """A person consents to send these tasks of this project to this model.
+
+    The retention notice is computed here, not taken from the request: what is recorded is what
+    Scrinium showed. A task already sent elsewhere moves to the new consent.
+    """
+    model = model.strip()
+    if not tasks or not 1 <= len(model) <= 200:
+        raise ProviderError("invalid_consent")
+    if not retention_acknowledged:
+        raise ProviderError("retention_not_acknowledged")
+    provider = session.get(ModelProvider, provider_id)
+    if provider is None or provider.workspace_id != project.workspace_id:
+        raise LookupError
+    if provider.secret_ref is None:
+        raise ProviderError("key_missing")
+    chosen = sorted({task.value for task in tasks})
+    for consent in _active(session, project):
+        kept = [task for task in consent.tasks if task not in chosen]
+        if kept != list(consent.tasks):
+            _revoke(session, consent, request_id)
+            if kept:
+                _copy(session, consent, kept)
+    consent = AiConsent(
+        workspace_id=project.workspace_id, project_id=project.id, provider_id=provider.id,
+        provider_name=provider.name, host=provider.host, model=model, tasks=chosen,
+        retention=retention_notice(provider, model, today),
+        consented_by=reviewer_name(session),
+    )  # fmt: skip
+    session.add(consent)
+    project.ai_mode = AiMode.REMOTE_ALLOWED
+    session.flush()
+    record_audit(
+        session, project.workspace_id, "ai_consent.give", "project", str(project.id),
+        AuditResult.SUCCESS, request_id,
+        {"host": provider.host, "model": model, "tasks": chosen,
+         "retention_verified": consent.retention.get("verified", False)},
+    )  # fmt: skip
+    return consent
+
+
+def _copy(session: Session, consent: AiConsent, tasks: list[str]) -> None:
+    """What is left of a consent when some of its tasks move to another model."""
+    session.add(
+        AiConsent(
+            workspace_id=consent.workspace_id,
+            project_id=consent.project_id,
+            provider_id=consent.provider_id,
+            provider_name=consent.provider_name,
+            host=consent.host,
+            model=consent.model,
+            tasks=tasks,
+            retention=dict(consent.retention),
+            consented_by=consent.consented_by,
+        )
+    )
+    session.flush()
+
+
+def _revoke(session: Session, consent: AiConsent, request_id: str | None) -> None:
+    consent.revoked_at = utc_now()
+    session.flush()
+    project = session.get_one(Project, consent.project_id)
+    if not _active(session, project):
+        project.ai_mode = AiMode.LOCAL_ONLY
+    record_audit(
+        session, consent.workspace_id, "ai_consent.revoke", "project", str(consent.project_id),
+        AuditResult.SUCCESS, request_id, {"host": consent.host, "model": consent.model},
+    )  # fmt: skip
+
+
+def revoke_all(session: Session, project: Project, request_id: str | None = None) -> int:
+    """The project goes back to local. What the provider already received cannot be recalled."""
+    consents = _active(session, project)
+    for consent in consents:
+        _revoke(session, consent, request_id)
+    project.ai_mode = AiMode.LOCAL_ONLY
+    return len(consents)
+
+
+def consent_for_task(session: Session, project: Project, task: AiTask) -> AiConsent | None:
+    """The consent in force for this task, or None: then the task runs locally."""
+    if project.ai_mode is not AiMode.REMOTE_ALLOWED:
+        return None
+    for consent in _active(session, project):
+        if task.value in consent.tasks:
+            return consent
+    return None

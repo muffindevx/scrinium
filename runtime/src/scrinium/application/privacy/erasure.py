@@ -28,6 +28,7 @@ from scrinium.domain.enums import AnalysisStatus, AnalysisType, AuditResult, Syn
 from scrinium.infrastructure.secret_store import SecretStore
 from scrinium.infrastructure.sqlite.database import DATABASE_FILENAME, Database
 from scrinium.infrastructure.sqlite.models import (
+    AiConsent,
     AnalysisRun,
     AuditEvent,
     Base,
@@ -37,6 +38,7 @@ from scrinium.infrastructure.sqlite.models import (
     Finding,
     KnowledgeEntity,
     LocalProfile,
+    ModelProvider,
     Project,
     SoftwareRelease,
     SourceConnection,
@@ -153,6 +155,10 @@ def delete_project(
         ):
             sources.delete_source(session, connection_id, request_id)
             summary["sources_deleted"] += 1
+        # The project's consents to remote models go with it (ADR-010); the provider stays.
+        summary["ai_consents_deleted"] = session.execute(
+            delete(AiConsent).where(AiConsent.project_id == project.id)
+        ).rowcount  # type: ignore[attr-defined]
         # Without relationship() the session does not order deletes: sources before the project.
         session.flush()
         session.delete(project)
@@ -180,6 +186,8 @@ def wipe_workspace(
             raise WorkInProgressError
         workspace = local_workspace(session)
         secrets = [ref for ref in session.scalars(select(SourceConnection.secret_ref)) if ref]
+        # Remote providers' API keys too (ADR-010).
+        secrets += [ref for ref in session.scalars(select(ModelProvider.secret_ref)) if ref]
         counts: dict[str, int] = {}
         # From children to parents: the reverse order of the dependencies between tables.
         session.execute(update(SourceItem).values(current_revision_id=None))

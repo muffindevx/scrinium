@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
 from scrinium import __version__
+from scrinium.api.ai import build_ai_router
 from scrinium.api.analyses import build_analyses_router
 from scrinium.api.control import build_control_router
 from scrinium.api.errors import install_error_handlers
@@ -166,6 +167,7 @@ def create_app(
     app.include_router(build_analyses_router(database, app.state.analyses, runner.indexer))
     app.include_router(build_knowledge_router(database, llm_service))
     app.include_router(build_privacy_router(config, database, runner, environment))
+    app.include_router(build_ai_router(database, environment))
     app.include_router(build_control_router())
 
     if config.web_dist.is_dir():

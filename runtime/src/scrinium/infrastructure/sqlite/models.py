@@ -48,6 +48,7 @@ from scrinium.domain.enums import (
     FlowType,
     ItemLifecycle,
     ProjectStatus,
+    ProviderKind,
     RelationType,
     ReleaseStatus,
     RuleCategory,
@@ -139,6 +140,56 @@ class Project(Timestamps, Base):
     ai_mode: Mapped[AiMode] = mapped_column(
         _enum(AiMode, "ai_mode"), default=AiMode.LOCAL_ONLY, server_default=AiMode.LOCAL_ONLY.value
     )
+
+
+class ModelProvider(Timestamps, Base):
+    """A remote model provider registered on this machine (ADR-010).
+
+    The API key lives only in the OS keyring (`secret_ref`, ADR-006) and is sent only to
+    `host`, the host it was registered for. `secret_ref` is empty after a restore: the key stays
+    in the keyring of the machine it was typed on, so it must be typed again.
+    """
+
+    __tablename__ = "model_providers"
+    __table_args__ = (UniqueConstraint("workspace_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    kind: Mapped[ProviderKind] = mapped_column(_enum(ProviderKind, "provider_kind"))
+    base_url: Mapped[str] = mapped_column(String(500))
+    host: Mapped[str] = mapped_column(String(253))
+    secret_ref: Mapped[str | None] = mapped_column(String(200))
+    # The key's last four characters, so a person can tell keys apart. Never more.
+    key_hint: Mapped[str] = mapped_column(String(4), default="")
+
+
+class AiConsent(Base):
+    """A person's consent to send one project's text to a remote model (ADR-010).
+
+    Rows are kept after revocation (`revoked_at`): they record what was allowed and when.
+    """
+
+    __tablename__ = "ai_consents"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    provider_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("model_providers.id", ondelete="SET NULL"), index=True
+    )
+    # Copied, not only referenced: the record must still say where data went if the provider
+    # is later removed.
+    provider_name: Mapped[str] = mapped_column(String(100))
+    host: Mapped[str] = mapped_column(String(253))
+    model: Mapped[str] = mapped_column(String(200))
+    tasks: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # The retention notice the person acknowledged: its text, its sources and when Scrinium
+    # checked it (or that it was not verified).
+    retention: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    consented_by: Mapped[str | None] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+    revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
 
 class LocalProfile(Timestamps, Base):
