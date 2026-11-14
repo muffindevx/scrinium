@@ -1,0 +1,20 @@
+{
+  "note": "A completed answer.",
+  "response": {
+    "message": {
+      "role": "assistant",
+      "content": "{\"ok\":true}"
+    },
+    "done_reason": "stop",
+    "prompt_eval_count": 300,
+    "eval_count": 12
+  },
+  "expect": {
+    "outcome": "completed",
+    "text": "{\"ok\":true}",
+    "prompt_tokens": 300,
+    "completion_tokens": 12,
+    "cached_tokens": 0,
+    "request_id": ""
+  }
+}

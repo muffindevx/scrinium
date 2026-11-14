@@ -1,0 +1,16 @@
+{
+  "note": "An empty answer is an error.",
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "   "
+        },
+        "finish_reason": "stop"
+      }
+    ]
+  },
+  "expect": {
+    "outcome": "error"
+  }
+}

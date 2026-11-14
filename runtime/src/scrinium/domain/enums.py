@@ -12,6 +12,15 @@ class ProjectStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+class AiMode(StrEnum):
+    """Where a project's text may be sent to a model (ADR-004, ADR-010). Per project."""
+
+    # Every model runs on this machine. The default, for every project.
+    LOCAL_ONLY = "local_only"
+    # A person consented to the remote models named in this project's consent.
+    REMOTE_ALLOWED = "remote_allowed"
+
+
 class ConnectionStatus(StrEnum):
     PENDING = "pending"
     ACTIVE = "active"

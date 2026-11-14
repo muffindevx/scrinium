@@ -40,7 +40,7 @@ from scrinium.domain.enums import (
     Severity,
 )
 from scrinium.infrastructure.llm.base import ChatMessage, key_line
-from scrinium.infrastructure.local_http import ModelError, ModelStatus
+from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
@@ -349,7 +349,7 @@ def review_with_llm(
     try:
         review = _Review.model_validate_json(completion.text)
     except ValidationError:
-        raise ModelError from None
+        raise InvalidOutputError from None
     concerns = []
     for item in review.concerns[:10]:
         if not (1 <= item.rule <= len(rules) and 1 <= item.hunk <= len(hunk_blocks)):

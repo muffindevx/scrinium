@@ -35,7 +35,7 @@ from scrinium.infrastructure.llm.base import (
     key_line,
     provider_name,
 )
-from scrinium.infrastructure.local_http import ModelError, ModelStatus
+from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import AnalysisRun, Project, utc_now
 
@@ -174,7 +174,7 @@ def interpret(raw: str, sources: list[Source]) -> Interpretation:
     try:
         answer = _ModelAnswer.model_validate_json(raw)
     except ValidationError:
-        raise ModelError from None
+        raise InvalidOutputError from None
     valid_numbers = {source.number for source in sources}
     claims, unsupported, dropped = [], [], 0
     for claim in answer.claims[:_MAX_CLAIMS]:

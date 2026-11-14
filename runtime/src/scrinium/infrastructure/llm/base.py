@@ -2,9 +2,9 @@
 
 import re
 from dataclasses import dataclass
-from typing import Any, Final, Literal, Protocol
+from typing import Any, ClassVar, Final, Literal, Protocol
 
-from scrinium.infrastructure.local_http import ModelError, ModelStatus
+from scrinium.infrastructure.local_http import ModelError, ModelStatus, Outcome
 
 # A prompt longer than the context would lose its instructions (Ollama trims it
 # silently). The context is pinned and input that does not fit with margin is rejected.
@@ -40,6 +40,13 @@ DEFAULT_SEED: Final = 1
 
 @dataclass(frozen=True)
 class Completion:
+    """A completed answer, the same shape from every provider (ADR-010).
+
+    Any other outcome is a `ModelError` with its `outcome`, never a `Completion`. `text` is the
+    answer only: reasoning is dropped by the adapter. `model_id` is the model that actually
+    answered. `prompt_tokens` counts all input, cached or not.
+    """
+
     text: str
     model_id: str
     prompt_tokens: int
@@ -54,6 +61,8 @@ class Completion:
     generation_ms: int = 0
     draft_tokens: int = 0
     draft_accepted: int = 0
+    # The provider's id for this request, for support. Never content. Empty if it gives none.
+    request_id: str = ""
 
 
 @dataclass
@@ -78,6 +87,14 @@ class TokenUsage:
 
 class OutputBudgetExceededError(ModelError):
     """The model ran out of tokens before answering (usually, while reasoning)."""
+
+    outcome: ClassVar[Outcome] = Outcome.LENGTH
+
+
+class ModelRefusedError(ModelError):
+    """The provider declined to answer (a safety filter). The batch fails like any other."""
+
+    outcome: ClassVar[Outcome] = Outcome.REFUSED
 
 
 class LLMProvider(Protocol):

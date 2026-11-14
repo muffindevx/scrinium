@@ -1,0 +1,12 @@
+{
+  "note": "Only reasoning, no answer.",
+  "response": {
+    "message": {
+      "content": "<think>solo pienso</think>"
+    },
+    "done_reason": "stop"
+  },
+  "expect": {
+    "outcome": "error"
+  }
+}

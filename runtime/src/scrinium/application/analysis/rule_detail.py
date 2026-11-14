@@ -23,7 +23,7 @@ from scrinium.application.knowledge.corrections import copy_citations
 from scrinium.application.knowledge.entities import Provenance, add_rule_version
 from scrinium.domain.enums import VerificationMethod, VersionOrigin
 from scrinium.infrastructure.llm.base import ChatMessage, key_line
-from scrinium.infrastructure.local_http import ModelError
+from scrinium.infrastructure.local_http import InvalidOutputError
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
     BusinessRuleVersion,
@@ -167,7 +167,7 @@ def interpret_details(raw: str, items: list[DetailItem]) -> dict[str, str]:
     try:
         answer = _ModelDetail.model_validate_json(raw)
     except ValidationError:
-        raise ModelError from None
+        raise InvalidOutputError from None
     known = {item.ref for item in items}
     statements: dict[str, str] = {}
     for entry in answer.s:

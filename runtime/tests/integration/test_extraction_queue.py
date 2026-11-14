@@ -12,7 +12,7 @@ import pytest
 from scrinium.application.analysis import extraction
 from scrinium.application.analysis.runs import create_run
 from scrinium.domain.enums import AnalysisType
-from scrinium.infrastructure.llm.base import ChatMessage, Completion
+from scrinium.infrastructure.llm.base import ChatMessage, Completion, ModelRefusedError
 from scrinium.infrastructure.local_http import ModelError
 from scrinium.infrastructure.sqlite.models import ExtractionTask, Project
 from tests.conftest import Runtime
@@ -54,7 +54,12 @@ def _extract(api: Api, body: dict[str, Any] | None = None) -> dict[str, Any]:
     return api.read(api.post(f"/api/v1/projects/{api.project_id}/extractions", body or {})["id"])
 
 
-def _fail_calls(runtime: Runtime, monkeypatch: pytest.MonkeyPatch, failing: set[int]) -> None:
+def _fail_calls(
+    runtime: Runtime,
+    monkeypatch: pytest.MonkeyPatch,
+    failing: set[int],
+    error: type[ModelError] = ModelError,
+) -> None:
     """The model fails on the given calls (counting from 0) and answers on the rest."""
     original = runtime.chat.complete
     calls = {"n": 0}
@@ -64,7 +69,7 @@ def _fail_calls(runtime: Runtime, monkeypatch: pytest.MonkeyPatch, failing: set[
         calls["n"] += 1
         if index in failing:
             runtime.chat.received.append(messages)
-            raise ModelError
+            raise error
         return original(messages, *args, **kwargs)
 
     monkeypatch.setattr(runtime.chat, "complete", complete)
@@ -252,12 +257,14 @@ def test_a_failed_batch_with_several_functions_is_retried_in_halves(
     commit_all(root, "inicio")
     runtime.chat.reply = _extraction_reply()
     api = Api(runtime, root)
-    _fail_calls(runtime, monkeypatch, {0})
+    # A provider's refusal is a failed batch like any other (ADR-010): split and retried on the
+    # same model, and counted by its outcome.
+    _fail_calls(runtime, monkeypatch, {0}, ModelRefusedError)
     done = _extract(api)
     result = done["result"]
     assert done["status"] == "completed", result
     assert result["batches_split"] == 1 and result["batches_failed"] == 0
-    assert result["failure_reasons"] == {"ModelError": 1}
+    assert result["failure_reasons"] == {"refused": 1}
     # The first call held all four; then each half, with its own numbering from F1.
     sent = _sent(runtime)
     assert len(sent) == 3 and sent[0].count("<<FUENTE") == 4

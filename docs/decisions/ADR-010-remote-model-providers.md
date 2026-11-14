@@ -43,7 +43,7 @@ The questions:
    - **Anthropic (Claude):** the official `anthropic` Python SDK.
 4. **Embeddings are always local.** Search by meaning reads the whole indexed project; sending it would mean sending the repository. Only the passages a task needs ever leave.
 5. **A model per task, per project (M2):** questions, the rule map, rule statements, consistency review and change impact. Each is local by default.
-6. **One contract.** Every provider is an adapter behind the same `LLMProvider` interface. Each adapter turns its provider's answer into the same `Completion`, with a normalized outcome, normalized token usage and the model that really answered. Nothing above the adapter knows which provider ran.
+6. **One contract.** Every provider is an adapter behind the same `LLMProvider` interface. Each adapter turns its provider's answer into the same `Completion` (normalized token usage, the model that really answered), or into a `ModelError` with a normalized outcome. Nothing above the adapter knows which provider ran.
 7. **A failed attempt is a failed batch.** Overflow, refusal, invalid JSON, timeout and provider errors all follow the rule extraction already has (F9):
    - the batch is split in two and retried;
    - a single fragment that still fails is left for later, with its reason.
@@ -120,12 +120,11 @@ The contract lives in Python, in `infrastructure/llm/base.py`, and conformance t
 - `max_tokens`: set per task from the expected output, never the provider's maximum;
 - `json_schema`: the task's output schema.
 
-**What every adapter returns, a `Completion`:**
+**What every adapter returns.** A `Completion` is always a completed answer. Every other outcome is a `ModelError` that says which:
 
-| Field | Meaning |
+| Field of `Completion` | Meaning |
 |---|---|
 | `text` | The answer's text only. Never reasoning or thinking text: adapters drop it. |
-| `outcome` | `completed`, `length` (ran out of output tokens), `refused` (the provider declined), `invalid` (no JSON that matches the schema) or `error`. Adapters translate their provider's stop reasons into these. |
 | `model_id` | `provider:model` of the model that **actually** answered. |
 | `prompt_tokens` | All input tokens, cached or not. |
 | `cached_tokens` | The input tokens served from the provider's cache. |
@@ -133,13 +132,15 @@ The contract lives in Python, in `infrastructure/llm/base.py`, and conformance t
 | `duration_ms` | Wall time of the request. |
 | `request_id` | The provider's request id, if any, for support. Never content. |
 
-**Errors** are `ModelError` subclasses that never carry the text sent or received, as today:
+| Error | `outcome` |
+|---|---|
+| `OutputBudgetExceededError` | `length`: ran out of output tokens, so the JSON is incomplete |
+| `ModelRefusedError` | `refused`: the provider declined |
+| `InvalidOutputError` | `invalid`: an answer, but not the JSON the task asked for (raised by the task's own validation) |
+| `ProviderUnavailableError` | `unavailable`: network, timeout, rate limit or a server error |
+| `ModelError` | `error`: anything else |
 
-- `OutputBudgetExceededError`;
-- `ModelRefusedError` (new);
-- `ProviderUnavailableError` (new, for network, rate limit and 5xx).
-
-The analysis code turns any of them into a failed batch.
+Errors never carry the text sent or received. The analysis code turns any of them into a failed batch, and counts failures by `outcome`, so the reasons read the same for every provider.
 
 **Conformance tests** feed each adapter recorded provider responses (a fixture per case: completed, length, refusal, invalid JSON, rate limit, server error). They assert the same `Completion` or error comes out. A new provider is accepted only when it passes them.
 
@@ -147,16 +148,16 @@ The analysis code turns any of them into a failed batch.
 
 - **OpenAI-compatible:**
   - sends `response_format` with the JSON schema;
-  - reads `finish_reason` (`stop` → `completed`, `length` → `length`, `content_filter` → `refused`);
+  - reads `finish_reason` (`stop` → completed, `length` → `OutputBudgetExceededError`, `content_filter` → `ModelRefusedError`);
   - reads `usage.prompt_tokens`, `usage.completion_tokens` and `usage.prompt_tokens_details.cached_tokens`;
   - drops `reasoning_content` and think tags.
 - **Anthropic:**
   - sends `output_config.format` with the JSON schema and sets `output_config.effort` per task, explicitly (the default differs between models);
-  - reads `stop_reason` (`end_turn` → `completed`, `max_tokens` → `length`, `refusal` → `refused`);
+  - reads `stop_reason` (`end_turn` → completed, `max_tokens` → `OutputBudgetExceededError`, `refusal` → `ModelRefusedError`);
   - computes input as `input_tokens` + `cache_creation_input_tokens` + `cache_read_input_tokens`, because Anthropic's `input_tokens` leaves out cached tokens; `cached` is `cache_read_input_tokens`;
   - drops thinking blocks;
   - sends no server-side fallback: a refusal is a refused batch (decision 7).
-- **Local llama-server and Ollama:** already map to this. Only `outcome` and `request_id` are new.
+- **Local llama-server and Ollama:** already map to this. New: `request_id`, refusals from a content filter, and Ollama now fails on `length` even when it wrote some text.
 
 The task's JSON schema is the same for every provider. Scrinium already validates every answer against it and drops what does not fit, so a provider that only honours "JSON mode" still works, with more dropped answers.
 

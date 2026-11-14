@@ -30,6 +30,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from scrinium.domain.enums import (
+    AiMode,
     AnalysisStatus,
     AnalysisType,
     AnswerStatus,
@@ -133,6 +134,10 @@ class Project(Timestamps, Base):
     project_key: Mapped[str] = mapped_column(String(64))
     status: Mapped[ProjectStatus] = mapped_column(
         _enum(ProjectStatus, "project_status"), default=ProjectStatus.ACTIVE
+    )
+    # ADR-010: local unless a person consents to a remote model for this project.
+    ai_mode: Mapped[AiMode] = mapped_column(
+        _enum(AiMode, "ai_mode"), default=AiMode.LOCAL_ONLY, server_default=AiMode.LOCAL_ONLY.value
     )
 
 

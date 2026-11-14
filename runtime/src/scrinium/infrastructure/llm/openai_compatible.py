@@ -16,6 +16,7 @@ from scrinium.infrastructure.llm.base import (
     THINK_TAGS,
     ChatMessage,
     Completion,
+    ModelRefusedError,
     OutputBudgetExceededError,
     check_request,
 )
@@ -50,6 +51,12 @@ def _cached_tokens(result: dict[str, Any], usage: dict[str, Any]) -> int:
     if isinstance(timings, dict) and isinstance(timings.get("cache_n"), int):
         return int(timings["cache_n"])
     return 0
+
+
+def _request_id(result: dict[str, Any]) -> str:
+    """The provider's `id` for the request (`chatcmpl-…`), for support; never content."""
+    value = result.get("id")
+    return value[:200] if isinstance(value, str) else ""
 
 
 def _timings(result: dict[str, Any]) -> dict[str, int]:
@@ -146,8 +153,12 @@ class OpenAICompatibleChat:
             raise ModelError
         # Cut by length, the JSON is incomplete even if there is text: always a failure, with its
         # own reason, so the batch is retried smaller (F9).
-        if choice.get("finish_reason") == "length":
+        finish = choice.get("finish_reason")
+        if finish == "length":
             raise OutputBudgetExceededError
+        # A provider's content filter declined: a refused batch, never retried elsewhere (ADR-010).
+        if finish == "content_filter":
+            raise ModelRefusedError
         text = THINK_TAGS.sub("", message["content"]).strip()
         if not text:
             raise ModelError
@@ -159,5 +170,6 @@ class OpenAICompatibleChat:
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
             duration_ms=int((time.perf_counter() - started) * 1000),
+            request_id=_request_id(result),
             **_timings(result),
         )

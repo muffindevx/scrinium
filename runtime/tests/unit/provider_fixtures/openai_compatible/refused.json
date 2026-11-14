@@ -1,0 +1,20 @@
+{
+  "note": "The provider's content filter declined.",
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": ""
+        },
+        "finish_reason": "content_filter"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 10,
+      "completion_tokens": 0
+    }
+  },
+  "expect": {
+    "outcome": "refused"
+  }
+}

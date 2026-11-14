@@ -1,0 +1,20 @@
+{
+  "note": "Cut by length: the JSON is incomplete even though there is text.",
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "{\"ok\":"
+        },
+        "finish_reason": "length"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 10,
+      "completion_tokens": 4096
+    }
+  },
+  "expect": {
+    "outcome": "length"
+  }
+}

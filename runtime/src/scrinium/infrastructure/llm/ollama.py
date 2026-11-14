@@ -81,10 +81,11 @@ class OllamaChat:
         message = result.get("message") if isinstance(result, dict) else None
         if not isinstance(message, dict) or not isinstance(message.get("content"), str):
             raise ModelError
+        # Cut by length, the JSON is incomplete even with text: a failure, like every provider.
+        if result.get("done_reason") == "length":
+            raise OutputBudgetExceededError
         text = THINK_TAGS.sub("", message["content"]).strip()
         if not text:
-            if result.get("done_reason") == "length":
-                raise OutputBudgetExceededError
             raise ModelError
         return Completion(
             text=text,

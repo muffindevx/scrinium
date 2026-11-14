@@ -11,7 +11,7 @@ import logging
 import urllib.error
 import urllib.request
 from enum import StrEnum
-from typing import Any, Final
+from typing import Any, ClassVar, Final
 from urllib.parse import urlsplit
 
 from scrinium.core.log_hub import HUB, content_extra
@@ -38,8 +38,42 @@ class ModelStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class Outcome(StrEnum):
+    """How a request to a model ended, the same for every provider (ADR-010).
+
+    A `Completion` is always `completed`; every other outcome is a `ModelError` that says which,
+    and the task handles it as a failed batch.
+    """
+
+    COMPLETED = "completed"
+    # Ran out of output tokens: the JSON is incomplete.
+    LENGTH = "length"
+    # The provider declined to answer.
+    REFUSED = "refused"
+    # An answer, but not the JSON the task asked for.
+    INVALID = "invalid"
+    # No answer: network, timeout, rate limit or a server error.
+    UNAVAILABLE = "unavailable"
+    # Anything else the model got wrong.
+    ERROR = "error"
+
+
 class ModelError(RuntimeError):
     """The model did not answer as expected. Never includes the text sent or received."""
+
+    outcome: ClassVar[Outcome] = Outcome.ERROR
+
+
+class ProviderUnavailableError(ModelError):
+    """The provider could not be reached or did not answer in time."""
+
+    outcome: ClassVar[Outcome] = Outcome.UNAVAILABLE
+
+
+class InvalidOutputError(ModelError):
+    """The model answered, but not with the JSON the task asked for."""
+
+    outcome: ClassVar[Outcome] = Outcome.INVALID
 
 
 def check_loopback_url(url: str) -> str:
@@ -81,7 +115,7 @@ class LocalHttpClient:
             with self._opener.open(request, timeout=timeout) as response:
                 raw = response.read(MAX_RESPONSE_BYTES + 1)
         except (urllib.error.URLError, TimeoutError, OSError):
-            raise ModelError from None
+            raise ProviderUnavailableError from None
         if len(raw) > MAX_RESPONSE_BYTES:
             raise ModelError
         if tracing:

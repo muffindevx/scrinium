@@ -1,0 +1,14 @@
+{
+  "note": "Cut by length with text: still a failure.",
+  "response": {
+    "message": {
+      "content": "{\"ok\":"
+    },
+    "done_reason": "length",
+    "prompt_eval_count": 300,
+    "eval_count": 4096
+  },
+  "expect": {
+    "outcome": "length"
+  }
+}

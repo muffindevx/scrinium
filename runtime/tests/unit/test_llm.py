@@ -9,7 +9,12 @@ from typing import Any, ClassVar
 
 import pytest
 
-from scrinium.application.ai.policy import RemoteProviderNotAllowedError, require_local
+from scrinium.application.ai.policy import (
+    AiMode,
+    RemoteProviderNotAllowedError,
+    project_mode,
+    require_local,
+)
 from scrinium.application.ai.service import LlmService
 from scrinium.infrastructure.llm.base import (
     MAX_INPUT_CHARS,
@@ -19,6 +24,7 @@ from scrinium.infrastructure.llm.base import (
 )
 from scrinium.infrastructure.llm.ollama import OllamaChat
 from scrinium.infrastructure.local_http import MAX_RESPONSE_BYTES, ModelError, ModelStatus
+from scrinium.infrastructure.sqlite.models import Project
 from tests.conftest import FakeChat
 
 
@@ -156,6 +162,17 @@ def test_policy_refuses_a_remote_provider() -> None:
         require_local(FakeChat(is_local=False))
     with pytest.raises(RemoteProviderNotAllowedError):
         LlmService(FakeChat(is_local=False))
+
+
+def test_only_a_consented_project_may_use_a_remote_provider() -> None:
+    """ADR-010: the mode is the project's; a local model is always allowed."""
+    remote, local = FakeChat(is_local=False), FakeChat()
+    assert require_local(remote, AiMode.REMOTE_ALLOWED) is remote
+    assert require_local(local, AiMode.LOCAL_ONLY) is local
+    project = Project(name="x", project_key="x", ai_mode=AiMode.REMOTE_ALLOWED)
+    assert project_mode(project) is AiMode.REMOTE_ALLOWED
+    # Anything unexpected counts as local, never as permission.
+    assert project_mode(Project(name="y", project_key="y")) is AiMode.LOCAL_ONLY
 
 
 @pytest.mark.parametrize(

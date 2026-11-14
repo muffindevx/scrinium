@@ -1,0 +1,11 @@
+{
+  "note": "No choices: not an answer.",
+  "response": {
+    "error": {
+      "message": "bad request"
+    }
+  },
+  "expect": {
+    "outcome": "error"
+  }
+}

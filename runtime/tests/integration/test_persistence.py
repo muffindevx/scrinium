@@ -15,7 +15,7 @@ from sqlalchemy import func, inspect, select, text, update
 from sqlalchemy.exc import IntegrityError, StatementError
 
 from scrinium.application.workspaces import ensure_local_workspace
-from scrinium.domain.enums import AuditResult, WorkspaceType
+from scrinium.domain.enums import AiMode, AuditResult, WorkspaceType
 from scrinium.infrastructure.sqlite.database import (
     Database,
     IncompatibleDatabaseError,
@@ -203,6 +203,27 @@ def test_values_outside_the_vocabulary_are_rejected(database: Database) -> None:
     # Also raw SQL, without going through SQLAlchemy.
     with pytest.raises(IntegrityError), database.engine.begin() as connection:
         connection.execute(text("UPDATE workspaces SET workspace_type = 'team'"))
+
+
+def test_a_project_is_local_unless_someone_consents(database: Database) -> None:
+    """ADR-010: a new project, or one from before the column existed, is `local_only`; the
+    database itself refuses any other mode than the two it knows."""
+    workspace_id = _workspace(database)
+    with database.session() as session:
+        session.add(Project(workspace_id=workspace_id, name="x", project_key="x"))
+    with database.engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO projects (id, workspace_id, name, description, project_key, status, "
+                "created_at, updated_at) VALUES ('00000000000000000000000000000001', :w, 'y', '', "
+                "'y', 'active', '2026-11-14', '2026-11-14')"
+            ),
+            {"w": workspace_id.hex},
+        )
+    with database.session() as session:
+        assert {p.ai_mode for p in session.scalars(select(Project))} == {AiMode.LOCAL_ONLY}
+    with pytest.raises(IntegrityError), database.engine.begin() as connection:
+        connection.execute(text("UPDATE projects SET ai_mode = 'anywhere'"))
 
 
 def test_project_key_is_unique_per_workspace(database: Database) -> None:

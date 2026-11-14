@@ -1,0 +1,25 @@
+{
+  "note": "Think tags left in the text are removed; no usage details means no cached tokens.",
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "content": "<think>hmm</think>{\"ok\":true}"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 10,
+      "completion_tokens": 5
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "text": "{\"ok\":true}",
+    "prompt_tokens": 10,
+    "completion_tokens": 5,
+    "cached_tokens": 0,
+    "request_id": ""
+  }
+}

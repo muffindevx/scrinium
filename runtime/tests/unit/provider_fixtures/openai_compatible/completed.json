@@ -1,0 +1,31 @@
+{
+  "note": "A completed answer: the reasoning is dropped, cached input is counted, the request id is kept.",
+  "response": {
+    "id": "chatcmpl-abc123",
+    "choices": [
+      {
+        "message": {
+          "role": "assistant",
+          "content": "{\"ok\":true}",
+          "reasoning_content": "pensando…"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 1200,
+      "completion_tokens": 40,
+      "prompt_tokens_details": {
+        "cached_tokens": 1000
+      }
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "text": "{\"ok\":true}",
+    "prompt_tokens": 1200,
+    "completion_tokens": 40,
+    "cached_tokens": 1000,
+    "request_id": "chatcmpl-abc123"
+  }
+}

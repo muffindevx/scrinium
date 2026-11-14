@@ -78,7 +78,7 @@ from scrinium.domain.enums import (
 )
 from scrinium.domain.paths import is_test_path
 from scrinium.infrastructure.llm.base import ChatMessage, TokenUsage, key_line
-from scrinium.infrastructure.local_http import ModelError, ModelStatus
+from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
@@ -571,7 +571,7 @@ def interpret(raw: str, fragments: list[Fragment]) -> tuple[list[ValidRule], int
     try:
         answer = _ModelExtraction.model_validate_json(raw)
     except ValidationError:
-        raise ModelError from None
+        raise InvalidOutputError from None
     by_id = {f"D{decision.number}": decision for decision in decisions(fragments)}
     valid, dropped, seen = [], 0, set()
     for item in answer.d:
@@ -777,8 +777,9 @@ def extract_rules(
             rules, dropped = interpret(completion.text, group)
             verdicts = interpret_verdicts(completion.text, group)
         except ModelError as error:
-            reason = type(error).__name__
-            logger.warning("extraction_batch_failed run=%s type=%s", run_id, reason)
+            # The same reasons from every provider (ADR-010): length, refused, invalid…
+            reason = error.outcome.value
+            logger.warning("extraction_batch_failed run=%s outcome=%s", run_id, reason)
             reasons = result["failure_reasons"]
             reasons[reason] = reasons.get(reason, 0) + 1
             halves = split_batch(group)
@@ -856,7 +857,7 @@ def _write_statements(
             result["tokens"] = usage.as_dict()
             statements = detail.interpret_details(completion.text, group)
         except ModelError as error:
-            logger.warning("detail_batch_failed run=%s type=%s", run_id, type(error).__name__)
+            logger.warning("detail_batch_failed run=%s outcome=%s", run_id, error.outcome.value)
             result["batches_failed"] += 1
             continue
         with database.session() as session:
