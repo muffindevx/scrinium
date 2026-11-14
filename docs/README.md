@@ -43,6 +43,7 @@ Architecture decision records: what was decided, how, why, and the alternatives 
 | [ADR-007](decisions/ADR-007-repository-structure.md) | Repository structure |
 | [ADR-008](decisions/ADR-008-sql-parser.md) | sqlglot to analyze SQL as text |
 | [ADR-009](decisions/ADR-009-ui-routing.md) | react-router for the UI screens |
+| [ADR-010](decisions/ADR-010-remote-model-providers.md) | Remote model providers, by project and with consent |
 
 ## Security
 

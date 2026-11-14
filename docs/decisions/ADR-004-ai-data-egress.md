@@ -4,7 +4,8 @@
 
 - embeddings implemented on 2026-11-07;
 - LLM answers implemented later;
-- managed llama.cpp on 2026-11-09.
+- managed llama.cpp on 2026-11-09;
+- amended on 2026-11-14 by [ADR-010](ADR-010-remote-model-providers.md): remote providers per project, with consent.
 
 ## The question
 
@@ -13,7 +14,7 @@ Answering questions and extracting rules needs a language model and an embedding
 ## What we decided
 
 - The default mode is **`local_only`**. Models run on the user's machine, behind the `LLMProvider` and `EmbeddingProvider` interfaces.
-- `require_local` (`application/ai/policy.py`) refuses any provider that is not local. **There is no remote provider in the code.** Adding one requires a new mode with explicit consent that shows the provider, the model and what data may leave.
+- `require_local` (`application/ai/policy.py`) refuses any provider that is not local. **There is no remote provider in the code.** Adding one requires a new mode with explicit consent that shows the provider, the model and what data may leave. That mode is decided in [ADR-010](ADR-010-remote-model-providers.md); `local_only` stays the default for every project.
 - The default runtime is **`llama-server` from llama.cpp, managed by Scrinium**. Ollama remains an alternative.
 
 ## How it works
@@ -74,7 +75,7 @@ Answering questions and extracting rules needs a language model and an embedding
 
 - Quality and speed are bounded by the user's hardware (see `README.md`, "Hardware requirements").
 - First use downloads ~3 GB of models.
-- Any future remote provider is a new decision, with its own consent screen and ADR.
+- Any future remote provider is a new decision, with its own consent screen and ADR. That decision is [ADR-010](ADR-010-remote-model-providers.md).
 
 ## Revisit when
 
