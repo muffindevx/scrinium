@@ -23,12 +23,20 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from scrinium.application.ai.routing import passage, sending
 from scrinium.application.ai.service import LlmService
 from scrinium.application.knowledge.evidence import record_finding
 from scrinium.application.retrieval import search as retrieval
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.core.secret_patterns import redact_tokens
-from scrinium.domain.enums import AnalysisStatus, AnalysisType, AnswerStatus, FindingType, Severity
+from scrinium.domain.enums import (
+    AiTask,
+    AnalysisStatus,
+    AnalysisType,
+    AnswerStatus,
+    FindingType,
+    Severity,
+)
 from scrinium.infrastructure.llm.base import (
     ChatMessage,
     OutputBudgetExceededError,
@@ -106,6 +114,15 @@ class Source:
 
 def _clean(text: str, limit: int = _MAX_TEXT) -> str:
     return redact_tokens(text.strip())[:limit]
+
+
+def _passage(source: Source) -> str:
+    chunk, revision = source.hit.chunk, source.hit.revision
+    locator = chunk.locator or {}
+    return passage(
+        revision.metadata_.get("path", ""), int(locator.get("start_line", 0)),
+        int(locator.get("end_line", 0)),
+    )  # fmt: skip
 
 
 def build_messages(question: str, sources: list[Source], nonce: str) -> list[ChatMessage]:
@@ -214,6 +231,7 @@ def create_question(
     question = question.strip()
     if not question or len(question) > MAX_QUESTION_CHARS:
         raise QuestionError
+    model = llm.for_task(project.id, AiTask.QUESTIONS)
     run = AnalysisRun(
         workspace_id=project.workspace_id,
         project_id=project.id,
@@ -221,8 +239,8 @@ def create_question(
         # Stored redacted; the hash is of the original, to recognize repeats.
         question=redact_tokens(question),
         input_hash=hashlib.sha256(question.encode()).hexdigest(),
-        model_provider=provider_name(llm.provider),
-        model_name=llm.provider.model_id,
+        model_provider=provider_name(model),
+        model_name=model.model_id,
         prompt_version=PROMPT_VERSION,
         retrieval_version=RETRIEVAL_VERSION,
     )
@@ -289,18 +307,21 @@ def answer_question(
              "sources_considered": 0},
         )  # fmt: skip
         return
-    if llm.status() is not ModelStatus.READY:
+    # The local model, or the remote one this project consented to for questions (ADR-010).
+    model = llm.for_task(project_id, AiTask.QUESTIONS)
+    if (llm.status() if model.is_local else model.status()) is not ModelStatus.READY:
         _finish(database, run_id, AnalysisStatus.FAILED, error="llm_unavailable")
         return
-    if llm.memory_too_low_for_questions():
+    if model.is_local and llm.memory_too_low_for_questions():
         _finish(database, run_id, AnalysisStatus.FAILED, error="low_memory")
         return
 
     nonce = secrets.token_hex(8)
     try:
-        completion = llm.provider.complete(
-            build_messages(question, sources, nonce), MAX_OUTPUT_TOKENS, ANSWER_SCHEMA
-        )
+        with sending([_passage(source) for source in sources]):
+            completion = model.complete(
+                build_messages(question, sources, nonce), MAX_OUTPUT_TOKENS, ANSWER_SCHEMA
+            )
         interpretation = interpret(completion.text, sources)
     except ModelError as error:
         logger.warning("question_failed run=%s type=%s", run_id, type(error).__name__)

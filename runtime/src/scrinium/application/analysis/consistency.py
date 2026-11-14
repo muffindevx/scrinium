@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from scrinium.application.ai.routing import sending
 from scrinium.application.ai.service import LlmService
 from scrinium.application.analysis.runs import finish_run, report_progress
 from scrinium.application.knowledge.common import KnowledgeError, audit, get_in_project
@@ -29,6 +30,7 @@ from scrinium.application.knowledge.evidence import cite_source, record_finding
 from scrinium.application.knowledge.watch import REVIEW_CODE_CONTRADICTS, WATCH_REASONS
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.domain.enums import (
+    AiTask,
     AnalysisStatus,
     EntityLifecycle,
     EntityType,
@@ -252,7 +254,8 @@ def review_consistency(
     }  # fmt: skip
     pairs = [(rules[i], rules[j]) for i, j in similar_pairs(rules, indexer)]
     result["pairs"] = len(pairs)
-    if llm.status() is not ModelStatus.READY:
+    model = llm.for_task(project.id, AiTask.CONSISTENCY)
+    if (llm.status() if model.is_local else model.status()) is not ModelStatus.READY:
         finish_run(database, run_id, AnalysisStatus.PARTIAL, result, "llm_unavailable")
         return
     work: list[tuple[list[tuple[Rule, Rule]], list[Rule]]] = [
@@ -275,9 +278,12 @@ def review_consistency(
         result["batches"] += 1
         nonce = secrets.token_hex(8)
         try:
-            completion = llm.provider.complete(
-                _messages(batch_pairs, batch_rules, nonce), MAX_OUTPUT_TOKENS, REVIEW_SCHEMA
-            )
+            # Rules travel by title and statement, with their code: the record names them.
+            sent = [r.title for pair in batch_pairs for r in pair] + [r.title for r in batch_rules]
+            with sending([f"regla: {title}" for title in sent]):
+                completion = model.complete(
+                    _messages(batch_pairs, batch_rules, nonce), MAX_OUTPUT_TOKENS, REVIEW_SCHEMA
+                )
             # Also counted if the answer turns out invalid: those tokens were spent.
             usage.add(completion)
             result["tokens"] = usage.as_dict()

@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from scrinium.application.ai.routing import passage, sending
 from scrinium.application.ai.service import LlmService
 from scrinium.application.analysis import extraction_queue as queue
 from scrinium.application.analysis import rule_detail as detail
@@ -65,6 +66,7 @@ from scrinium.application.knowledge.watch import (
 from scrinium.application.retrieval.edges import build_edges
 from scrinium.application.retrieval.structure import ensure_project_symbols
 from scrinium.domain.enums import (
+    AiTask,
     AnalysisStatus,
     AnalysisType,
     Criticality,
@@ -606,11 +608,24 @@ def interpret(raw: str, fragments: list[Fragment]) -> tuple[list[ValidRule], int
     return valid, dropped
 
 
+def answered_by(run: AnalysisRun, model_id: str | None) -> tuple[str | None, str | None]:
+    """Provenance of what a model wrote: the model that answered (N6, ADR-010), or the run's."""
+    if not model_id:
+        return run.model_provider, run.model_name
+    return model_id.split(":", 1)[0], model_id
+
+
 def store_rules(
-    session: Session, project: Project, run: AnalysisRun, rules: list[ValidRule]
+    session: Session,
+    project: Project,
+    run: AnalysisRun,
+    rules: list[ValidRule],
+    model_id: str | None = None,
 ) -> dict[str, list[str]]:
+    """`model_id`: the model that actually wrote these rules (N6), if it is not the run's."""
+    model_provider, model_name = answered_by(run, model_id)
     provenance = Provenance(
-        VersionOrigin.SOURCE_EXTRACTION, run.model_provider, run.model_name,
+        VersionOrigin.SOURCE_EXTRACTION, model_provider, model_name,
         extractor_version=EXTRACTOR_VERSION, analysis_run_id=run.id,
     )  # fmt: skip
     outcome: dict[str, list[str]] = {"created": [], "updated": [], "unchanged": []}
@@ -750,7 +765,8 @@ def extract_rules(
     if not fragments:
         finish_run(database, run_id, AnalysisStatus.COMPLETED, result)
         return
-    if llm.status() is not ModelStatus.READY:
+    model = llm.for_task(project_id, AiTask.RULE_MAP)
+    if (llm.status() if model.is_local else model.status()) is not ModelStatus.READY:
         finish_run(database, run_id, AnalysisStatus.FAILED, result, "llm_unavailable")
         return
     report_progress(database, run_id, result)
@@ -769,11 +785,13 @@ def extract_rules(
         nonce = secrets.token_hex(8)
         started = time.monotonic()
         try:
-            completion = llm.provider.complete(
-                build_messages(group, nonce), output_tokens(group), extraction_schema(group)
-            )
+            with sending([passage(f.path, f.start_line, f.end_line) for f in group]):
+                completion = model.complete(
+                    build_messages(group, nonce), output_tokens(group), extraction_schema(group)
+                )
             usage.add(completion)
             result["tokens"] = usage.as_dict()
+            model_id = completion.model_id
             rules, dropped = interpret(completion.text, group)
             verdicts = interpret_verdicts(completion.text, group)
         except ModelError as error:
@@ -800,7 +818,7 @@ def extract_rules(
         with database.session() as session:
             run = session.get_one(AnalysisRun, run_id)
             project = session.get_one(Project, run.project_id)
-            for name, ids in store_rules(session, project, run, rules).items():
+            for name, ids in store_rules(session, project, run, rules, model_id).items():
                 result[name] += ids
             for name, ids in apply_verdicts(session, project, run, verdicts).items():
                 result[name] += ids
@@ -841,6 +859,7 @@ def _write_statements(
     stop (pause, shutdown or another analysis waiting its turn)."""
     with database.session() as session:
         run = session.get_one(AnalysisRun, run_id)
+        run_project_id = run.project_id
         items = detail.pending_details(session, session.get_one(Project, run.project_id))
     result["pending"] = len(items)
     for start in range(0, len(items), detail.DETAIL_BATCH):
@@ -848,11 +867,13 @@ def _write_statements(
         if should_stop() or not _wait_for_turn(llm, should_stop):
             return True
         result["batches"] += 1
+        model = llm.for_task(run_project_id, AiTask.RULE_STATEMENTS)
         try:
-            completion = llm.provider.complete(
-                detail.build_detail_messages(group, detail.new_nonce()),
-                detail.output_tokens(group), detail.detail_schema(group),
-            )  # fmt: skip
+            with sending([item.path for item in group]):
+                completion = model.complete(
+                    detail.build_detail_messages(group, detail.new_nonce()),
+                    detail.output_tokens(group), detail.detail_schema(group),
+                )  # fmt: skip
             usage.add(completion)
             result["tokens"] = usage.as_dict()
             statements = detail.interpret_details(completion.text, group)
@@ -863,7 +884,9 @@ def _write_statements(
         with database.session() as session:
             run = session.get_one(AnalysisRun, run_id)
             project = session.get_one(Project, run.project_id)
-            result["detailed"] += detail.store_details(session, project, run, group, statements)
+            result["detailed"] += detail.store_details(
+                session, project, run, group, statements, completion.model_id
+            )
         result["pending"] = len(items) - start - len(group)
         report_progress(database, run_id, result)
     return False
@@ -883,7 +906,7 @@ def submit_statements(
             return None
         run = create_run(
             session, project, AnalysisType.KNOWLEDGE_EXTRACTION, STATEMENTS_DESCRIPTION, "",
-            llm=llm, prompt_version=detail.DETAIL_PROMPT_VERSION,
+            llm=llm, task=AiTask.RULE_STATEMENTS, prompt_version=detail.DETAIL_PROMPT_VERSION,
         )  # fmt: skip
         run_id = run.id
     runner.submit(statements_task(database, llm, runner), run_id)
@@ -933,17 +956,19 @@ def write_statement_now(
             return False
         run = create_run(
             session, project, AnalysisType.KNOWLEDGE_EXTRACTION, STATEMENTS_DESCRIPTION, "",
-            llm=llm, prompt_version=detail.DETAIL_PROMPT_VERSION,
+            llm=llm, task=AiTask.RULE_STATEMENTS, prompt_version=detail.DETAIL_PROMPT_VERSION,
         )  # fmt: skip
         run_id = run.id
     start_run(database, run_id)
     result: dict[str, Any] = {"label": "llm_proposal", "phase": "statements", "detailed": []}
+    model = llm.for_task(project_id, AiTask.RULE_STATEMENTS)
     with llm.interactive():
         try:
-            completion = llm.provider.complete(
-                detail.build_detail_messages(items, detail.new_nonce()),
-                detail.output_tokens(items), detail.detail_schema(items),
-            )  # fmt: skip
+            with sending([item.path for item in items]):
+                completion = model.complete(
+                    detail.build_detail_messages(items, detail.new_nonce()),
+                    detail.output_tokens(items), detail.detail_schema(items),
+                )  # fmt: skip
             statements = detail.interpret_details(completion.text, items)
         except ModelError:
             finish_run(database, run_id, AnalysisStatus.FAILED, result, "model_error")
@@ -951,7 +976,9 @@ def write_statement_now(
     with database.session() as session:
         run = session.get_one(AnalysisRun, run_id)
         project = session.get_one(Project, project_id)
-        result["detailed"] = detail.store_details(session, project, run, items, statements)
+        result["detailed"] = detail.store_details(
+            session, project, run, items, statements, completion.model_id
+        )
     finish_run(database, run_id, AnalysisStatus.COMPLETED, result)
     return bool(result["detailed"])
 

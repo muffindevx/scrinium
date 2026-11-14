@@ -2,6 +2,7 @@
 
 import threading
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -9,6 +10,8 @@ from typing import Final
 
 from scrinium.application.ai.memory_guard import MemoryGuard, MemoryLevel
 from scrinium.application.ai.policy import require_local
+from scrinium.application.ai.routing import Router, TaskModel
+from scrinium.domain.enums import AiTask
 from scrinium.infrastructure.llm.base import ChatMessage, LLMProvider
 from scrinium.infrastructure.local_http import ModelError, ModelStatus
 
@@ -25,13 +28,25 @@ class CheckResult:
 
 
 class LlmService:
-    def __init__(self, provider: LLMProvider, memory: MemoryGuard | None = None) -> None:
+    def __init__(
+        self,
+        provider: LLMProvider,
+        memory: MemoryGuard | None = None,
+        router: Router | None = None,
+    ) -> None:
+        """`provider` is this machine's model: always local. `router` sends a task of a project
+        to a remote model only where that project's consent says so (ADR-010)."""
         self.provider = require_local(provider)
+        self.router = router
         self.memory = memory or MemoryGuard(read_available=lambda: None)
         self._status_cache: tuple[float, ModelStatus] | None = None
         # A person's questions in progress: batch extraction yields the model to them.
         self._interactive = 0
         self._idle = threading.Condition()
+
+    def for_task(self, project_id: uuid.UUID, task: AiTask) -> TaskModel:
+        """The model this task of this project uses, decided on every call."""
+        return TaskModel(self.provider, self.router, project_id, task)
 
     def wait_for_background_turn(
         self, should_stop: Callable[[], bool], check_seconds: float = _TURN_CHECK_SECONDS

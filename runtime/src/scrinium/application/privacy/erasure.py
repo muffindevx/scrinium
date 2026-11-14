@@ -29,6 +29,7 @@ from scrinium.infrastructure.secret_store import SecretStore
 from scrinium.infrastructure.sqlite.database import DATABASE_FILENAME, Database
 from scrinium.infrastructure.sqlite.models import (
     AiConsent,
+    AiRequest,
     AnalysisRun,
     AuditEvent,
     Base,
@@ -155,7 +156,11 @@ def delete_project(
         ):
             sources.delete_source(session, connection_id, request_id)
             summary["sources_deleted"] += 1
-        # The project's consents to remote models go with it (ADR-010); the provider stays.
+        # The project's record of remote requests and its consents go with it (ADR-010); the
+        # provider stays.
+        summary["ai_requests_deleted"] = session.execute(
+            delete(AiRequest).where(AiRequest.project_id == project.id)
+        ).rowcount  # type: ignore[attr-defined]
         summary["ai_consents_deleted"] = session.execute(
             delete(AiConsent).where(AiConsent.project_id == project.id)
         ).rowcount  # type: ignore[attr-defined]

@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from scrinium.application.ai.service import LlmService
 from scrinium.application.workspaces import record_audit
 from scrinium.core.secret_patterns import redact_tokens
-from scrinium.domain.enums import AnalysisStatus, AnalysisType, AuditResult
+from scrinium.domain.enums import AiTask, AnalysisStatus, AnalysisType, AuditResult
 from scrinium.infrastructure.llm.base import provider_name
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import AnalysisRun, Project, utc_now
@@ -26,6 +26,13 @@ from scrinium.infrastructure.sqlite.models import AnalysisRun, Project, utc_now
 logger = logging.getLogger("scrinium.analysis")
 
 MAX_DESCRIPTION_CHARS: Final = 300
+
+
+_TASKS: Final = {
+    AnalysisType.QUESTION: AiTask.QUESTIONS,
+    AnalysisType.KNOWLEDGE_EXTRACTION: AiTask.RULE_MAP,
+    AnalysisType.CODE_DIFF: AiTask.CHANGE_IMPACT,
+}
 
 
 def create_run(
@@ -38,19 +45,24 @@ def create_run(
     prompt_version: str = "0",
     retrieval_version: str = "0",
     llm: LlmService | None = None,
+    task: AiTask | None = None,
     base_revision: str | None = None,
     target_revision: str | None = None,
     release_ref: str | None = None,
     request_id: str | None = None,
 ) -> AnalysisRun:
+    # The model this run's task uses for this project: local, or the consented one (ADR-010).
+    model = None
+    if llm is not None:
+        model = llm.for_task(project.id, task or _TASKS.get(analysis_type, AiTask.RULE_MAP))
     run = AnalysisRun(
         workspace_id=project.workspace_id,
         project_id=project.id,
         analysis_type=analysis_type,
         question=redact_tokens(description.strip())[:MAX_DESCRIPTION_CHARS],
         input_hash=hashlib.sha256(input_text.encode()).hexdigest(),
-        model_provider=provider_name(llm.provider) if llm is not None else None,
-        model_name=llm.provider.model_id if llm is not None else None,
+        model_provider=provider_name(model) if model is not None else None,
+        model_name=model.model_id if model is not None else None,
         prompt_version=prompt_version,
         retrieval_version=retrieval_version,
         base_revision=base_revision,

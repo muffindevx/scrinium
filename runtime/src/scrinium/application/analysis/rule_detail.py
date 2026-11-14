@@ -256,10 +256,15 @@ def store_details(
     run: AnalysisRun,
     items: list[DetailItem],
     statements: dict[str, str],
+    model_id: str | None = None,
 ) -> list[str]:
-    """One new version per rule with its statement, and the same citations as the map's."""
+    """One new version per rule with its statement, and the same citations as the map's.
+    `model_id`: the model that actually wrote the statements (N6), if not the run's."""
+    model_provider, model_name = (
+        (model_id.split(":", 1)[0], model_id) if model_id else (run.model_provider, run.model_name)
+    )
     provenance = Provenance(
-        VersionOrigin.SOURCE_EXTRACTION, run.model_provider, run.model_name,
+        VersionOrigin.SOURCE_EXTRACTION, model_provider, model_name,
         extractor_version=DETAIL_EXTRACTOR_VERSION, analysis_run_id=run.id,
     )  # fmt: skip
     stored: list[str] = []

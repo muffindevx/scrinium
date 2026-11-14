@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from scrinium.application.ai.routing import sending
 from scrinium.application.ai.service import LlmService
 from scrinium.application.analysis.extraction import evidence_type_for
 from scrinium.application.analysis.release_comparison import SEVERITY_BY_CRITICALITY
@@ -31,6 +32,7 @@ from scrinium.application.knowledge.entities import latest_version
 from scrinium.application.knowledge.evidence import link_finding_evidence, record_finding
 from scrinium.core.secret_patterns import redact_tokens
 from scrinium.domain.enums import (
+    AiTask,
     AnalysisStatus,
     EvidenceRelevance,
     EvidenceType,
@@ -39,7 +41,7 @@ from scrinium.domain.enums import (
     RelationType,
     Severity,
 )
-from scrinium.infrastructure.llm.base import ChatMessage, key_line
+from scrinium.infrastructure.llm.base import ChatMessage, LLMProvider, key_line
 from scrinium.infrastructure.local_http import InvalidOutputError, ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
@@ -313,7 +315,7 @@ REVIEW_SCHEMA: Final[dict[str, Any]] = _Review.model_json_schema()
 
 
 def review_with_llm(
-    llm: LlmService,
+    model: LLMProvider,
     rules: list[tuple[BusinessRuleVersion, str]],
     hunks: list[tuple[str, Hunk]],
 ) -> list[tuple[int, int, str, Severity]]:
@@ -345,7 +347,8 @@ def review_with_llm(
         ChatMessage("system", REVIEW_PROMPT),
         ChatMessage("user", redact_tokens(user)),
     ]
-    completion = llm.provider.complete(messages, 2000, REVIEW_SCHEMA)
+    with sending([f"{path} (diff)" for path, _ in hunks]):
+        completion = model.complete(messages, 2000, REVIEW_SCHEMA)
     try:
         review = _Review.model_validate_json(completion.text)
     except ValidationError:
@@ -375,6 +378,7 @@ def analyze_diff(database: Database, llm: LlmService, run_id: uuid.UUID, diff: s
     with database.session() as session:
         run = session.get_one(AnalysisRun, run_id)
         project = session.get_one(Project, run.project_id)
+        project_id = project.id
         files = [
             {
                 "path": p.path, "old_path": p.old_path, "status": p.status,
@@ -439,8 +443,10 @@ def analyze_diff(database: Database, llm: LlmService, run_id: uuid.UUID, diff: s
                 review_targets.append((rule_version, impact.entity.name, impact))
 
     llm_status = "not_needed"
+    # The local model, or the remote one this project consented to for change impact.
+    model = llm.for_task(project_id, AiTask.CHANGE_IMPACT)
     if review_targets:
-        if llm.status() is not ModelStatus.READY:
+        if (llm.status() if model.is_local else model.status()) is not ModelStatus.READY:
             llm_status = "unavailable"
             limitations.append("El LLM local no está disponible: no se revisaron conflictos.")
         else:
@@ -451,7 +457,7 @@ def analyze_diff(database: Database, llm: LlmService, run_id: uuid.UUID, diff: s
                 for h in p.hunks
             ][:20]
             try:
-                concerns = review_with_llm(llm, [(v, n) for v, n, _ in review_targets], hunks)
+                concerns = review_with_llm(model, [(v, n) for v, n, _ in review_targets], hunks)
                 llm_status = "completed"
             except ModelError as error:
                 logger.warning("diff_review_failed run=%s type=%s", run_id, type(error).__name__)

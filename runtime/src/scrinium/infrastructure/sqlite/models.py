@@ -192,6 +192,36 @@ class AiConsent(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
 
 
+class AiRequest(Base):
+    """One request sent to a remote model: what left, never its content (ADR-010).
+
+    The content is already in this machine's index; this record answers "what did the provider
+    receive?": which files and lines, for which task, to which host and model, and its size.
+    """
+
+    __tablename__ = "ai_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    consent_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("ai_consents.id", ondelete="SET NULL"), index=True
+    )
+    task: Mapped[str] = mapped_column(String(32))
+    host: Mapped[str] = mapped_column(String(253))
+    # The model asked for, and the one that answered (empty if nothing answered).
+    model: Mapped[str] = mapped_column(String(200))
+    answered_by: Mapped[str] = mapped_column(String(300), default="")
+    outcome: Mapped[str] = mapped_column(String(16))
+    # `path:start-end` of every passage sent; capped (see `routing.MAX_SOURCES`).
+    sources: Mapped[list[str]] = mapped_column(JSON, default=list)
+    sent_chars: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cached_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now, index=True)
+
+
 class LocalProfile(Timestamps, Base):
     """This installation's settings. Not an account: the MVP has no users."""
 

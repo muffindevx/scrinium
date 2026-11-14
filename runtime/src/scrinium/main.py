@@ -23,6 +23,7 @@ from scrinium.api.routes import build_router
 from scrinium.api.static import InterfaceFiles
 from scrinium.application.ai.answering import QuestionRunner, mark_interrupted_questions
 from scrinium.application.ai.memory_guard import MemoryGuard
+from scrinium.application.ai.routing import Router
 from scrinium.application.ai.service import LlmService
 from scrinium.application.analysis import extraction
 from scrinium.application.analysis.runs import AnalysisRunner
@@ -151,7 +152,8 @@ def create_app(
             if llm is None
             else MemoryGuard(read_available=lambda: None)
         )
-    llm_service = LlmService(llm or local_llm, memory)
+    # Remote models only for the tasks a project consented to (ADR-010).
+    llm_service = LlmService(llm or local_llm, memory, Router(database, environment.secret_store))
     app.state.questions = QuestionRunner(database, runner.indexer, llm_service, question_executor)
     app.state.analyses = AnalysisRunner(database, llm_service, question_executor)
     analyses = app.state.analyses
