@@ -2,7 +2,6 @@ import type {
   AnalysisStatus,
   AnalysisType,
   AssessmentStatus,
-  EdgeOrigin,
   Evidence,
   NodeState,
   Severity,
@@ -69,13 +68,6 @@ export const NODE_STATE_LABELS: Record<NodeState, string> = {
   conflicted: "En conflicto",
   rejected: "Rechazado",
   no_version: "Sin versión",
-}
-
-export const EDGE_ORIGIN_LABELS: Record<EdgeOrigin, string> = {
-  observed: "Observada en una fuente",
-  supported: "Respaldada por un test",
-  inferred: "Inferida",
-  confirmed: "Confirmada por una persona",
 }
 
 // Stable API codes (KnowledgeError and analyses) in the person's language.

@@ -492,6 +492,8 @@ export interface GraphEdge {
   to: string
   relation_type: string
   origin: EdgeOrigin
+  /** Why Scrinium related them from the code ("calls:2", "same_data:users"); null if a person did. */
+  basis: string | null
   evidence_id: string | null
 }
 
@@ -504,6 +506,7 @@ export interface KnowledgeGraph {
     relationships_total: number
     relationships_shown: number
     entities_without_relationships: number
+    groups_total: number
   }
 }
 
@@ -615,6 +618,9 @@ export const setVerification = async (versionId: string, status: VerificationSta
   }>
 
 export const getGraph = (projectId: string) => getJson<KnowledgeGraph>(`/api/v1/projects/${projectId}/graph`)
+/** Relates the rules from the code now (phase C), for rules extracted before it existed. */
+export const relateRules = async (projectId: string) =>
+  (await mutate(`/api/v1/projects/${projectId}/relations`)).json() as Promise<{ relationships: number }>
 export const listFlows = async (projectId: string) =>
   (await getJson<{ flows: FlowSummary[] }>(`/api/v1/projects/${projectId}/flows`)).flows
 export const getFlow = (projectId: string, entityId: string) =>

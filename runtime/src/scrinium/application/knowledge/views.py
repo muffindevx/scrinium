@@ -304,8 +304,32 @@ def _node_state(version: KnowledgeEntityVersion | None) -> str:
     return "unverified"
 
 
+def _components(
+    ids: list[uuid.UUID], pairs: list[tuple[uuid.UUID, uuid.UUID]]
+) -> list[list[uuid.UUID]]:
+    """Groups of entities joined by relationships, largest first (ties in the given order)."""
+    parent = {i: i for i in ids}
+
+    def root(i: uuid.UUID) -> uuid.UUID:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a, b in pairs:
+        parent[root(a)] = root(b)
+    groups: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for i in ids:
+        groups.setdefault(root(i), []).append(i)
+    return sorted(groups.values(), key=len, reverse=True)
+
+
 def graph(session: Session, project: Project) -> dict[str, Any]:
-    """Stored nodes and edges, with their origin, and how much of the total is shown."""
+    """The entities that relate to others, and every process, with their edges, origin and basis.
+
+    Any other entity with no relationship is not on the map (the Rulebook lists it); the count says
+    how many. Whole groups of related entities go in, largest first, up to `MAX_GRAPH_NODES`.
+    """
     entities = list(
         session.scalars(
             select(KnowledgeEntity)
@@ -316,14 +340,32 @@ def graph(session: Session, project: Project) -> dict[str, Any]:
             .order_by(KnowledgeEntity.entity_type, KnowledgeEntity.canonical_key)
         )
     )
-    shown = {e.id for e in entities[:MAX_GRAPH_NODES]}
-    relations = list(
-        session.scalars(
+    by_id = {e.id: e for e in entities}
+    relations = [
+        r
+        for r in session.scalars(
             select(EntityRelationship)
             .where(EntityRelationship.project_id == project.id)
             .order_by(EntityRelationship.created_at)
         )
+        if r.from_entity_id in by_id and r.to_entity_id in by_id
+    ]
+    related = {r.from_entity_id for r in relations} | {r.to_entity_id for r in relations}
+    # A process is drawn even alone: it is what the map is for, and there are few.
+    drawn = related | {e.id for e in entities if e.entity_type in FLOW_ENTITY_TYPES}
+    groups = _components(
+        [e.id for e in entities if e.id in drawn],
+        [(r.from_entity_id, r.to_entity_id) for r in relations],
     )
+    shown: list[uuid.UUID] = []
+    for group in groups:
+        if len(shown) + len(group) > MAX_GRAPH_NODES:
+            # A group that does not fit is cut only if nothing is shown yet.
+            if not shown:
+                shown = group[:MAX_GRAPH_NODES]
+            continue
+        shown.extend(group)
+    shown_set = set(shown)
     evidence_ids = {r.evidence_record_id for r in relations if r.evidence_record_id}
     methods = dict(
         session.execute(
@@ -334,7 +376,7 @@ def graph(session: Session, project: Project) -> dict[str, Any]:
     )
     edges = []
     for relation in relations:
-        if relation.from_entity_id not in shown or relation.to_entity_id not in shown:
+        if relation.from_entity_id not in shown_set or relation.to_entity_id not in shown_set:
             continue
         method = methods.get(relation.evidence_record_id) if relation.evidence_record_id else None
         edges.append(
@@ -342,6 +384,7 @@ def graph(session: Session, project: Project) -> dict[str, Any]:
                 "id": str(relation.id), "from": str(relation.from_entity_id),
                 "to": str(relation.to_entity_id), "relation_type": relation.relation_type.value,
                 "origin": _EDGE_ORIGIN[method] if method else "inferred",
+                "basis": relation.basis,
                 "evidence_id": str(relation.evidence_record_id)
                 if relation.evidence_record_id else None,
             }
@@ -352,20 +395,17 @@ def graph(session: Session, project: Project) -> dict[str, Any]:
             "canonical_key": e.canonical_key, "lifecycle_status": e.lifecycle_status.value,
             "state": _node_state(latest_version(session, e.id)),
         }
-        for e in entities[:MAX_GRAPH_NODES]
+        for e in (by_id[i] for i in shown)
     ]  # fmt: skip
     return {
         "nodes": nodes,
         "edges": edges[:MAX_GRAPH_EDGES],
         "coverage": {
             "entities_total": len(entities), "entities_shown": len(nodes),
-            "relationships_total": len(relations), "relationships_shown": min(
-                len(edges), MAX_GRAPH_EDGES
-            ),
-            "entities_without_relationships": sum(
-                1 for n in nodes
-                if not any(edge["from"] == n["id"] or edge["to"] == n["id"] for edge in edges)
-            ),
+            "relationships_total": len(relations),
+            "relationships_shown": min(len(edges), MAX_GRAPH_EDGES),
+            "entities_without_relationships": len(entities) - len(drawn),
+            "groups_total": len(groups),
         },
     }  # fmt: skip
 

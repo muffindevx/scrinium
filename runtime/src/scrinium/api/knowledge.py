@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session as DbSession
 from scrinium.application.ai.service import LlmService
 from scrinium.application.analysis.consistency import merge_rules
 from scrinium.application.analysis.extraction import write_statement_now
+from scrinium.application.analysis.rule_relations import rebuild_relations
 from scrinium.application.ingestion import sources
 from scrinium.application.knowledge import views
 from scrinium.application.knowledge.architecture import architecture
@@ -278,6 +279,14 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
     def graph(project_id: uuid.UUID) -> dict[str, Any]:
         with database.session() as session:
             return views.graph(session, _project(session, project_id))
+
+    @router.post("/api/v1/projects/{project_id}/relations")
+    def relate_rules(project_id: uuid.UUID) -> dict[str, Any]:
+        """Phase C now, without extracting again: rules extracted before it have none. Derived
+        from the code without the model, under a second; a person's relationships are kept."""
+        with database.session() as session:
+            _project(session, project_id)
+        return {"relationships": rebuild_relations(database, project_id)}
 
     @router.get("/api/v1/projects/{project_id}/flows")
     def flows(project_id: uuid.UUID) -> dict[str, Any]:

@@ -91,9 +91,14 @@ def test_rules_are_related_by_function_calls_constants_and_duplicates(
         project = session.get_one(Project, uuid.UUID(api.project_id))
         add_relationship(session, project, maximo, RelationType.RELATED_TO, copia)
 
-    # Rebuilding twice gives the same: the derived ones are replaced, not added up.
+    # Rebuilding twice gives the same: the derived ones are replaced, not added up. The map
+    # asks for it for rules extracted before phase C.
     assert rebuild_relations(runtime.database, uuid.UUID(api.project_id)) == 4
-    assert rebuild_relations(runtime.database, uuid.UUID(api.project_id)) == 4
+    response = runtime.client.post(
+        f"/api/v1/projects/{api.project_id}/relations", headers=api.headers
+    )
+    assert response.status_code == 200
+    assert response.json() == {"relationships": 4}
     with runtime.database.session() as session:
         found = {
             (frozenset({r.from_entity_id, r.to_entity_id}), r.relation_type, r.basis)

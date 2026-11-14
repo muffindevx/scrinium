@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
-import type { GraphNode } from "./api"
-import { edgePath, layoutGraph } from "./graph"
+import type { GraphEdge, GraphNode } from "./api"
+import { connectedGroups, edgePath, layoutLayers } from "./graph"
 
 const node = (id: string, entity_type: string, name = id): GraphNode => ({
   id,
@@ -11,49 +11,51 @@ const node = (id: string, entity_type: string, name = id): GraphNode => ({
   state: "inferred",
 })
 
-describe("layoutGraph", () => {
-  it("ordena las columnas de la intencion al codigo y no solapa nodos", () => {
-    const layout = layoutGraph([
-      node("t", "test_case"),
-      node("r2", "business_rule", "b"),
-      node("s", "service"),
-      node("r1", "business_rule", "a"),
-    ])
-    expect(layout.columns.map((c) => c.entityType)).toEqual(["business_rule", "service", "test_case"])
-    const r1 = layout.positions.get("r1")!
-    const r2 = layout.positions.get("r2")!
-    expect(r1.x).toBe(r2.x)
-    expect(r2.y - r1.y).toBeGreaterThanOrEqual(layout.nodeHeight)
-    expect(layout.positions.get("t")!.x).toBeGreaterThan(layout.positions.get("s")!.x)
-  })
+const edge = (from: string, to: string, relation_type = "depends_on"): GraphEdge => ({
+  id: `${from}-${to}`,
+  from,
+  to,
+  relation_type,
+  origin: "inferred",
+  basis: null,
+  evidence_id: null,
+})
 
-  it("es determinista y no falla sin nodos", () => {
-    const nodes = [node("a", "module"), node("b", "unknown_kind")]
-    expect(layoutGraph(nodes)).toEqual(layoutGraph([...nodes].reverse()))
-    expect(layoutGraph([]).width).toBeGreaterThan(0)
+describe("connectedGroups", () => {
+  it("separa los grupos sin relacion y pone primero el mayor", () => {
+    const nodes = ["a", "b", "c", "d", "e"].map((id) => node(id, "business_rule"))
+    const groups = connectedGroups(nodes, [edge("a", "b"), edge("d", "e", "related_to"), edge("e", "c", "related_to")])
+    expect(groups.map((group) => group.nodes.map((n) => n.id).sort())).toEqual([["c", "d", "e"], ["a", "b"]])
+    expect(groups[1].edges.map((e) => e.id)).toEqual(["a-b"])
   })
+})
 
-  it("une columnas vecinas en recta y rodea las columnas intermedias", () => {
-    const layout = layoutGraph([
-      node("a", "business_rule"),
-      node("b", "business_rule"),
-      node("f", "business_flow"),
-      node("s", "service"),
-    ])
-    const edge = (from: string, to: string) => ({
-      id: `${from}-${to}`, from, to, relation_type: "x", origin: "inferred" as const, evidence_id: null,
-    })
+describe("layoutLayers", () => {
+  it("pone a la izquierda quien depende y no se cuelga con ciclos", () => {
+    const nodes = ["a", "b", "c", "d"].map((id) => node(id, "business_rule"))
+    const layout = layoutLayers(nodes, [edge("a", "b"), edge("b", "c"), edge("a", "d", "related_to")])
+    const x = (id: string) => layout.positions.get(id)?.x ?? -1
+    expect(x("a")).toBeLessThan(x("b"))
+    expect(x("b")).toBeLessThan(x("c"))
+    expect(x("d")).toBe(x("a"))
+    const cycle = layoutLayers(nodes.slice(0, 2), [edge("a", "b"), edge("b", "a")])
+    expect(cycle.positions.size).toBe(2)
+  })
+})
+
+describe("edgePath", () => {
+  it("une capas vecinas en recta, rodea las intermedias y curva dentro de la misma capa", () => {
+    // a -> b -> c, and a also calls c: c ends two layers to the right of a.
+    const nodes = ["a", "b", "c", "d"].map((id) => node(id, "business_rule"))
+    const layout = layoutLayers(nodes, [edge("a", "b"), edge("b", "c"), edge("a", "c")])
     const a = layout.positions.get("a")!
-    const f = layout.positions.get("f")!
-    expect(edgePath(edge("a", "f"), layout)).toBe(
-      `M ${a.x + layout.nodeWidth} ${a.y + layout.nodeHeight / 2} L ${f.x} ${f.y + layout.nodeHeight / 2}`,
+    const b = layout.positions.get("b")!
+    expect(edgePath(edge("a", "b"), layout)).toBe(
+      `M ${a.x + layout.nodeWidth} ${a.y + layout.nodeHeight / 2} L ${b.x} ${b.y + layout.nodeHeight / 2}`,
     )
-    // From the rule to the service it skips the flow column: it goes through the gap under the row.
-    const around = edgePath(edge("a", "s"), layout)!
     const lane = a.y + layout.nodeHeight + layout.gapY / 2
-    expect(around).toContain(`V ${lane}`)
-    expect(lane).toBeGreaterThan(f.y + layout.nodeHeight)
-    expect(edgePath(edge("a", "b"), layout)).toMatch(/^M .* C /)
+    expect(edgePath(edge("a", "c"), layout)).toContain(`V ${lane}`)
+    expect(edgePath(edge("a", "d", "related_to"), layout)).toMatch(/^M .* C /)
     expect(edgePath(edge("a", "zz"), layout)).toBeNull()
   })
 })

@@ -1,4 +1,4 @@
-import { ArrowRight, Map as MapIcon, Workflow, X } from "lucide-react"
+import { ArrowRight, Map as MapIcon, Network, Workflow, X } from "lucide-react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router"
 import { cn } from "cn"
@@ -7,29 +7,66 @@ import { StatusBadge, VerificationStatusBadge } from "@/components/status"
 import { type Tone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
 import {
-  type EdgeOrigin,
   type FlowDetail,
   type FlowSummary,
+  type GraphEdge,
   type GraphNode,
   type KnowledgeGraph,
   type NodeState,
   getFlow,
   getGraph,
   listFlows,
+  relateRules,
 } from "@/lib/api"
-import { edgePath, layoutGraph } from "@/lib/graph"
-import { EDGE_ORIGIN_LABELS, ENTITY_TYPE_LABELS, NODE_STATE_LABELS } from "@/lib/labels"
+import { connectedGroups, edgePath, layoutLayers } from "@/lib/graph"
+import { ENTITY_TYPE_LABELS, NODE_STATE_LABELS } from "@/lib/labels"
 import { useErrors } from "@/screens/hooks"
 import { RuleEvidence } from "@/screens/RulesScreen"
 import { ErrorText, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
-// Stroke by where each edge comes from; colour is not the only cue.
-const EDGE_STYLE: Record<EdgeOrigin, { dash?: string; width: number; className: string }> = {
-  confirmed: { width: 2.5, className: "stroke-emerald-500" },
-  observed: { width: 1.5, className: "stroke-foreground/60" },
-  supported: { width: 1.5, className: "stroke-sky-500" },
-  inferred: { dash: "5 4", width: 1.25, className: "stroke-muted-foreground" },
+type EdgeKind = "depends" | "same" | "near" | "person"
+
+/** What an edge means for the reader, from its basis: the code relates them, or a person did. */
+function edgeKind(edge: GraphEdge): EdgeKind {
+  if (edge.basis === null) return edge.relation_type === "depends_on" ? "depends" : "person"
+  const kind = edge.basis.split(":", 1)[0]
+  if (kind === "calls" || edge.relation_type === "depends_on") return "depends"
+  if (kind === "duplicate" || kind === "constraint") return "same"
+  return "near"
 }
+
+// Stroke by meaning; colour is never the only cue (dash, width and arrow differ too).
+const EDGE_STYLE: Record<EdgeKind, { dash?: string; width: number; className: string; arrow: boolean; label: string }> = {
+  depends: { width: 1.5, className: "stroke-foreground/60", arrow: true, label: "Su código llama al de la otra" },
+  same: { width: 3, className: "stroke-sky-500", arrow: false, label: "La misma decisión en otro sitio" },
+  near: { dash: "5 4", width: 1.25, className: "stroke-muted-foreground", arrow: false, label: "Misma función, permiso o tabla" },
+  person: { width: 2.5, className: "stroke-emerald-500", arrow: false, label: "Relacionadas por una persona" },
+}
+
+function edgeTitle(edge: GraphEdge, from?: string, to?: string) {
+  const [kind, detail] = (edge.basis ?? "").split(":", 2)
+  if (kind === "calls") return `${from} llama a ${to}${detail === "1" ? "" : ` (a través de ${Number(detail) - 1} función(es))`}`
+  if (kind === "duplicate") return `${from} y ${to}: la misma decisión`
+  if (kind === "constraint") return `${from} y ${to}: misma restricción ${detail}`
+  if (kind === "same_function") return `${from} y ${to}: juntas en ${detail}`
+  if (kind === "permission") return `${from} y ${to}: mismo permiso ${detail}`
+  if (kind === "same_data") return `${from} y ${to}: misma tabla ${detail}`
+  return `${from} → ${to}`
+}
+
+/** The relationship between two rules, read from the first one shown to the second. */
+function pairReason(edge: GraphEdge, forward: boolean) {
+  const [kind, detail] = (edge.basis ?? "").split(":", 2)
+  if (kind === "calls") return forward ? "llama al código de" : "la usa"
+  if (kind === "duplicate") return "es la misma decisión que"
+  if (kind === "constraint") return `misma restricción (${detail}) que`
+  if (kind === "same_function") return `junto a ella en ${detail}:`
+  if (kind === "permission") return `mismo permiso (${detail}) que`
+  if (kind === "same_data") return `misma tabla (${detail}) que`
+  if (edge.relation_type === "depends_on") return forward ? "depende de" : "de ella depende"
+  return "relacionada con"
+}
+
 const NODE_STYLE: Record<NodeState, string> = {
   confirmed: "fill-emerald-500/10 stroke-emerald-500",
   supported: "fill-emerald-500/5 stroke-emerald-500/60",
@@ -49,22 +86,25 @@ const NODE_TONE: Record<NodeState, Tone> = {
   no_version: "no_evidence",
 }
 
-function GraphView({
-  graph,
+/** One group of related rules, laid out so that a chain of calls reads from left to right. */
+function GroupView({
+  nodes,
+  edges,
   selected,
   onSelect,
 }: {
-  graph: KnowledgeGraph
+  nodes: GraphNode[]
+  edges: GraphEdge[]
   selected: string | null
   onSelect: (node: GraphNode) => void
 }) {
-  const layout = useMemo(() => layoutGraph(graph.nodes), [graph.nodes])
-  const nodes = new Map(graph.nodes.map((node) => [node.id, node]))
+  const layout = useMemo(() => layoutLayers(nodes, edges, { nodeWidth: 184, nodeHeight: 30, gapX: 48, gapY: 10 }), [nodes, edges])
+  const names = new Map(nodes.map((node) => [node.id, node.name]))
   return (
     <div className="overflow-auto rounded-lg border bg-muted/30">
       <svg
         role="img"
-        aria-label="Mapa de relaciones entre las partes del sistema"
+        aria-label={`Grupo de ${nodes.length} reglas relacionadas`}
         width={layout.width}
         height={layout.height}
         className="text-xs"
@@ -74,15 +114,10 @@ function GraphView({
             <path d="M 0 0 L 10 5 L 0 10 z" className="fill-muted-foreground" />
           </marker>
         </defs>
-        {layout.columns.map((column) => (
-          <text key={column.entityType} x={column.x} y={18} className="fill-muted-foreground font-medium">
-            {ENTITY_TYPE_LABELS[column.entityType] ?? column.entityType}
-          </text>
-        ))}
-        {graph.edges.map((edge) => {
+        {edges.map((edge) => {
           const path = edgePath(edge, layout)
           if (!path) return null
-          const style = EDGE_STYLE[edge.origin]
+          const style = EDGE_STYLE[edgeKind(edge)]
           return (
             <path
               key={edge.id}
@@ -91,19 +126,16 @@ function GraphView({
               strokeWidth={style.width}
               strokeDasharray={style.dash}
               className={style.className}
-              markerEnd="url(#arrow)"
+              markerEnd={style.arrow ? "url(#arrow)" : undefined}
             >
-              <title>
-                {nodes.get(edge.from)?.name} {edge.relation_type} {nodes.get(edge.to)?.name} ·{" "}
-                {EDGE_ORIGIN_LABELS[edge.origin]}
-              </title>
+              <title>{edgeTitle(edge, names.get(edge.from), names.get(edge.to))}</title>
             </path>
           )
         })}
-        {graph.nodes.map((node) => {
+        {nodes.map((node) => {
           const position = layout.positions.get(node.id)
           if (!position) return null
-          const label = node.name.length > 26 ? `${node.name.slice(0, 25)}…` : node.name
+          const label = node.name.length > 27 ? `${node.name.slice(0, 26)}…` : node.name
           return (
             <g
               key={node.id}
@@ -130,13 +162,14 @@ function GraphView({
                 strokeDasharray={node.state === "inferred" ? "4 3" : undefined}
                 className={NODE_STYLE[node.state]}
               />
-              <text x={position.x + 10} y={position.y + 17} className="fill-foreground font-medium">
+              <text x={position.x + 10} y={position.y + 19} className="fill-foreground font-medium">
                 {label}
               </text>
-              <text x={position.x + 10} y={position.y + 31} className="fill-muted-foreground">
-                {NODE_STATE_LABELS[node.state]}
-              </text>
-              <title>{node.name}</title>
+              <title>
+                {node.name} · {node.entity_type === "business_rule"
+                  ? NODE_STATE_LABELS[node.state]
+                  : (ENTITY_TYPE_LABELS[node.entity_type] ?? node.entity_type)}
+              </title>
             </g>
           )
         })}
@@ -145,28 +178,65 @@ function GraphView({
   )
 }
 
+/**
+ * A group's title: the function, table or permission all its rules share, if they share one;
+ * otherwise the most related rule, which is usually what the group is about.
+ */
+function groupTitle(nodes: GraphNode[], edges: GraphEdge[]) {
+  const bases = new Set(edges.map((edge) => edge.basis ?? ""))
+  if (bases.size === 1) {
+    const [kind, detail] = [...bases][0].split(":", 2)
+    if (kind === "same_function") return `En la función ${detail}`
+    if (kind === "same_data") return `Sobre la tabla ${detail}`
+    if (kind === "permission") return `Con el permiso ${detail}`
+  }
+  const degree = new Map<string, number>()
+  for (const edge of edges) {
+    degree.set(edge.from, (degree.get(edge.from) ?? 0) + 1)
+    degree.set(edge.to, (degree.get(edge.to) ?? 0) + 1)
+  }
+  const top = [...nodes].sort((a, b) => (degree.get(b.id) ?? 0) - (degree.get(a.id) ?? 0) || a.name.localeCompare(b.name, "es"))[0]
+  return `Alrededor de «${top?.name ?? ""}»`
+}
+
 function Legend() {
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-      {(Object.keys(EDGE_STYLE) as EdgeOrigin[]).map((origin) => (
-        <span key={origin} className="flex items-center gap-1.5">
+      <span className="flex items-center gap-1.5">
+        <svg width="20" height="12" aria-hidden="true">
+          <rect x="1" y="1" width="18" height="10" rx="3" strokeDasharray="3 2" className="fill-background stroke-muted-foreground" />
+        </svg>
+        Propuesta por la IA, sin verificar
+      </span>
+      <span className="flex items-center gap-1.5">
+        <svg width="20" height="12" aria-hidden="true">
+          <rect x="1" y="1" width="18" height="10" rx="3" className="fill-emerald-500/10 stroke-emerald-500" />
+        </svg>
+        Verificada
+      </span>
+      {(Object.keys(EDGE_STYLE) as EdgeKind[]).map((kind) => (
+        <span key={kind} className="flex items-center gap-1.5">
           <svg width="28" height="8" aria-hidden="true">
             <line
               x1="0"
               y1="4"
-              x2="28"
+              x2={EDGE_STYLE[kind].arrow ? 24 : 28}
               y2="4"
-              strokeWidth={EDGE_STYLE[origin].width}
-              strokeDasharray={EDGE_STYLE[origin].dash}
-              className={EDGE_STYLE[origin].className}
+              strokeWidth={EDGE_STYLE[kind].width}
+              strokeDasharray={EDGE_STYLE[kind].dash}
+              className={EDGE_STYLE[kind].className}
             />
+            {EDGE_STYLE[kind].arrow && <path d="M 23 1 L 28 4 L 23 7 z" className="fill-muted-foreground" />}
           </svg>
-          {EDGE_ORIGIN_LABELS[origin]}
+          {EDGE_STYLE[kind].label}
         </span>
       ))}
     </div>
   )
 }
+
+// Groups this small are many and say little alone: they start folded into one list.
+const SMALL_GROUP = 2
 
 function FlowPanel({ project, entityId, onSessionLost }: ScreenProps & { entityId: string }) {
   const [flow, setFlow] = useState<FlowDetail | null>(null)
@@ -239,6 +309,8 @@ function NodePanel({ node, ...props }: ScreenProps & { node: GraphNode }) {
   )
 }
 
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
+
 export function MapScreen(props: ScreenProps) {
   const { project, onSessionLost } = props
   const { entityId } = useParams()
@@ -246,6 +318,7 @@ export function MapScreen(props: ScreenProps) {
   const [graph, setGraph] = useState<KnowledgeGraph | null>(null)
   const [flows, setFlows] = useState<FlowSummary[]>([])
   const [node, setNode] = useState<GraphNode | null>(null)
+  const [relating, setRelating] = useState(false)
   const { error, fail } = useErrors(onSessionLost)
   const load = useCallback(() => {
     Promise.all([getGraph(project.id), listFlows(project.id)])
@@ -256,6 +329,16 @@ export function MapScreen(props: ScreenProps) {
       .catch(fail)
   }, [project.id, fail])
   useEffect(load, [load])
+  const relate = () => {
+    setRelating(true)
+    relateRules(project.id)
+      .then(load)
+      .catch(fail)
+      .finally(() => setRelating(false))
+  }
+  const groups = useMemo(() => (graph ? connectedGroups(graph.nodes, graph.edges) : []), [graph])
+  const large = groups.filter((group) => group.nodes.length > SMALL_GROUP)
+  const small = groups.filter((group) => group.nodes.length <= SMALL_GROUP)
 
   const selectNode = (selected: GraphNode) => {
     setNode(selected)
@@ -276,31 +359,87 @@ export function MapScreen(props: ScreenProps) {
     <>
       <PageHeader
         title="Mapa del sistema"
-        description="Cómo se relacionan las reglas, los procesos y el código, con lo que ya se sabe. Puede estar incompleto: no se inventa nada."
+        description="Qué reglas se relacionan entre sí según el código, en grupos: a la izquierda la que llama, a la derecha la llamada. Sale del análisis del código, sin IA."
       />
       <ErrorText>{error}</ErrorText>
       <div className={cn("grid gap-4", panelOpen && "xl:grid-cols-[1fr_20rem]")}>
         <div className="grid min-w-0 content-start gap-4">
-          <Section>
-            {graph === null ? (
+          {graph === null ? (
+            <Section>
               <Muted>Cargando…</Muted>
-            ) : graph.nodes.length === 0 ? (
-              <EmptyState icon={MapIcon} title="El mapa está vacío">
-                Aparece cuando hay reglas y relaciones. Empieza extrayendo reglas del código.
+            </Section>
+          ) : graph.nodes.length === 0 ? (
+            <Section>
+              <EmptyState
+                icon={MapIcon}
+                title={graph.coverage.entities_total === 0 ? "El mapa está vacío" : "Todavía no hay relaciones entre reglas"}
+                action={
+                  graph.coverage.entities_total > 0 && (
+                    <Button onClick={relate} disabled={relating}>
+                      <Network data-icon="inline-start" />
+                      {relating ? "Relacionando…" : "Relacionar las reglas"}
+                    </Button>
+                  )
+                }
+              >
+                {graph.coverage.entities_total === 0
+                  ? "Aparece cuando hay reglas. Empieza extrayendo reglas del código."
+                  : "Se calculan desde el código, sin IA, en un momento. Las reglas extraídas antes de esta versión aún no las tienen."}
               </EmptyState>
-            ) : (
-              <>
+            </Section>
+          ) : (
+            <>
+              <div className="grid gap-2">
                 <Legend />
-                <GraphView graph={graph} selected={node?.id ?? null} onSelect={selectNode} />
                 <Muted>
-                  {graph.coverage.entities_shown} de {graph.coverage.entities_total} elementos y{" "}
-                  {graph.coverage.relationships_shown} de {graph.coverage.relationships_total} relaciones.
+                  {plural(groups.length, "grupo", "grupos")} de reglas relacionadas, con{" "}
+                  {plural(graph.coverage.entities_shown, "regla", "reglas")}.
+                  {graph.coverage.entities_shown < graph.coverage.entities_total - graph.coverage.entities_without_relationships &&
+                    " Por tamaño se muestran los grupos mayores."}
                   {graph.coverage.entities_without_relationships > 0 &&
-                    ` ${graph.coverage.entities_without_relationships} elementos no tienen relaciones conocidas.`}
+                    ` ${graph.coverage.entities_without_relationships} reglas no se relacionan con ninguna y están solo en Reglas.`}{" "}
+                  Pasa el ratón por una línea para ver el motivo.
                 </Muted>
-              </>
-            )}
-          </Section>
+              </div>
+              {large.map((group) => (
+                <Section
+                  key={group.nodes[0].id}
+                  title={groupTitle(group.nodes, group.edges)}
+                  description={plural(group.nodes.length, "regla relacionada", "reglas relacionadas")}
+                >
+                  <GroupView nodes={group.nodes} edges={group.edges} selected={node?.id ?? null} onSelect={selectNode} />
+                </Section>
+              ))}
+              {small.length > 0 && (
+                <Section
+                  title="Parejas de reglas"
+                  description="Grupos de solo dos reglas: cada línea es una relación."
+                >
+                  <ul className="grid gap-1 text-sm">
+                    {small.map((group) => {
+                      const [first, second] = group.nodes
+                      const edge = group.edges[0]
+                      return (
+                        <li key={first.id} className="flex flex-wrap items-baseline gap-x-2">
+                          <button type="button" className="font-medium hover:underline" onClick={() => selectNode(first)}>
+                            {first.name}
+                          </button>
+                          <span className="text-xs text-muted-foreground">
+                            {edge ? pairReason(edge, edge.from === first.id) : "relacionada con"}
+                          </span>
+                          {second && (
+                            <button type="button" className="font-medium hover:underline" onClick={() => selectNode(second)}>
+                              {second.name}
+                            </button>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </Section>
+              )}
+            </>
+          )}
           <Section title="Procesos" description="Pasos y caminos de cada proceso conocido.">
             {flows.length === 0 ? (
               <Muted>Todavía no hay procesos en este proyecto.</Muted>

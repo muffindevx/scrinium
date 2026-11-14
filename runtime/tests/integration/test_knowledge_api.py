@@ -120,12 +120,15 @@ def test_graph_says_where_each_edge_comes_from(api: Api) -> None:
         ids = str(service.id), str(lonely.id)
     graph = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/graph").json()
     states = {node["id"]: node["state"] for node in graph["nodes"]}
-    assert states == {entity_id: "inferred", ids[0]: "no_version", ids[1]: "no_version"}
-    assert [(e["from"], e["to"], e["origin"]) for e in graph["edges"]] == [
-        (entity_id, ids[0], "inferred")
+    # An entity with no relationship is not drawn; the count says how many there are.
+    assert states == {entity_id: "inferred", ids[0]: "no_version"}
+    assert [(e["from"], e["to"], e["origin"], e["basis"]) for e in graph["edges"]] == [
+        (entity_id, ids[0], "inferred", None)
     ]
     assert graph["coverage"]["entities_without_relationships"] == 1
-    assert graph["coverage"]["entities_total"] == graph["coverage"]["entities_shown"] == 3
+    assert graph["coverage"]["entities_total"] == 3
+    assert graph["coverage"]["entities_shown"] == 2
+    assert graph["coverage"]["groups_total"] == 1
 
 
 def test_flows_are_listed_with_steps_and_transitions(api: Api) -> None:
