@@ -356,3 +356,33 @@ def test_the_same_request_is_answered_from_the_cache_without_sending(
     # Another question is another request: with the budget gone, it is not sent.
     other = _ask(runtime, csrf, project, "¿Dónde se aplica el IVA?")
     assert other["status"] == "failed" and len(remote.received) == 1
+
+
+def test_the_estimate_says_what_an_extraction_would_send_and_changes_nothing(
+    runtime: Runtime, repo: Path
+) -> None:
+    remote = _remote(runtime, _reply())
+    api = Api(runtime, repo)
+    project = api.project_id
+    url = f"/api/v1/projects/{project}/extraction-estimate"
+    assert runtime.client.get(url).json() == {"remote": False}
+
+    csrf = api.headers["X-CSRF-Token"]
+    _consent(runtime, csrf, project, ["rule_map"])
+    _settings(runtime, csrf, project, {"remote_token_budget": 100000})
+    estimate = runtime.client.get(url).json()
+    assert estimate["remote"] is True and estimate["host"] == "api.example.com"
+    assert estimate["remote_batches"] == estimate["batches"] > 0
+    assert estimate["input_tokens"] > 0 and estimate["max_output_tokens"] > 0
+    assert (estimate["budget"], estimate["spent_this_month"]) == (100000, 0)
+    assert estimate["statements_remote"] is False
+    # Worked out in a transaction rolled back: the queue is as it was, and nothing was sent.
+    with runtime.database.session() as session:
+        assert queue.counts(session, uuid.UUID(project))["pending"] == 0
+    assert remote.received == []
+
+    # Every path never sent: every batch would run here.
+    _settings(runtime, csrf, project, {"never_send": ["*"]})
+    local = runtime.client.get(url).json()
+    assert local["remote_batches"] == 0 and local["local_batches"] == estimate["batches"]
+    assert local["input_tokens"] == 0

@@ -783,6 +783,33 @@ export interface ExtractionStatus {
   waiting_for_memory: boolean
 }
 
+/** Before extracting, what would go to the project's remote model (only when it has one). */
+export type ExtractionEstimate =
+  | { remote: false }
+  | {
+      remote: true
+      host: string
+      model: string
+      pending: number
+      batches: number
+      remote_batches: number
+      local_batches: number
+      files: number
+      sent_chars: number
+      input_tokens: number
+      max_output_tokens: number
+      measured: boolean
+      budget: number | null
+      spent_this_month: number
+      statements_remote: boolean
+    }
+
+export const getExtractionEstimate = (projectId: string, pathPrefix: string, allFunctions: boolean) => {
+  const query = new URLSearchParams({ path_prefix: pathPrefix })
+  if (allFunctions) query.set("min_score", "0")
+  return getJson<ExtractionEstimate>(`/api/v1/projects/${projectId}/extraction-estimate?${query}`)
+}
+
 export const getExtractionStatus = (projectId: string) =>
   getJson<ExtractionStatus>(`/api/v1/projects/${projectId}/extraction-status`)
 export const cancelAnalysis = async (analysisId: string) => {

@@ -36,6 +36,7 @@ from scrinium.application.knowledge.releases import latest_snapshot
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
 from scrinium.domain.enums import (
+    AiTask,
     AnalysisStatus,
     AnalysisType,
     AssessmentStatus,
@@ -52,6 +53,7 @@ from scrinium.infrastructure.sqlite.models import (
     Project,
     SoftwareRelease,
     SourceConnection,
+    utc_now,
 )
 
 Dialect = Literal[
@@ -384,6 +386,28 @@ def build_analyses_router(
             )  # fmt: skip
         runner.cancel(analysis_id)
         return {"status": "stopping"}
+
+    @router.get("/api/v1/projects/{project_id}/extraction-estimate")
+    def extraction_estimate(
+        project_id: uuid.UUID, path_prefix: str = "", min_score: int = DEFAULT_MIN_SCORE
+    ) -> dict[str, Any]:
+        """Before extracting: what would go to the project's remote model, and the budget left.
+        Nothing is worked out when the rule map runs locally."""
+        with database.session() as session:
+            _project(session, project_id)
+        router_ = llm.router
+        route = router_.route(project_id, AiTask.RULE_MAP) if router_ is not None else None
+        if router_ is None or route is None:
+            return {"remote": False}
+        prefix = path_prefix.strip()[:500] or None
+        estimate = extraction.estimate_remote(
+            database, project_id, prefix, max(0, min(min_score, 20)), route.keeps_local
+        )
+        return {
+            "remote": True, "host": route.host, "model": route.model, **estimate,
+            "budget": route.budget, "spent_this_month": router_.spent(project_id, utc_now()),
+            "statements_remote": router_.route(project_id, AiTask.RULE_STATEMENTS) is not None,
+        }  # fmt: skip
 
     @router.get("/api/v1/projects/{project_id}/extraction-status")
     def extraction_status(project_id: uuid.UUID) -> dict[str, Any]:

@@ -35,6 +35,8 @@ import {
   setVerification,
   startConsistencyReview,
   startExtraction,
+  type ExtractionEstimate,
+  getExtractionEstimate,
 } from "@/lib/api"
 import { ASSESSMENT_LABELS, errorMessage } from "@/lib/labels"
 import { useErrors } from "@/screens/hooks"
@@ -128,6 +130,55 @@ function notifyIfAway(title: string, body: string) {
   }
 }
 
+function count(value: number) {
+  return value.toLocaleString("es")
+}
+
+/** What the extraction would send to a remote model, read before starting it (ADR-010). */
+function RemoteEstimate({ estimate }: { estimate: Extract<ExtractionEstimate, { remote: true }> }) {
+  if (estimate.pending === 0) return null
+  const total = estimate.input_tokens + estimate.max_output_tokens
+  const left = estimate.budget === null ? null : Math.max(0, estimate.budget - estimate.spent_this_month)
+  return (
+    <div role="status" className="grid gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+      {estimate.remote_batches > 0 ? (
+        <p>
+          Se enviarán unos <strong>{count(estimate.input_tokens)} tokens</strong> de {count(estimate.files)}{" "}
+          {estimate.files === 1 ? "archivo" : "archivos"} a <strong>{estimate.host}</strong> ({estimate.model}) en{" "}
+          {count(estimate.remote_batches)} {estimate.remote_batches === 1 ? "lote" : "lotes"}, y volverán como mucho{" "}
+          {count(estimate.max_output_tokens)} de respuesta.
+        </p>
+      ) : (
+        <p>Todos los lotes tocan rutas que nunca se envían: esta extracción se hará en este equipo.</p>
+      )}
+      {estimate.local_batches > 0 && estimate.remote_batches > 0 && (
+        <p className="text-muted-foreground">
+          {count(estimate.local_batches)} {estimate.local_batches === 1 ? "lote se hará" : "lotes se harán"} en local
+          por las rutas que nunca se envían.
+        </p>
+      )}
+      {left !== null && estimate.remote_batches > 0 && total > left && (
+        <p className="font-medium text-amber-700 dark:text-amber-400">
+          {left === 0
+            ? "El presupuesto de este mes está agotado: no se enviará nada y todo seguirá en la cola."
+            : `Quedan ${count(left)} tokens del presupuesto de este mes: la extracción se detendrá a medias y lo demás esperará en la cola.`}
+        </p>
+      )}
+      {estimate.statements_remote && (
+        <p className="text-muted-foreground">
+          Después, la redacción de los enunciados también irá al proveedor externo y gastará más tokens.
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {estimate.measured
+          ? "Calculado con la proporción de tus envíos anteriores."
+          : "Aproximado: todavía no hay envíos con los que medirlo."}{" "}
+        Puede ser menos si alguna petición ya tiene respuesta guardada.
+      </p>
+    </div>
+  )
+}
+
 function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & { onFinished: () => void }) {
   const [prefix, setPrefix] = useState("")
   const [allFunctions, setAllFunctions] = useState(false)
@@ -149,6 +200,24 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
       .catch(fail)
   }, [project.id, fail])
   useEffect(loadStatus, [loadStatus])
+
+  // Only shown when the rule map goes to a remote model; recalculated as the options change.
+  const [estimate, setEstimate] = useState<{ key: string; value: ExtractionEstimate } | null>(null)
+  const estimateKey = `${prefix.trim()}\n${allFunctions}`
+  useEffect(() => {
+    if (running) return
+    let live = true
+    const timer = window.setTimeout(() => {
+      getExtractionEstimate(project.id, prefix.trim(), allFunctions)
+        .then((value) => live && setEstimate({ key: estimateKey, value }))
+        .catch(() => live && setEstimate(null))
+    }, 400)
+    return () => {
+      live = false
+      window.clearTimeout(timer)
+    }
+  }, [project.id, prefix, allFunctions, estimateKey, running])
+  const shown = estimate?.key === estimateKey && estimate.value.remote ? estimate.value : null
 
   const start = () => {
     setError(null)
@@ -188,7 +257,9 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
   return (
     <Section
       title="Extraer reglas automáticamente"
-      description="Scrinium busca en el código las funciones con señales de regla de negocio y la IA local propone reglas a partir de ellas, citando las líneas exactas. Lo ya analizado no se repite. Todas nacen sin verificar: tú decides."
+      description={`Scrinium busca en el código las funciones con señales de regla de negocio y ${
+        shown ? `el modelo externo ${shown.model}` : "la IA local"
+      } propone reglas a partir de ellas, citando las líneas exactas. Lo ya analizado no se repite. Todas nacen sin verificar: tú decides.`}
       action={
         running ? (
           <Button size="sm" variant="outline" disabled={pausing} onClick={pause}>
@@ -250,6 +321,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
               </span>
             </label>
           </details>
+          {shown && <RemoteEstimate estimate={shown} />}
           <Button type="submit" className="justify-self-start">
             <Sparkles data-icon="inline-start" />
             {pending > 0 ? `Continuar la extracción (${pending} pendientes)` : "Empezar la extracción"}
@@ -774,7 +846,7 @@ function RuleList(props: ScreenProps) {
             )
           }
         >
-          {rules.length === 0 && "La IA local puede proponerlas a partir del código, o puedes escribirlas tú."}
+          {rules.length === 0 && "La IA puede proponerlas a partir del código, o puedes escribirlas tú."}
         </EmptyState>
       ) : (
         <div className="grid gap-3">

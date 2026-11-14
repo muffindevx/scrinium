@@ -23,7 +23,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Final, Literal
 
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai.routing import passage, sending
@@ -88,6 +88,7 @@ from scrinium.infrastructure.local_http import (
 )
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
+    AiRequest,
     AnalysisRun,
     KnowledgeEntity,
     KnowledgeEntityVersion,
@@ -429,6 +430,51 @@ def batches(fragments: list[Fragment]) -> list[list[Fragment]]:
         size += len(fragment.text)
         count += found
     return [[replace(f, number=n) for n, f in enumerate(group, 1)] for group in groups]
+
+
+# Characters per token when the project has no remote history to learn it from: code and
+# Spanish prompts run at about 3 to 4.
+CHARS_PER_TOKEN: Final = 3.5
+
+
+def estimate_remote(
+    database: Database, project_id: uuid.UUID, path_prefix: str | None, min_score: int,
+    keeps_local: Callable[[tuple[str, ...]], bool],
+) -> dict[str, Any]:  # fmt: skip
+    """What an extraction would send to the project's remote model, before starting it.
+
+    It works the batches out exactly as the extraction would, in a transaction that is rolled
+    back, so nothing changes. A batch holding a never-send path runs locally. Tokens are an
+    estimate: characters over the ratio this project's remote requests showed, or
+    `CHARS_PER_TOKEN`; output is the most each batch may write.
+    """
+    with database.scratch() as session:
+        project = session.get_one(Project, project_id)
+        fragments, stats = select_work(session, project, path_prefix, min_score)
+        groups = batches(fragments)
+        ratio = session.execute(
+            select(func.sum(AiRequest.sent_chars), func.sum(AiRequest.prompt_tokens)).where(
+                AiRequest.project_id == project_id, AiRequest.prompt_tokens > 0
+            )
+        ).one()
+    chars_per_token = (ratio[0] / ratio[1]) if ratio[1] else CHARS_PER_TOKEN
+    remote = [
+        group for group in groups
+        if not keeps_local(tuple(passage(f.path, f.start_line, f.end_line) for f in group))
+    ]  # fmt: skip
+    nonce = "0" * 16
+    chars = sum(sum(len(m.content) for m in build_messages(g, nonce)) for g in remote)
+    return {
+        "pending": stats["pending"],
+        "batches": len(groups),
+        "remote_batches": len(remote),
+        "local_batches": len(groups) - len(remote),
+        "files": len({f.path for group in remote for f in group}),
+        "sent_chars": chars,
+        "input_tokens": round(chars / chars_per_token),
+        "max_output_tokens": sum(output_tokens(g) for g in remote),
+        "measured": bool(ratio[1]),
+    }
 
 
 def split_batch(group: list[Fragment]) -> list[list[Fragment]]:

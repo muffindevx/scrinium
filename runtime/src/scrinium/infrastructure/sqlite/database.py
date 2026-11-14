@@ -130,5 +130,15 @@ class Database:
         with self._sessions.begin() as session:
             yield session
 
+    @contextmanager
+    def scratch(self) -> Iterator[Session]:
+        """A transaction that is always rolled back: to work out what something would do."""
+        session = self._sessions()
+        try:
+            yield session
+        finally:
+            session.rollback()
+            session.close()
+
     def dispose(self) -> None:
         self.engine.dispose()
