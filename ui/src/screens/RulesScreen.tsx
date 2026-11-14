@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Check, ListChecks, Pause, PenLine, Sparkles, X } from "lucide-react"
+import { ArrowLeft, BookOpen, Check, ChevronRight, ListChecks, Pause, PenLine, Sparkles, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useParams } from "react-router"
 import { cn } from "cn"
@@ -409,11 +409,6 @@ function reviewEdge(status: VerificationStatus | undefined) {
   return "border-l-border"
 }
 
-/**
- * One rule as it is reviewed: where it lives, its title, what it says and the code around the
- * cited lines. Three answers: it is valid, it is real but badly worded (rewrite it), or it is
- * not a rule.
- */
 function TicketChip({ ticket }: { ticket: string }) {
   return (
     <span
@@ -425,7 +420,18 @@ function TicketChip({ ticket }: { ticket: string }) {
   )
 }
 
+function citationRange(citation: NonNullable<RuleSummary["citation"]>) {
+  const { start_line: start, end_line: end } = citation
+  return end !== start ? `${start}-${end}` : `${start}`
+}
+
+/**
+ * One rule as a row: status, title, what it says in one line, where it lives and how important
+ * it is. Opened, it shows the code around the cited lines and three answers: it is valid, it is
+ * real but badly worded (rewrite it), or it is not a rule.
+ */
 function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSummary; onChanged: () => void }) {
+  const [open, setOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [text, setText] = useState(rule.summary)
   const { error, setError, fail } = useErrors(props.onSessionLost)
@@ -447,118 +453,231 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
       })
       .catch(fail)
   }
-  const range = citation
-    ? `${citation.start_line}${citation.end_line !== citation.start_line ? `-${citation.end_line}` : ""}`
-    : ""
+  const bodyId = `rule-body-${rule.entity_id}`
+  const important = rule.criticality === "high" || rule.criticality === "critical"
   return (
-    <li className={cn("grid min-w-0 gap-3 rounded-xl border border-l-4 bg-card p-4", reviewEdge(status))}>
-      <div className="flex flex-wrap items-center gap-2">
-        {version && <VerificationStatusBadge status={version.verification_status} />}
-        {rule.review_reason && (
-          <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? "Revisar"}</StatusBadge>
-        )}
-        {citation && (
-          <code className="min-w-0 truncate text-xs text-muted-foreground" title={`${citation.path}:${range}`}>
-            {citation.path}:{range}
-          </code>
-        )}
-        <span className="text-xs text-muted-foreground">
-          {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} · importancia{" "}
-          {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
-          {!(status && VERIFIED_STATUSES.includes(status)) && " (propuesta)"}
-        </span>
-        {rule.tickets.map((ticket) => (
-          <TicketChip key={ticket} ticket={ticket} />
-        ))}
-      </div>
-      <Link
-        to={`/reglas/${rule.entity_id}`}
-        className="text-xs font-semibold tracking-wide text-muted-foreground uppercase hover:text-foreground hover:underline"
+    <li className={cn("min-w-0 border-l-4", reviewEdge(status))}>
+      <button
+        type="button"
+        className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={() => setOpen(!open)}
       >
-        {rule.name}
-      </Link>
-      <p className="font-heading text-lg leading-snug font-medium whitespace-pre-wrap">{rule.summary}</p>
-      {citation && (
-        <CodeExcerpt
-          revisionId={citation.revision_id}
-          path={citation.path}
-          startLine={citation.start_line}
-          endLine={citation.end_line}
+        <ChevronRight
+          aria-hidden="true"
+          className={cn("mt-0.5 size-4 text-muted-foreground transition-transform", open && "rotate-90")}
         />
-      )}
-      {version && (
-        <div className="flex flex-wrap gap-2" role="group" aria-label={`Revisión de ${rule.name}`}>
-          <Button
-            size="sm"
-            variant={status === "human_verified" ? "default" : "outline"}
-            aria-pressed={status === "human_verified"}
-            onClick={() => review("human_verified")}
-          >
-            <Check data-icon="inline-start" />
-            Válida
-          </Button>
-          <Button
-            size="sm"
-            variant={editing ? "secondary" : "outline"}
-            aria-expanded={editing}
-            onClick={() => {
-              setText(rule.summary)
-              setEditing(!editing)
-            }}
-          >
-            <PenLine data-icon="inline-start" />
-            Mal dicha
-          </Button>
-          <Button
-            size="sm"
-            variant={status === "rejected" ? "destructive" : "outline"}
-            aria-pressed={status === "rejected"}
-            onClick={() => review("rejected")}
-          >
-            <X data-icon="inline-start" />
-            No es regla
-          </Button>
+        <span className="grid min-w-0 gap-1">
+          <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="font-medium">{rule.name}</span>
+            {status && status !== "unverified" && <VerificationStatusBadge status={status} />}
+            {rule.review_reason && (
+              <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? "Revisar"}</StatusBadge>
+            )}
+            {rule.tickets.map((ticket) => (
+              <TicketChip key={ticket} ticket={ticket} />
+            ))}
+          </span>
+          <span className={cn("text-sm text-muted-foreground", !open && "line-clamp-1")}>{rule.summary}</span>
+          <span className="flex min-w-0 flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
+            <span className={cn(important && "font-medium text-foreground")}>
+              Importancia {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
+            </span>
+            <span>{CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category}</span>
+            {citation && (
+              <code className="min-w-0 truncate" title={`${citation.path}:${citationRange(citation)}`}>
+                {citation.path.split("/").pop()}:{citationRange(citation)}
+              </code>
+            )}
+          </span>
+        </span>
+      </button>
+      {open && (
+        <div id={bodyId} className="grid min-w-0 gap-3 px-3 pt-1 pb-4 sm:pl-9">
+          {citation && (
+            <CodeExcerpt
+              revisionId={citation.revision_id}
+              path={citation.path}
+              startLine={citation.start_line}
+              endLine={citation.end_line}
+            />
+          )}
+          {version && (
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Revisión de ${rule.name}`}>
+              <Button
+                size="sm"
+                variant={status === "human_verified" ? "default" : "outline"}
+                aria-pressed={status === "human_verified"}
+                onClick={() => review("human_verified")}
+              >
+                <Check data-icon="inline-start" />
+                Válida
+              </Button>
+              <Button
+                size="sm"
+                variant={editing ? "secondary" : "outline"}
+                aria-expanded={editing}
+                onClick={() => {
+                  setText(rule.summary)
+                  setEditing(!editing)
+                }}
+              >
+                <PenLine data-icon="inline-start" />
+                Mal dicha
+              </Button>
+              <Button
+                size="sm"
+                variant={status === "rejected" ? "destructive" : "outline"}
+                aria-pressed={status === "rejected"}
+                onClick={() => review("rejected")}
+              >
+                <X data-icon="inline-start" />
+                No es regla
+              </Button>
+              <Link
+                to={`/reglas/${rule.entity_id}`}
+                className="ml-auto text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
+              >
+                {rule.evidence_count > 1 ? `${rule.evidence_count} citas · ` : ""}Ver la regla completa
+              </Link>
+            </div>
+          )}
+          {editing && (
+            <form className="grid gap-2" onSubmit={save}>
+              <Label htmlFor={`fix-${rule.entity_id}`}>Cómo debería decirse</Label>
+              <Textarea
+                id={`fix-${rule.entity_id}`}
+                required
+                maxLength={4000}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Se guarda como una versión nueva con tu nombre del perfil, con las mismas citas al código, y queda
+                confirmada.
+              </p>
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" disabled={!text.trim() || text.trim() === rule.summary}>
+                  Guardar
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            </form>
+          )}
+          <ReviewError error={error} />
         </div>
-      )}
-      {editing && (
-        <form className="grid gap-2" onSubmit={save}>
-          <Label htmlFor={`fix-${rule.entity_id}`}>Cómo debería decirse</Label>
-          <Textarea
-            id={`fix-${rule.entity_id}`}
-            required
-            maxLength={4000}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-          />
-          <p className="text-xs text-muted-foreground">
-            Se guarda como una versión nueva con tu nombre del perfil, con las mismas citas al código, y queda
-            confirmada.
-          </p>
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={!text.trim() || text.trim() === rule.summary}>
-              Guardar
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
-              Cancelar
-            </Button>
-          </div>
-        </form>
-      )}
-      <ReviewError error={error} />
-      {rule.evidence_count > 1 && (
-        <Link to={`/reglas/${rule.entity_id}`} className="text-xs font-medium text-muted-foreground hover:text-foreground">
-          {rule.evidence_count} citas · ver la regla completa
-        </Link>
       )}
     </li>
   )
 }
+
+type Grouping = "file" | "criticality" | "none"
+const GROUPING_OPTIONS = [
+  { value: "file", label: "Agrupar por archivo" },
+  { value: "criticality", label: "Agrupar por importancia" },
+  { value: "none", label: "Sin agrupar" },
+]
+const CRITICALITY_RANK: Record<RuleSummary["criticality"], number> = { critical: 0, high: 1, medium: 2, low: 3 }
+const GROUPING_KEY = "scrinium.rules.grouping"
+// Up to this many rules, every group starts open; past it, they start closed.
+const OPEN_GROUPS_UP_TO = 40
+
+function readGrouping(): Grouping {
+  try {
+    const saved = localStorage.getItem(GROUPING_KEY)
+    if (saved === "file" || saved === "criticality" || saved === "none") return saved
+  } catch {
+    // Without storage the default is used.
+  }
+  return "file"
+}
+
+/** Most important first, then by name: what matters most is read first in every group. */
+function byImportance(a: RuleSummary, b: RuleSummary) {
+  return CRITICALITY_RANK[a.criticality] - CRITICALITY_RANK[b.criticality] || a.name.localeCompare(b.name, "es")
+}
+
+function groupRules(rules: RuleSummary[], grouping: Grouping): { key: string; label: string; rules: RuleSummary[] }[] {
+  const sorted = [...rules].sort(byImportance)
+  if (grouping === "none") return [{ key: "all", label: "", rules: sorted }]
+  const groups = new Map<string, RuleSummary[]>()
+  for (const rule of sorted) {
+    const key =
+      grouping === "criticality"
+        ? rule.criticality
+        : (rule.citation?.path ?? "")
+    groups.set(key, [...(groups.get(key) ?? []), rule])
+  }
+  const label = (key: string) =>
+    grouping === "criticality"
+      ? `Importancia ${CRITICALITY_LABELS[key as RuleSummary["criticality"]].toLowerCase()}`
+      : key || "Sin cita al código"
+  return [...groups.entries()]
+    .map(([key, rules]) => ({ key, label: label(key), rules }))
+    .sort((a, b) =>
+      grouping === "criticality"
+        ? CRITICALITY_RANK[a.key as RuleSummary["criticality"]] - CRITICALITY_RANK[b.key as RuleSummary["criticality"]]
+        : (a.key === "" ? 1 : 0) - (b.key === "" ? 1 : 0) || a.key.localeCompare(b.key, "es"),
+    )
+}
+
+function RuleGroup({
+  label,
+  rules,
+  startOpen,
+  code,
+  ...props
+}: ScreenProps & {
+  label: string
+  rules: RuleSummary[]
+  startOpen: boolean
+  code: boolean
+  onChanged: () => void
+}) {
+  const [open, setOpen] = useState(startOpen)
+  const important = rules.filter((rule) => CRITICALITY_RANK[rule.criticality] <= 1).length
+  return (
+    <section className="overflow-hidden rounded-xl border bg-card">
+      <h2>
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          <ChevronRight
+            aria-hidden="true"
+            className={cn("size-4 text-muted-foreground transition-transform", open && "rotate-90")}
+          />
+          <span className={cn("min-w-0 truncate text-sm font-medium", code && "font-mono")}>{label}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {plural(rules.length, "regla", "reglas")}
+            {important > 0 && ` · ${important} de importancia alta`}
+          </span>
+        </button>
+      </h2>
+      {open && (
+        <ul className="divide-y border-t">
+          {rules.map((rule) => (
+            <RuleItem key={rule.entity_id} {...props} rule={rule} />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
 
 function RuleList(props: ScreenProps) {
   const { project, onSessionLost } = props
   const [rules, setRules] = useState<RuleSummary[] | null>(null)
   const [filter, setFilter] = useState<Filter>("all")
   const [query, setQuery] = useState("")
+  const [grouping, setGrouping] = useState<Grouping>(readGrouping)
   const [panel, setPanel] = useState<"extract" | "manual" | "consistency" | null>(null)
   const { error, fail } = useErrors(onSessionLost)
   const load = useCallback(() => {
@@ -571,6 +690,15 @@ function RuleList(props: ScreenProps) {
   const shown = rules?.filter((rule) => matches(rule, filter)) ?? []
   const count = (value: Filter) => rules?.filter((rule) => matches(rule, value)).length ?? 0
   const toggle = (next: "extract" | "manual" | "consistency") => setPanel(panel === next ? null : next)
+  const group = (value: string) => {
+    setGrouping(value as Grouping)
+    try {
+      localStorage.setItem(GROUPING_KEY, value)
+    } catch {
+      // Only a convenience: without storage it is not remembered.
+    }
+  }
+  const groups = groupRules(shown, grouping)
 
   return (
     <>
@@ -608,24 +736,27 @@ function RuleList(props: ScreenProps) {
           }}
         />
       )}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="grid gap-3">
         <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="all">Todas ({count("all")})</TabsTrigger>
             <TabsTrigger value="review">Por revisar ({count("review")})</TabsTrigger>
             <TabsTrigger value="unverified">Sin verificar ({count("unverified")})</TabsTrigger>
             <TabsTrigger value="verified">Verificadas ({count("verified")})</TabsTrigger>
-            <TabsTrigger value="rejected">Falsos positivos ({count("rejected")})</TabsTrigger>
+            <TabsTrigger value="rejected">Descartadas ({count("rejected")})</TabsTrigger>
           </TabsList>
         </Tabs>
-        <Input
-          aria-label="Buscar reglas"
-          maxLength={200}
-          placeholder="Buscar reglas…"
-          className="max-w-64"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            aria-label="Buscar reglas"
+            maxLength={200}
+            placeholder="Buscar por texto o ticket…"
+            className="max-w-72 min-w-0 flex-1"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          <Select aria-label="Agrupar reglas" value={grouping} options={GROUPING_OPTIONS} onValueChange={group} />
+        </div>
       </div>
       <ErrorText>{error}</ErrorText>
       {rules === null ? (
@@ -646,11 +777,28 @@ function RuleList(props: ScreenProps) {
           {rules.length === 0 && "La IA local puede proponerlas a partir del código, o puedes escribirlas tú."}
         </EmptyState>
       ) : (
-        <ul className="grid gap-3">
-          {shown.map((rule) => (
-            <RuleItem key={rule.entity_id} {...props} rule={rule} onChanged={load} />
-          ))}
-        </ul>
+        <div className="grid gap-3">
+          {groups.map((item) =>
+            grouping === "none" ? (
+              <ul key={item.key} className="divide-y overflow-hidden rounded-xl border bg-card">
+                {item.rules.map((rule) => (
+                  <RuleItem key={rule.entity_id} {...props} rule={rule} onChanged={load} />
+                ))}
+              </ul>
+            ) : (
+              <RuleGroup
+                // A new filter or search reopens the groups by the new count.
+                key={`${grouping}:${item.key}:${filter}:${query}`}
+                {...props}
+                label={item.label}
+                code={grouping === "file" && item.key !== ""}
+                rules={item.rules}
+                startOpen={shown.length <= OPEN_GROUPS_UP_TO || groups.length === 1}
+                onChanged={load}
+              />
+            ),
+          )}
+        </div>
       )}
     </>
   )
