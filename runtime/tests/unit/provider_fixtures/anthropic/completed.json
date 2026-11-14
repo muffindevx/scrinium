@@ -1,0 +1,36 @@
+{
+  "note": "Thinking blocks are dropped; input counts uncached, cache-read and cache-written tokens, like every provider.",
+  "response": {
+    "id": "msg_01abc",
+    "type": "message",
+    "role": "assistant",
+    "model": "modelo",
+    "content": [
+      {
+        "type": "thinking",
+        "thinking": "",
+        "signature": "sig"
+      },
+      {
+        "type": "text",
+        "text": "{\"ok\":true}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 200,
+      "output_tokens": 40,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 1000
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "text": "{\"ok\":true}",
+    "prompt_tokens": 1200,
+    "completion_tokens": 40,
+    "cached_tokens": 1000,
+    "request_id": "msg_01abc"
+  }
+}

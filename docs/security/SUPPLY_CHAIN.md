@@ -31,6 +31,12 @@ The checks need the network, because they query vulnerability databases, so they
   - There was a provisional check with Scrinium's own detector over the code, with no findings.
   - That detector only recognizes known formats, and does not replace gitleaks.
 
+## Added on 2026-11-14
+
+- **`anthropic` 2.3.0**, for Claude as a remote provider ([ADR-010](../decisions/ADR-010-remote-model-providers.md)). It is only used by projects whose person consented. It brings `httpx2`/`httpcore2` (its HTTP client), `truststore` (the system's certificate store), `jiter`, `sniffio` and `docstring-parser`; `httpx2-jsfetch` is in the lockfile only for browsers (emscripten) and is never installed here.
+- **`jiter` is held below 0.19** (`[tool.uv] constraint-dependencies`): 0.19.0 was eight days old. Lift the constraint once it is two weeks old.
+- `make audit` (2026-11-14): no known vulnerabilities in the 79 shipped Python packages; the UI reports only the known development-only `deepmerge` and `minimatch`. `make sbom` was not run.
+
 ## Updating dependencies
 
 1. Start from a green `make check`.

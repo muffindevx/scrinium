@@ -5,6 +5,9 @@ description = "Inteligencia de cambios de software, Local-first."
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "alembic>=1.14",
+    # Claude as a remote provider, only for projects whose person consented (ADR-010).
+    # Pinned: versions at least two weeks old (docs/security/SUPPLY_CHAIN.md).
+    "anthropic==2.3.0",
     "cryptography>=44",
     "fastapi>=0.115",
     "keyring>=25",
@@ -36,6 +39,10 @@ window = ["pywebview[qt]>=6; sys_platform == 'linux'"]
 
 [project.scripts]
 scrinium = "scrinium.cli.main:main"
+
+[tool.uv]
+# anthropic's jiter 0.19.0 was eight days old when the SDK was added (2026-11-14).
+constraint-dependencies = ["jiter<0.19"]
 
 [dependency-groups]
 dev = [

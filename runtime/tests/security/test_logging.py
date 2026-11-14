@@ -4,7 +4,13 @@ import logging
 
 import pytest
 
-from scrinium.core.logging import RedactingFilter, redact, safe_log_value
+from scrinium.core.logging import (
+    QUIET_LOGGERS,
+    RedactingFilter,
+    configure_logging,
+    redact,
+    safe_log_value,
+)
 from tests.conftest import Runtime
 
 
@@ -50,9 +56,9 @@ def test_launch_token_and_session_values_never_reach_logs(
     csrf = runtime.client.get("/api/v1/session").json()["csrf_token"]
     cookie = runtime.client.cookies["scrinium_session"]
 
-    # httpx is this test's client and logs its own URLs; it is not part of the runtime.
+    # httpx (or httpx2) is this test's client and logs its own URLs; it is not the runtime.
     runtime_logs = "\n".join(
-        record.getMessage() for record in caplog.records if record.name != "httpx"
+        record.getMessage() for record in caplog.records if record.name not in ("httpx", "httpx2")
     )
     assert "path=/auth/launch" in runtime_logs
     for secret in (token, csrf, cookie):
@@ -88,3 +94,16 @@ def test_unhandled_error_reveals_nothing(
     assert "contenido-sensible" not in response.text
     assert "contenido-sensible" not in caplog.text
     assert "type=ValueError" in caplog.text
+
+
+def test_remote_providers_http_stack_stays_quiet() -> None:
+    """ADR-010: even with --verbose, request URLs and SDK request options are not logged."""
+    root = logging.getLogger()
+    handlers, level = root.handlers[:], root.level
+    try:
+        configure_logging(verbose=True)
+        assert all(logging.getLogger(name).level == logging.WARNING for name in QUIET_LOGGERS)
+        assert not logging.getLogger("anthropic").isEnabledFor(logging.INFO)
+    finally:
+        root.handlers[:] = handlers
+        root.setLevel(level)

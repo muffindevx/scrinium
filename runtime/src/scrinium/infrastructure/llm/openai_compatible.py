@@ -74,6 +74,47 @@ def _timings(result: dict[str, Any]) -> dict[str, int]:
     }
 
 
+def json_schema_format(json_schema: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {"name": "respuesta", "schema": json_schema, "strict": True},
+    }
+
+
+def parse_chat_completion(result: Any, model_id: str, started: float) -> Completion:
+    """`/v1/chat/completions` answer to the common contract (ADR-010): local and remote alike."""
+    choices = result.get("choices") if isinstance(result, dict) else None
+    choice = choices[0] if isinstance(choices, list) and choices else None
+    if not isinstance(choice, dict):
+        raise ModelError
+    # Cut by length, the JSON is incomplete even if there is text: always a failure, with its
+    # own reason, so the batch is retried smaller (F9).
+    finish = choice.get("finish_reason")
+    if finish == "length":
+        raise OutputBudgetExceededError
+    # A provider's content filter declined: a refused batch, never retried elsewhere (ADR-010).
+    if finish == "content_filter":
+        raise ModelRefusedError
+    message = choice.get("message")
+    if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+        raise ModelError
+    # Reasoning (`reasoning_content`) is never read; think tags left in the text are removed.
+    text = THINK_TAGS.sub("", message["content"]).strip()
+    if not text:
+        raise ModelError
+    usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
+    return Completion(
+        cached_tokens=_cached_tokens(result, usage),
+        text=text,
+        model_id=model_id,
+        prompt_tokens=int(usage.get("prompt_tokens") or 0),
+        completion_tokens=int(usage.get("completion_tokens") or 0),
+        duration_ms=int((time.perf_counter() - started) * 1000),
+        request_id=_request_id(result),
+        **_timings(result),
+    )
+
+
 class OpenAICompatibleChat:
     def __init__(
         self,
@@ -135,41 +176,10 @@ class OpenAICompatibleChat:
         if self._seed is not None:
             body["seed"] = self._seed
         if json_schema is not None:
-            body["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {"name": "respuesta", "schema": json_schema, "strict": True},
-            }
+            body["response_format"] = json_schema_format(json_schema)
         started = time.perf_counter()
         with self._lock:
             if self._before_request is not None:
                 self._before_request()
             result = self._client.request("/v1/chat/completions", body, _TIMEOUT_SECONDS)
-        choices = result.get("choices") if isinstance(result, dict) else None
-        choice = choices[0] if isinstance(choices, list) and choices else None
-        if not isinstance(choice, dict):
-            raise ModelError
-        message = choice.get("message")
-        if not isinstance(message, dict) or not isinstance(message.get("content"), str):
-            raise ModelError
-        # Cut by length, the JSON is incomplete even if there is text: always a failure, with its
-        # own reason, so the batch is retried smaller (F9).
-        finish = choice.get("finish_reason")
-        if finish == "length":
-            raise OutputBudgetExceededError
-        # A provider's content filter declined: a refused batch, never retried elsewhere (ADR-010).
-        if finish == "content_filter":
-            raise ModelRefusedError
-        text = THINK_TAGS.sub("", message["content"]).strip()
-        if not text:
-            raise ModelError
-        usage = result.get("usage") if isinstance(result.get("usage"), dict) else {}
-        return Completion(
-            cached_tokens=_cached_tokens(result, usage),
-            text=text,
-            model_id=self.model_id,
-            prompt_tokens=int(usage.get("prompt_tokens") or 0),
-            completion_tokens=int(usage.get("completion_tokens") or 0),
-            duration_ms=int((time.perf_counter() - started) * 1000),
-            request_id=_request_id(result),
-            **_timings(result),
-        )
+        return parse_chat_completion(result, self.model_id, started)

@@ -121,6 +121,8 @@ def test_rotation_invalidates_the_previous_session_and_csrf(runtime: Runtime) ->
     assert new_csrf != old_csrf
     assert runtime.client.cookies["scrinium_session"] != old_cookie
 
+    # Only the old cookie: httpx2 would keep the new one beside it instead of replacing it.
+    runtime.client.cookies.clear()
     runtime.client.cookies.set("scrinium_session", old_cookie)
     assert runtime.client.get("/api/v1/session").status_code == 401
 

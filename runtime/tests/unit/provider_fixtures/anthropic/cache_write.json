@@ -1,0 +1,31 @@
+{
+  "note": "Tokens written to the cache count as input, not as cached.",
+  "response": {
+    "id": "msg_01abc",
+    "type": "message",
+    "role": "assistant",
+    "model": "modelo",
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"ok\":true}"
+      }
+    ],
+    "stop_reason": "end_turn",
+    "stop_sequence": null,
+    "usage": {
+      "input_tokens": 50,
+      "output_tokens": 5,
+      "cache_creation_input_tokens": 900,
+      "cache_read_input_tokens": 0
+    }
+  },
+  "expect": {
+    "outcome": "completed",
+    "text": "{\"ok\":true}",
+    "prompt_tokens": 950,
+    "completion_tokens": 5,
+    "cached_tokens": 0,
+    "request_id": "msg_01abc"
+  }
+}

@@ -16,6 +16,9 @@ _KEY_VALUE_PATTERN: Final = re.compile(
 )
 
 
+QUIET_LOGGERS: Final = ("httpx2", "httpcore2", "anthropic")
+
+
 def redact(text: str) -> str:
     redacted = _KEY_VALUE_PATTERN.sub(rf"\1\2{_REDACTED}", text)
     for pattern in TOKEN_PATTERNS.values():
@@ -52,3 +55,7 @@ def configure_logging(verbose: bool = True) -> None:
     root = logging.getLogger()
     root.handlers[:] = [handler]
     root.setLevel(level)
+    # The HTTP stack of remote providers (ADR-010): at INFO it logs every request's URL, and the
+    # SDK at DEBUG logs request options. Warnings and errors only, even with --verbose.
+    for name in QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)

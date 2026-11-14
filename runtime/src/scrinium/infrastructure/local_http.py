@@ -24,7 +24,7 @@ _TRACE_CHARS: Final = 4000
 content_logger = logging.getLogger("scrinium.contenido")
 
 
-def _trace(direction: str, path: str, raw: bytes) -> None:
+def trace_content(direction: str, path: str, raw: bytes) -> None:
     text = raw.decode("utf-8", "replace")
     more = f" … ({len(text) - _TRACE_CHARS} caracteres mas)" if len(text) > _TRACE_CHARS else ""
     content_logger.debug(
@@ -104,7 +104,7 @@ class LocalHttpClient:
         data = None if body is None else json.dumps(body, ensure_ascii=False).encode()
         tracing = HUB.wants_content()
         if tracing and data is not None:
-            _trace("->", path, data)
+            trace_content("->", path, data)
         request = urllib.request.Request(  # noqa: S310  scheme and host validated above
             f"{self._base_url}{path}",
             data=data,
@@ -119,7 +119,7 @@ class LocalHttpClient:
         if len(raw) > MAX_RESPONSE_BYTES:
             raise ModelError
         if tracing:
-            _trace("<-", path, raw)
+            trace_content("<-", path, raw)
         try:
             return json.loads(raw)
         except ValueError:
