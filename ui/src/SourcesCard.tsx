@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Input, Label, Textarea } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { relativeTime } from "@/lib/time"
+import { sourceErrorLabel, sourceErrorText } from "@/lib/source-errors"
 import {
   ApiError,
   type Project,
@@ -41,31 +42,6 @@ const REASONS: Record<string, string> = {
   too_deep: "Demasiado profundo",
   bad_path: "Ruta no válida",
   limit_reached: "Límite alcanzado",
-}
-
-const ERRORS: Record<string, string> = {
-  path_not_absolute: "Escribe una ruta absoluta, por ejemplo /home/tu-usuario/proyecto.",
-  path_not_found: "Esa carpeta no existe.",
-  not_a_directory: "Esa ruta no es una carpeta.",
-  wrong_owner: "Esa carpeta pertenece a otra cuenta.",
-  contains_scrinium_data: "Esa carpeta contiene los datos de Scrinium, o está dentro de ellos.",
-  folders_unsupported: "Este sistema no permite leer carpetas de forma segura.",
-  not_a_git_repository: "Esa carpeta no es un repositorio Git.",
-  not_repository_root: "Elige la carpeta raíz del repositorio, no una subcarpeta.",
-  empty_repository: "El repositorio todavía no tiene commits.",
-  git_unavailable: "No se encontró git en este equipo.",
-  git_failed: "Git no pudo leer el repositorio.",
-  sync_in_progress: "Ya hay una sincronización en marcha.",
-  interrupted: "Se interrumpió al cerrar Scrinium.",
-  internal_error: "Error interno.",
-}
-
-function errorText(error: unknown): string {
-  if (error instanceof ApiError) {
-    if (error.code && ERRORS[error.code]) return ERRORS[error.code]
-    if (error.code === "invalid_request") return "Revisa la ruta y los patrones de exclusión."
-  }
-  return "No se pudo completar la operación."
 }
 
 function formatBytes(bytes: number): string {
@@ -142,7 +118,7 @@ function syncSummary(source: Source): string {
   const run = source.latest_sync
   if (!run) return "Todavía no se ha leído"
   if (run.status === "queued" || run.status === "running") return "Leyendo archivos…"
-  if (run.status === "failed") return `Falló: ${ERRORS[run.error_summary ?? ""] ?? "error"}`
+  if (run.status === "failed") return `Falló: ${sourceErrorLabel(run.error_summary) ?? "error"}`
   const when = source.last_successful_sync_at ? `${relativeTime(source.last_successful_sync_at)}: ` : ""
   return `${when}${run.items_created} nuevos, ${run.items_updated} cambiados, ${run.items_deleted} quitados, ${run.items_excluded} excluidos`
 }
@@ -275,7 +251,7 @@ export function SourcesCard({
 
   const handleError = useCallback(
     (caught: unknown) => {
-      if (caught instanceof ApiError) setError(errorText(caught))
+      if (caught instanceof ApiError) setError(sourceErrorText(caught))
       else onSessionLost(caught)
     },
     [onSessionLost],

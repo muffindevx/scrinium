@@ -14,8 +14,8 @@ import {
   Tags,
   TriangleAlert,
 } from "lucide-react"
-import { type ReactNode, useCallback, useEffect, useState } from "react"
-import { BrowserRouter, NavLink, Navigate, Route, Routes } from "react-router"
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from "react-router"
 import { cn } from "cn"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -34,6 +34,7 @@ import {
   getWorkspace,
   logout,
 } from "@/lib/api"
+import { useFolderDrop } from "@/lib/folder-drop"
 import { AskScreen } from "@/screens/AskScreen"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
@@ -193,10 +194,24 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
   const project =
     data.projects.find((candidate) => candidate.id === projectId) ?? data.projects[0] ?? null
   const sessionLost = useCallback((error: unknown) => setView(errorState(error)), [setView])
+  const [drop, clearDrop] = useFolderDrop()
+  const navigate = useNavigate()
+  // A folder dropped anywhere opens the Home screen with its path ready to read, once per drop:
+  // `navigate` changes on every move, and the drop stays until it is used.
+  const shownDrop = useRef<number | null>(null)
+  useEffect(() => {
+    if (!drop || shownDrop.current === drop.at) return
+    shownDrop.current = drop.at
+    navigate("/")
+  }, [drop, navigate])
 
   const choose = (id: string) => {
     setProjectId(id)
     storeProject(id)
+  }
+  const addProject = (created: Project) => {
+    setView({ kind: "ready", ...data, projects: [...data.projects, created] })
+    choose(created.id)
   }
   const endSession = () => {
     logout()
@@ -211,12 +226,12 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
         icon={FolderGit2}
         title="Primero, un proyecto"
         action={
-          <Button render={<NavLink to="/fuentes" />} nativeButton={false}>
-            Ir a Fuentes
+          <Button render={<NavLink to="/" />} nativeButton={false}>
+            Empezar
           </Button>
         }
       >
-        Crea un proyecto y añádele su repositorio o su carpeta de documentos.
+        Empieza en el Inicio: basta con la ruta de tu repositorio o de su carpeta de documentos.
       </EmptyState>
     )
   const props = (current: Project) => ({ project: current, onSessionLost: sessionLost })
@@ -262,6 +277,9 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                     key={project?.id ?? "none"}
                     project={project}
                     status={data.status}
+                    onProjectCreated={addProject}
+                    drop={drop}
+                    onDropUsed={clearDrop}
                     onSessionLost={sessionLost}
                   />
                 }
@@ -291,10 +309,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                     project={project}
                     workspace={data.workspace}
                     projects={data.projects}
-                    onProjectCreated={(created) => {
-                      setView({ kind: "ready", ...data, projects: [...data.projects, created] })
-                      choose(created.id)
-                    }}
+                    onProjectCreated={addProject}
                     onSessionLost={sessionLost}
                   />
                 }

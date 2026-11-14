@@ -4,14 +4,12 @@ import {
   CheckCircle2,
   Circle,
   Cpu,
-  FolderGit2,
   ScanSearch,
   Sparkles,
 } from "lucide-react"
-import { type FormEvent, type ReactNode, useEffect, useState } from "react"
+import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react"
 import { Link, useNavigate } from "react-router"
 import { cn } from "cn"
-import { EmptyState } from "@/components/page"
 import { ModelStatusBadge, StatusBadge } from "@/components/status"
 import { VERIFIED_STATUSES, sourceTone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
@@ -26,6 +24,8 @@ import {
 } from "@/lib/api"
 import { relativeTime } from "@/lib/time"
 import { useErrors } from "@/screens/hooks"
+import type { Drop } from "@/lib/folder-drop"
+import { QuickStart } from "@/screens/QuickStart"
 import { ErrorText } from "@/screens/shared"
 
 function HealthCard({
@@ -69,13 +69,22 @@ function lastSync(sources: Source[]): string | null {
   return times.sort().at(-1) ?? null
 }
 
+// While a source syncs, Home looks again this often to say when it is done.
+const SYNC_POLL_MS = 3000
+
 export function HomeScreen({
   project,
   status,
+  onProjectCreated,
+  drop,
+  onDropUsed,
   onSessionLost,
 }: {
   project: Project | null
   status: SecurityStatus
+  onProjectCreated: (project: Project) => void
+  drop: Drop | null
+  onDropUsed: () => void
   onSessionLost: (error: unknown) => void
 }) {
   const navigate = useNavigate()
@@ -84,7 +93,7 @@ export function HomeScreen({
   const [question, setQuestion] = useState("")
   const { error, fail } = useErrors(onSessionLost)
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!project) return
     Promise.all([listSources(project.id), listRules(project.id)])
       .then(([loadedSources, loadedRules]) => {
@@ -93,22 +102,33 @@ export function HomeScreen({
       })
       .catch(fail)
   }, [project, fail])
+  useEffect(load, [load])
+  const syncing = sources?.some((source) => sourceTone(source)[0] === "in_progress") ?? false
+  useEffect(() => {
+    if (!syncing) return
+    const timer = window.setInterval(load, SYNC_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [syncing, load])
 
   if (!project) {
     return (
-      <EmptyState
-        icon={FolderGit2}
-        title="Empieza por tu proyecto"
-        action={
-          <Button render={<Link to="/fuentes" />} nativeButton={false}>
-            Crear un proyecto
-            <ArrowRight data-icon="inline-end" />
-          </Button>
-        }
-      >
-        Scrinium lee tu repositorio y tus documentos en este equipo y te explica qué hace el sistema,
-        siempre con citas al código. Nada sale de aquí.
-      </EmptyState>
+      <>
+        <header className="grid gap-1">
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">Te damos la bienvenida a Scrinium</h1>
+          <p className="max-w-2xl text-sm text-muted-foreground">
+            Lee tu repositorio y tus documentos en este equipo y te explica qué hace el sistema, siempre con
+            citas al código. Nada sale de aquí.
+          </p>
+        </header>
+        <QuickStart
+          key={drop?.at}
+          project={null}
+          drop={drop}
+          onProjectCreated={onProjectCreated}
+          onAdded={onDropUsed}
+          onSessionLost={onSessionLost}
+        />
+      </>
     )
   }
 
@@ -129,7 +149,6 @@ export function HomeScreen({
     { done: (rules?.length ?? 0) > 0, label: <Link to="/reglas" className="hover:underline">Extrae las reglas del código</Link> },
   ]
   const pendingSetup = sources !== null && rules !== null && steps.some((step) => !step.done)
-  const syncing = sources?.some((source) => sourceTone(source)[0] === "in_progress")
 
   return (
     <>
@@ -147,6 +166,20 @@ export function HomeScreen({
         </p>
       </header>
       <ErrorText>{error}</ErrorText>
+
+      {sources !== null && (!hasSources || drop !== null) && (
+        <QuickStart
+          key={drop?.at}
+          project={project}
+          drop={drop}
+          onProjectCreated={onProjectCreated}
+          onAdded={() => {
+            onDropUsed()
+            load()
+          }}
+          onSessionLost={onSessionLost}
+        />
+      )}
 
       <form onSubmit={ask} className="grid gap-3 rounded-xl border bg-card p-5">
         <label htmlFor="home-question" className="font-heading text-lg font-medium">

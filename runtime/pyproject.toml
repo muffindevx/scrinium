@@ -86,6 +86,8 @@ module = ["pyarrow", "pyarrow.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# pywebview is only installed on Windows, macOS or with the `window` extra.
-module = ["webview", "webview.*"]
+# pywebview is only installed on Windows, macOS or with the `window` extra. When it is, it is
+# not checked, nor is qtpy: they pull in PyQt6, whose stubs mypy cannot parse. Same result on every machine.
+module = ["webview", "webview.*", "qtpy", "qtpy.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
