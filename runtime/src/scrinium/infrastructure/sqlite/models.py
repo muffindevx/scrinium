@@ -172,6 +172,24 @@ class ModelProvider(Timestamps, Base):
     key_hint: Mapped[str] = mapped_column(String(4), default="")
 
 
+class ProviderModel(Base):
+    """A model a provider offers that this workspace uses: the catalog people choose from.
+
+    Removing it revokes the consents that named it; removing the provider removes its models.
+    """
+
+    __tablename__ = "provider_models"
+    __table_args__ = (UniqueConstraint("provider_id", "model"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    provider_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("model_providers.id", ondelete="CASCADE"), index=True
+    )
+    model: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+
+
 class AiConsent(Base):
     """A person's consent to send one project's text to a remote model (ADR-010).
 

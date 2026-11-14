@@ -38,7 +38,14 @@ export function Section({
   className?: string
 }) {
   return (
-    <section className={cn("grid content-start gap-4 rounded-xl border bg-card p-4 text-card-foreground", className)}>
+    <section
+      className={cn(
+        // Its children may shrink below their content: long paths and codes wrap instead of
+        // pushing the page wider than a phone.
+        "grid min-w-0 content-start gap-4 rounded-xl border bg-card p-4 text-card-foreground *:min-w-0",
+        className,
+      )}
+    >
       {(title || action) && (
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div className="grid gap-0.5">

@@ -151,7 +151,7 @@ class Router:
         self._database = database
         self._store = store
         self._factory = factory
-        self._adapters: dict[tuple[uuid.UUID, AiTask], LLMProvider] = {}
+        self._adapters: dict[tuple[Any, ...], LLMProvider] = {}
 
     def route(self, project_id: uuid.UUID, task: AiTask) -> _Route | None:
         with self._database.session() as session:
@@ -164,7 +164,8 @@ class Router:
             provider = session.get(ModelProvider, consent.provider_id)
             if provider is None:
                 return None
-            key = (consent.id, task)
+            # A provider edited (kind, address) gets a new adapter.
+            key = (consent.id, task, provider.kind, provider.base_url, provider.secret_ref)
             if key not in self._adapters:
                 session.expunge(provider)
                 store = self._store

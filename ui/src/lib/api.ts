@@ -841,6 +841,7 @@ export interface ModelProvider {
   has_key: boolean
   key_hint: string | null
   created_at: string
+  models: { id: string; model: string }[]
 }
 
 export interface RetentionNotice {
@@ -900,6 +901,22 @@ export const registerModelProvider = async (provider: {
   base_url: string
   api_key: string
 }) => (await mutate("/api/v1/model-providers", provider)).json() as Promise<ModelProvider>
+export const updateModelProvider = async (
+  providerId: string,
+  changes: { name?: string; kind?: ProviderKind; base_url?: string; api_key?: string },
+) =>
+  (await mutate(`/api/v1/model-providers/${providerId}`, changes, "PATCH")).json() as Promise<
+    ModelProvider & { consents_revoked: number }
+  >
+export const addProviderModel = async (providerId: string, model: string) =>
+  (await mutate(`/api/v1/model-providers/${providerId}/models`, { model })).json() as Promise<{
+    id: string
+    model: string
+  }>
+export const removeProviderModel = async (providerId: string, modelId: string) =>
+  (await mutate(`/api/v1/model-providers/${providerId}/models/${modelId}`, undefined, "DELETE")).json() as Promise<{
+    consents_revoked: number
+  }>
 export const removeModelProvider = async (providerId: string) => {
   await mutate(`/api/v1/model-providers/${providerId}`, undefined, "DELETE")
 }

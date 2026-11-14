@@ -197,7 +197,7 @@ export function PrivacyPill({ ai }: { ai: ProjectAi | null }) {
   const names = [...new Set(remote.map((consent) => consent.provider_name))].join(", ")
   return (
     <NavLink
-      to="/ajustes"
+      to="/ajustes/modelos"
       title={`Este proyecto envía tareas a ${names}. Ver o cambiar en Ajustes.`}
       className="inline-flex h-7 items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium whitespace-nowrap text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
     >
@@ -297,7 +297,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto grid max-w-5xl gap-6 px-6 py-6 max-sm:px-4">
+          <div className="mx-auto grid max-w-5xl gap-6 px-6 py-6 *:min-w-0 max-sm:px-4">
             <Routes>
               <Route
                 path="/"
@@ -345,7 +345,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                 }
               />
               <Route
-                path="/ajustes"
+                path="/ajustes/:tab?"
                 element={
                   <SettingsScreen
                     project={project}

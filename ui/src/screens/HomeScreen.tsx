@@ -252,7 +252,7 @@ export function HomeScreen({
           icon={Cpu}
           title="Motor de IA local"
           footer={
-            <Link to="/ajustes" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
+            <Link to="/ajustes/modelos" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
               Ver el motor <ArrowRight className="size-3.5" />
             </Link>
           }

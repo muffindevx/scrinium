@@ -28,6 +28,7 @@ from scrinium.infrastructure.sqlite.models import (
     AiRequest,
     ModelProvider,
     Project,
+    ProviderModel,
     utc_now,
 )
 
@@ -82,10 +83,137 @@ def describe(provider: ModelProvider) -> dict[str, Any]:
 
 
 def list_providers(session: Session) -> list[dict[str, Any]]:
+    """Each provider with the models of it this workspace uses."""
+    models: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    for row in session.scalars(select(ProviderModel).order_by(ProviderModel.model)):
+        models.setdefault(row.provider_id, []).append({"id": str(row.id), "model": row.model})
     return [
-        describe(provider)
+        {**describe(provider), "models": models.get(provider.id, [])}
         for provider in session.scalars(select(ModelProvider).order_by(ModelProvider.name))
     ]
+
+
+def _clean_model(model: str) -> str:
+    model = model.strip()
+    if not 1 <= len(model) <= 200 or any(c.isspace() for c in model):
+        raise ProviderError("invalid_model")
+    return model
+
+
+def add_model(
+    session: Session, provider_id: uuid.UUID, model: str, request_id: str | None = None
+) -> ProviderModel:
+    """A model of this provider, added to the catalog. Nothing is sent."""
+    provider = session.get(ModelProvider, provider_id)
+    if provider is None:
+        raise LookupError
+    model = _clean_model(model)
+    existing = session.scalars(
+        select(ProviderModel).where(
+            ProviderModel.provider_id == provider.id, ProviderModel.model == model
+        )
+    ).first()
+    if existing is not None:
+        return existing
+    row = ProviderModel(workspace_id=provider.workspace_id, provider_id=provider.id, model=model)
+    session.add(row)
+    session.flush()
+    record_audit(
+        session, provider.workspace_id, "provider_model.add", "model_provider", str(provider.id),
+        AuditResult.SUCCESS, request_id, {"model": model},
+    )  # fmt: skip
+    return row
+
+
+def remove_model(
+    session: Session, provider_id: uuid.UUID, model_id: uuid.UUID, request_id: str | None = None
+) -> int:
+    """Out of the catalog; the consents that named it are revoked. Returns how many."""
+    row = session.get(ProviderModel, model_id)
+    if row is None or row.provider_id != provider_id:
+        raise LookupError
+    revoked = 0
+    for consent in session.scalars(
+        select(AiConsent).where(
+            AiConsent.provider_id == provider_id, AiConsent.model == row.model,
+            AiConsent.revoked_at.is_(None),
+        )
+    ):  # fmt: skip
+        _revoke(session, consent, request_id)
+        revoked += 1
+    record_audit(
+        session, row.workspace_id, "provider_model.remove", "model_provider", str(provider_id),
+        AuditResult.SUCCESS, request_id, {"model": row.model, "consents_revoked": revoked},
+    )  # fmt: skip
+    session.delete(row)
+    return revoked
+
+
+def update_provider(
+    session: Session,
+    store: SecretStore,
+    provider_id: uuid.UUID,
+    *,
+    name: str | None = None,
+    kind: ProviderKind | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    request_id: str | None = None,
+) -> tuple[ModelProvider, int]:
+    """Changes a provider. A new host needs a new key (a key goes only to the host it was given
+    for) and revokes the consents given for the old host. Returns the provider and how many
+    consents were revoked."""
+    provider = session.get(ModelProvider, provider_id)
+    if provider is None:
+        raise LookupError
+    if name is not None:
+        name = name.strip()
+        if not 1 <= len(name) <= 100:
+            raise ProviderError("invalid_name")
+        taken = session.scalars(
+            select(ModelProvider.id).where(
+                ModelProvider.workspace_id == provider.workspace_id,
+                ModelProvider.name == name, ModelProvider.id != provider.id,
+            )
+        ).first()  # fmt: skip
+        if taken:
+            raise ProviderError("name_taken")
+        provider.name = name
+    if kind is not None:
+        provider.kind = kind
+    key = _clean_key(api_key) if api_key else None
+    revoked = 0
+    if base_url is not None:
+        url, host = check_base_url(base_url)
+        if host != provider.host:
+            if key is None:
+                raise ProviderError("key_required_for_new_host")
+            for consent in session.scalars(
+                select(AiConsent).where(
+                    AiConsent.provider_id == provider.id, AiConsent.revoked_at.is_(None)
+                )
+            ):
+                _revoke(session, consent, request_id)
+                revoked += 1
+        provider.base_url, provider.host = url, host
+    if key is not None:
+        if store.backend_name is None:
+            raise ProviderError("keyring_unavailable")
+        try:
+            new_ref = store.put(key)
+            if provider.secret_ref is not None:
+                store.delete(provider.secret_ref)
+        except SecretStoreUnavailableError:
+            raise ProviderError("keyring_unavailable") from None
+        provider.secret_ref, provider.key_hint = new_ref, key[-4:]
+    record_audit(
+        session, provider.workspace_id, "model_provider.update", "model_provider",
+        str(provider.id), AuditResult.SUCCESS, request_id,
+        {"kind": provider.kind.value, "host": provider.host, "key_replaced": key is not None,
+         "consents_revoked": revoked},
+    )  # fmt: skip
+    session.flush()
+    return provider, revoked
 
 
 def register_provider(
@@ -147,6 +275,10 @@ def remove_provider(
             store.delete(provider.secret_ref)
         except SecretStoreUnavailableError:
             raise ProviderError("keyring_unavailable") from None
+    for row in session.scalars(
+        select(ProviderModel).where(ProviderModel.provider_id == provider.id)
+    ):
+        session.delete(row)
     record_audit(
         session, provider.workspace_id, "model_provider.remove", "model_provider",
         str(provider.id), AuditResult.SUCCESS, request_id, {"host": provider.host},
@@ -307,6 +439,8 @@ def give_consent(
         raise LookupError
     if provider.secret_ref is None:
         raise ProviderError("key_missing")
+    # A model consented to is in the catalog, whoever typed it.
+    add_model(session, provider.id, model, request_id)
     chosen = sorted({task.value for task in tasks})
     for consent in _active(session, project):
         kept = [task for task in consent.tasks if task not in chosen]

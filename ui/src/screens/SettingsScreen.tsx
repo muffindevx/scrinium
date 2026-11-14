@@ -1,5 +1,6 @@
 import { Cpu, LogOut, Monitor, Moon, Palette, Search, ShieldCheck, Sun, UserRound } from "lucide-react"
 import { type FormEvent, useEffect, useState } from "react"
+import { useNavigate, useParams } from "react-router"
 import { CodeThemePreview } from "@/components/code-excerpt"
 import { InfoRow, PageHeader, Section } from "@/components/page"
 import { ModelStatusBadge, StatusBadge } from "@/components/status"
@@ -333,7 +334,7 @@ function PrivacySection({ status, dataFlow }: { status: SecurityStatus; dataFlow
           {dataFlow.ai_mode === "local_only" ? (
             <StatusBadge tone="verified">Solo local</StatusBadge>
           ) : (
-            <StatusBadge tone="attention">Algún proyecto usa un proveedor externo</StatusBadge>
+            <StatusBadge tone="attention">Con IA externa</StatusBadge>
           )}
         </InfoRow>
         <InfoRow label="Servicios de IA externos">{listOrNone(dataFlow.remote_ai_providers)}</InfoRow>
@@ -368,6 +369,35 @@ function PrivacySection({ status, dataFlow }: { status: SecurityStatus; dataFlow
   )
 }
 
+function SessionSection({ status, onEndSession }: { status: SecurityStatus; onEndSession: () => void }) {
+  return (
+      <Section title="Sesión">
+        <dl className="divide-y">
+          <InfoRow label="Versión">Scrinium {status.runtime.version}</InfoRow>
+          <InfoRow label="Dirección">
+            <code>
+              {status.runtime.bind_address}:{status.runtime.port}
+            </code>
+          </InfoRow>
+          <InfoRow label="Permisos de administrador">{status.runtime.running_as_admin ? "Sí" : "No"}</InfoRow>
+        </dl>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={onEndSession}>
+            <LogOut data-icon="inline-start" />
+            Cerrar sesión
+          </Button>
+          <Muted>Para volver a entrar, reinicia Scrinium con scrinium start.</Muted>
+        </div>
+      </Section>
+  )
+}
+
+const SETTINGS_TABS = [
+  { value: "general", label: "General", icon: UserRound },
+  { value: "modelos", label: "Modelos de IA", icon: Cpu },
+  { value: "privacidad", label: "Privacidad y datos", icon: ShieldCheck },
+] as const
+
 export function SettingsScreen({
   project,
   status,
@@ -397,44 +427,49 @@ export function SettingsScreen({
     getDataFlow().then(setFlow).catch(onSessionLost)
     onAiChanged()
   }
+  const { tab = "general" } = useParams()
+  const navigate = useNavigate()
+  const current = SETTINGS_TABS.some((option) => option.value === tab) ? tab : "general"
   return (
     <>
-      <PageHeader
-        title="Ajustes"
-        description="El motor de IA, los proveedores externos, tu perfil, la apariencia, la búsqueda y la privacidad de tus datos."
-      />
-      <EngineSection status={status} />
-      <RemoteAiSections project={project} onAiChanged={aiChanged} onSessionLost={onSessionLost} />
-      <div className="grid gap-6 md:grid-cols-2">
-        <ProfileSection name={profileName} onSaved={onProfileSaved} onSessionLost={onSessionLost} />
-        <AppearanceSection />
-      </div>
-      <SearchSection onSessionLost={onSessionLost} />
-      <PrivacySection status={status} dataFlow={flow} />
-      <PrivacyCard
-        project={project}
-        onProjectDeleted={onProjectDeleted}
-        onWiped={onWiped}
-        onSessionLost={onSessionLost}
-      />
-      <Section title="Sesión">
-        <dl className="divide-y">
-          <InfoRow label="Versión">Scrinium {status.runtime.version}</InfoRow>
-          <InfoRow label="Dirección">
-            <code>
-              {status.runtime.bind_address}:{status.runtime.port}
-            </code>
-          </InfoRow>
-          <InfoRow label="Permisos de administrador">{status.runtime.running_as_admin ? "Sí" : "No"}</InfoRow>
-        </dl>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="outline" onClick={onEndSession}>
-            <LogOut data-icon="inline-start" />
-            Cerrar sesión
-          </Button>
-          <Muted>Para volver a entrar, reinicia Scrinium con scrinium start.</Muted>
-        </div>
-      </Section>
+      <PageHeader title="Ajustes" />
+      <Tabs value={current} onValueChange={(value) => navigate(`/ajustes/${value}`)}>
+        <TabsList aria-label="Secciones de Ajustes">
+          {SETTINGS_TABS.map(({ value, label, icon: Icon }) => (
+            <TabsTrigger key={value} value={value}>
+              <Icon />
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      {current === "general" && (
+        <>
+          <div className="grid gap-6 md:grid-cols-2">
+            <ProfileSection name={profileName} onSaved={onProfileSaved} onSessionLost={onSessionLost} />
+            <AppearanceSection />
+          </div>
+          <SearchSection onSessionLost={onSessionLost} />
+          <SessionSection status={status} onEndSession={onEndSession} />
+        </>
+      )}
+      {current === "modelos" && (
+        <>
+          <EngineSection status={status} />
+          <RemoteAiSections project={project} onAiChanged={aiChanged} onSessionLost={onSessionLost} />
+        </>
+      )}
+      {current === "privacidad" && (
+        <>
+          <PrivacySection status={status} dataFlow={flow} />
+          <PrivacyCard
+            project={project}
+            onProjectDeleted={onProjectDeleted}
+            onWiped={onWiped}
+            onSessionLost={onSessionLost}
+          />
+        </>
+      )}
     </>
   )
 }

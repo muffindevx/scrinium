@@ -235,3 +235,54 @@ def test_a_consent_needs_a_project_mode_to_take_effect(client: Client) -> None:
         project = session.get_one(Project, uuid.UUID(client.project_id))
         project.ai_mode = AiMode.LOCAL_ONLY
         assert consent_for_task(session, project, AiTask.QUESTIONS) is None
+
+
+def _consent(client: Client, provider_id: str, model: str, tasks: list[str]) -> None:
+    client.send("POST", f"/api/v1/projects/{client.project_id}/ai/consents", {
+        "provider_id": provider_id, "model": model, "tasks": tasks,
+        "retention_acknowledged": True}, 201)  # fmt: skip
+
+
+def _catalog(client: Client) -> dict[str, list[str]]:
+    listed = client.send("GET", "/api/v1/model-providers")["providers"]
+    return {p["name"]: [m["model"] for m in p["models"]] for p in listed}
+
+
+def test_the_catalog_lists_models_and_removing_one_revokes_its_consents(client: Client) -> None:
+    provider = client.register()["id"]
+    models = f"/api/v1/model-providers/{provider}/models"
+    client.send("POST", models, {"model": "claude-sonnet-5-5"}, 201)
+    client.send("POST", models, {"model": "con espacios"}, 422)
+    # A model consented to joins the catalog by itself.
+    _consent(client, provider, "claude-opus-5-5", ["questions"])
+    assert _catalog(client) == {"Claude": ["claude-opus-5-5", "claude-sonnet-5-5"]}
+
+    listed = client.send("GET", "/api/v1/model-providers")["providers"][0]["models"]
+    opus = next(m["id"] for m in listed if m["model"] == "claude-opus-5-5")
+    assert client.send("DELETE", f"{models}/{opus}") == {"consents_revoked": 1}
+    state = client.send("GET", f"/api/v1/projects/{client.project_id}/ai")
+    assert _mode(state) == ("local_only", [])
+    assert _catalog(client) == {"Claude": ["claude-sonnet-5-5"]}
+
+
+def test_editing_a_provider_keeps_its_key_unless_the_host_changes(client: Client) -> None:
+    provider = client.register(kind="openai_compatible", base_url="https://api.deepseek.com",
+                               name="DeepSeek")["id"]  # fmt: skip
+    _consent(client, provider, "deepseek-v4-flash", ["questions"])
+    path = f"/api/v1/model-providers/{provider}"
+    before = _provider(client.runtime, provider).secret_ref
+
+    renamed = client.send("PATCH", path, {"name": "DeepSeek Flash"})
+    assert renamed["name"] == "DeepSeek Flash" and renamed["consents_revoked"] == 0
+    assert _provider(client.runtime, provider).secret_ref == before
+
+    # Another host needs another key: this one was given for api.deepseek.com only.
+    other = {"base_url": "https://api.otro.example.com/v1"}
+    assert client.send("PATCH", path, other, 422)["error"] == "key_required_for_new_host"
+    moved = client.send("PATCH", path, {**other, "api_key": "sk-otra-clave-9876543210"})
+    assert moved["host"] == "api.otro.example.com" and moved["key_hint"] == "3210"
+    # Consent was given to send to the old host: it does not carry over.
+    assert moved["consents_revoked"] == 1
+    after = _provider(client.runtime, provider)
+    assert after.secret_ref != before
+    assert client.runtime.environment.secret_store.get(before or "") is None

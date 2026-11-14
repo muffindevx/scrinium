@@ -33,6 +33,22 @@ class ProviderBody(BaseModel):
     api_key: str = Field(min_length=1, max_length=providers.MAX_KEY_LENGTH, repr=False)
 
 
+class ProviderPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    kind: ProviderKind | None = None
+    base_url: str | None = Field(default=None, min_length=1, max_length=500)
+    # Only to replace it; empty or absent keeps the one in the keyring.
+    api_key: str | None = Field(default=None, max_length=providers.MAX_KEY_LENGTH, repr=False)
+
+
+class ModelBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    model: str = Field(min_length=1, max_length=200)
+
+
 class SettingsBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -101,6 +117,45 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
             except ProviderError as error:
                 raise _error(error) from None
             return providers.describe(provider)
+
+    @router.patch("/api/v1/model-providers/{provider_id}")
+    def update(provider_id: uuid.UUID, body: ProviderPatch, request: Request) -> dict[str, Any]:
+        with database.session() as session:
+            try:
+                provider, revoked = providers.update_provider(
+                    session, store, provider_id, name=body.name, kind=body.kind,
+                    base_url=body.base_url, api_key=body.api_key or None,
+                    request_id=_request_id(request),
+                )  # fmt: skip
+            except LookupError:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
+            except ProviderError as error:
+                raise _error(error) from None
+            return {**providers.describe(provider), "consents_revoked": revoked}
+
+    @router.post("/api/v1/model-providers/{provider_id}/models", status_code=201)
+    def add_model(provider_id: uuid.UUID, body: ModelBody, request: Request) -> dict[str, Any]:
+        with database.session() as session:
+            try:
+                row = providers.add_model(session, provider_id, body.model, _request_id(request))
+            except LookupError:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
+            except ProviderError as error:
+                raise _error(error) from None
+            return {"id": str(row.id), "model": row.model}
+
+    @router.delete("/api/v1/model-providers/{provider_id}/models/{model_id}")
+    def remove_model(
+        provider_id: uuid.UUID, model_id: uuid.UUID, request: Request
+    ) -> dict[str, Any]:
+        with database.session() as session:
+            try:
+                revoked = providers.remove_model(
+                    session, provider_id, model_id, _request_id(request)
+                )
+            except LookupError:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
+            return {"consents_revoked": revoked}
 
     @router.delete("/api/v1/model-providers/{provider_id}", status_code=status.HTTP_204_NO_CONTENT)
     def remove(provider_id: uuid.UUID, request: Request) -> Response:
