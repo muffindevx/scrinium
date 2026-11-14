@@ -496,6 +496,24 @@ def _revoke(session: Session, consent: AiConsent, request_id: str | None) -> Non
     )  # fmt: skip
 
 
+def task_to_local(
+    session: Session, project: Project, task: AiTask, request_id: str | None = None
+) -> bool:
+    """This task goes back to the local model; the consent's other tasks stay where they were.
+    Returns whether it was going anywhere else."""
+    moved = False
+    for consent in _active(session, project):
+        if task.value not in consent.tasks:
+            continue
+        moved = True
+        kept = [value for value in consent.tasks if value != task.value]
+        _revoke(session, consent, request_id)
+        if kept:
+            _copy(session, consent, kept)
+    project.ai_mode = AiMode.REMOTE_ALLOWED if _active(session, project) else AiMode.LOCAL_ONLY
+    return moved
+
+
 def revoke_all(session: Session, project: Project, request_id: str | None = None) -> int:
     """The project goes back to local. What the provider already received cannot be recalled."""
     consents = _active(session, project)

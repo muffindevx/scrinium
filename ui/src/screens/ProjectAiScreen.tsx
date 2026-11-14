@@ -1,0 +1,577 @@
+import { Activity, Cpu, Gauge, Info } from "lucide-react"
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react"
+import { Link, useNavigate, useParams } from "react-router"
+import { PageHeader, Section } from "@/components/page"
+import { StatusBadge } from "@/components/status"
+import { Button } from "@/components/ui/button"
+import { Dialog } from "@/components/ui/dialog"
+import { InfoPopover } from "@/components/ui/info-popover"
+import { Input, Label, Textarea } from "@/components/ui/input"
+import { Select } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { OUTCOME_LABELS, TASKS, TASK_LABELS, tokens } from "@/lib/ai"
+import {
+  type AiConsent,
+  type AiRequestRecord,
+  type AiTask,
+  type ModelProvider,
+  type Project,
+  type ProjectAi,
+  type RetentionNotice,
+  getProjectAi,
+  getRetention,
+  giveAiConsent,
+  listAiRequests,
+  listModelProviders,
+  revokeAiConsents,
+  taskToLocal,
+  updateProjectAiSettings,
+} from "@/lib/api"
+import { relativeTime } from "@/lib/time"
+import { RetentionDetails } from "@/screens/ai-shared"
+import { useErrors } from "@/screens/hooks"
+import { ErrorText, Muted } from "@/screens/shared"
+
+const TASK_HELP: Record<AiTask, string> = {
+  questions: "Responder lo que se pregunta en Preguntar.",
+  rule_map: "Leer el código y proponer reglas.",
+  rule_statements: "Redactar el enunciado de cada regla.",
+  consistency: "Buscar reglas duplicadas o contradictorias.",
+  change_impact: "Revisar qué reglas toca un cambio de código.",
+}
+
+const LOCAL = "local"
+
+/** An external model of the catalog, as a choice: "<provider id> <model>". */
+function choiceOf(providerId: string, model: string) {
+  return `${providerId} ${model}`
+}
+
+function currentChoice(ai: ProjectAi, task: AiTask): string {
+  const consent = ai.consents.find((candidate) => candidate.tasks.includes(task))
+  return consent?.provider_id ? choiceOf(consent.provider_id, consent.model) : LOCAL
+}
+
+/** Consent to send these tasks to this model, read in a modal (ADR-010). The model's other
+ * tasks in this project stay with it, so the consent covers them all. */
+function ConsentDialog({
+  project,
+  provider,
+  model,
+  tasks,
+  onClose,
+  onGiven,
+  onSessionLost,
+}: {
+  project: Project
+  provider: ModelProvider
+  model: string
+  tasks: AiTask[]
+  onClose: () => void
+  onGiven: () => void
+  onSessionLost: (error: unknown) => void
+}) {
+  const [notice, setNotice] = useState<RetentionNotice | null>(null)
+  const [acknowledged, setAcknowledged] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const { error, setError, fail } = useErrors(onSessionLost)
+  useEffect(() => {
+    getRetention(provider.id, model).then(setNotice).catch(fail)
+  }, [provider.id, model, fail])
+  const allow = (event: FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    setBusy(true)
+    giveAiConsent(project.id, { provider_id: provider.id, model, tasks, retention_acknowledged: acknowledged })
+      .then(onGiven)
+      .catch(fail)
+      .finally(() => setBusy(false))
+  }
+  return (
+    <Dialog
+      open
+      onOpenChange={(next) => !next && onClose()}
+      title={`Usar ${provider.name} · ${model}`}
+      description={`Para ${tasks.map((task) => TASK_LABELS[task].toLowerCase()).join(", ")} de «${project.name}».`}
+    >
+      <form className="grid gap-3" onSubmit={allow}>
+        <p className="text-sm">
+          Lo que se envíe queda en manos de un tercero: los pasajes que necesite cada tarea salen a{" "}
+          <strong>{provider.host}</strong>. Antes, Scrinium quita las claves que reconoce y nunca envía las rutas
+          marcadas en Límites. Cada envío queda en Actividad.
+        </p>
+        <div className="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+          <span className="font-medium">Qué guarda {provider.name}</span>
+          {notice ? <RetentionDetails notice={notice} /> : <Muted>Cargando el aviso…</Muted>}
+        </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={acknowledged}
+            disabled={notice === null}
+            onChange={(e) => setAcknowledged(e.target.checked)}
+          />
+          He leído qué guarda {provider.name} y acepto enviarle esas tareas de este proyecto.
+        </label>
+        <ErrorText>{error}</ErrorText>
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" disabled={!acknowledged || busy}>
+            Permitir
+          </Button>
+        </div>
+      </form>
+    </Dialog>
+  )
+}
+
+function TaskRow({
+  task,
+  ai,
+  options,
+  onChoose,
+}: {
+  task: AiTask
+  ai: ProjectAi
+  options: { value: string; label: string }[]
+  onChoose: (task: AiTask, choice: string) => void
+}) {
+  const consent: AiConsent | undefined = ai.consents.find((candidate) => candidate.tasks.includes(task))
+  return (
+    <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
+      <span className="grid min-w-0 flex-1 gap-0.5">
+        <span className="font-medium">{TASK_LABELS[task]}</span>
+        <span className="text-xs text-muted-foreground">{TASK_HELP[task]}</span>
+        {consent && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            Permitido {relativeTime(consent.created_at)}
+            {consent.consented_by ? ` por ${consent.consented_by}` : ""}
+            <InfoPopover label="Aviso aceptado" title={`Lo que se aceptó de ${consent.provider_name}`}>
+              <RetentionDetails notice={consent.retention} />
+            </InfoPopover>
+          </span>
+        )}
+      </span>
+      <Select
+        aria-label={`Modelo para ${TASK_LABELS[task]}`}
+        value={currentChoice(ai, task)}
+        options={options}
+        onValueChange={(choice) => onChoose(task, choice)}
+        className="w-60 max-sm:w-full"
+      />
+    </li>
+  )
+}
+
+function ModelsTab({
+  project,
+  ai,
+  providers,
+  onChanged,
+  onSessionLost,
+}: {
+  project: Project
+  ai: ProjectAi
+  providers: ModelProvider[]
+  onChanged: () => void
+  onSessionLost: (error: unknown) => void
+}) {
+  const [asking, setAsking] = useState<{ provider: ModelProvider; model: string; tasks: AiTask[] } | null>(null)
+  const [confirming, setConfirming] = useState(false)
+  const { error, setError, fail } = useErrors(onSessionLost)
+  const options = useMemo(
+    () => [
+      { value: LOCAL, label: "Local (este equipo)" },
+      ...providers.flatMap((provider) =>
+        provider.models.map((option) => ({
+          value: choiceOf(provider.id, option.model),
+          label: `${provider.name} · ${option.model}`,
+        })),
+      ),
+    ],
+    [providers],
+  )
+  const choose = (task: AiTask, choice: string) => {
+    setError(null)
+    if (choice === currentChoice(ai, task)) return
+    if (choice === LOCAL) {
+      // Nothing leaves: no consent needed.
+      taskToLocal(project.id, task).then(onChanged).catch(fail)
+      return
+    }
+    const [providerId, model] = [choice.slice(0, choice.indexOf(" ")), choice.slice(choice.indexOf(" ") + 1)]
+    const provider = providers.find((candidate) => candidate.id === providerId)
+    if (!provider) return
+    // The tasks this model already has in this project keep it.
+    const already = ai.consents
+      .filter((consent) => consent.provider_id === providerId && consent.model === model)
+      .flatMap((consent) => consent.tasks)
+    const wanted = new Set([...already, task])
+    setAsking({ provider, model, tasks: TASKS.filter((value) => wanted.has(value)) })
+  }
+  const allLocal = () =>
+    revokeAiConsents(project.id)
+      .then(() => {
+        setConfirming(false)
+        onChanged()
+      })
+      .catch(fail)
+  const hasModels = options.length > 1
+  return (
+    <Section
+      title="Modelo de cada tarea"
+      description="Sin elegir otro, todo se resuelve en este equipo. La búsqueda y los vectores se calculan siempre aquí."
+      action={
+        ai.consents.length > 0 ? (
+          confirming ? (
+            <span className="flex items-center gap-1">
+              <Button size="sm" variant="destructive" onClick={allLocal}>
+                Sí, todo en local
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
+                Cancelar
+              </Button>
+            </span>
+          ) : (
+            <Button size="sm" variant="outline" onClick={() => setConfirming(true)}>
+              Todo en local
+            </Button>
+          )
+        ) : undefined
+      }
+    >
+      {confirming && <Muted>Desde la siguiente petición todo se resuelve aquí. Lo ya enviado no se puede recuperar.</Muted>}
+      <ul className="grid divide-y">
+        {TASKS.map((task) => (
+          <TaskRow key={task} task={task} ai={ai} options={options} onChoose={choose} />
+        ))}
+      </ul>
+      {!hasModels && (
+        <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Info className="size-4 shrink-0" aria-hidden="true" />
+          <span>
+            Para usar un modelo externo, añádelo antes en{" "}
+            <Link to="/ajustes/modelos" className="font-medium text-foreground underline-offset-4 hover:underline">
+              Ajustes → Modelos de IA
+            </Link>
+            .
+          </span>
+        </p>
+      )}
+      <ErrorText>{error}</ErrorText>
+      {asking && (
+        <ConsentDialog
+          project={project}
+          provider={asking.provider}
+          model={asking.model}
+          tasks={asking.tasks}
+          onClose={() => setAsking(null)}
+          onGiven={() => {
+            setAsking(null)
+            onChanged()
+          }}
+          onSessionLost={onSessionLost}
+        />
+      )}
+    </Section>
+  )
+}
+
+function LimitsForm({
+  project,
+  ai,
+  onSaved,
+  onSessionLost,
+}: {
+  project: Project
+  ai: ProjectAi
+  onSaved: (ai: ProjectAi) => void
+  onSessionLost: (error: unknown) => void
+}) {
+  const [paths, setPaths] = useState(ai.never_send.join("\n"))
+  const [budget, setBudget] = useState(ai.remote_token_budget === null ? "" : String(ai.remote_token_budget))
+  const [maskPersonal, setMaskPersonal] = useState(ai.mask_personal)
+  const [maskLiterals, setMaskLiterals] = useState(ai.mask_literals)
+  const [saved, setSaved] = useState(false)
+  const { error, setError, fail } = useErrors(onSessionLost)
+  const save = (event: FormEvent) => {
+    event.preventDefault()
+    setError(null)
+    setSaved(false)
+    const patterns = paths
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+    const limit = budget.trim() === "" ? null : Number(budget.trim())
+    if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
+      setError("El presupuesto debe ser un número entero de tokens, o quedar vacío.")
+      return
+    }
+    updateProjectAiSettings(project.id, {
+      never_send: patterns,
+      remote_token_budget: limit,
+      mask_personal: maskPersonal,
+      mask_literals: maskLiterals,
+    })
+      .then((updated) => {
+        setSaved(true)
+        onSaved(updated)
+      })
+      .catch(fail)
+  }
+  const spent = ai.remote_tokens_this_month
+  const limit = ai.remote_token_budget
+  return (
+    <form className="grid gap-3" onSubmit={save}>
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid content-start gap-1.5">
+          <Label htmlFor="never-send">Rutas que nunca se envían</Label>
+          <Textarea
+            id="never-send"
+            rows={4}
+            spellCheck={false}
+            placeholder={"contracts/\n*.sql"}
+            value={paths}
+            onChange={(e) => setPaths(e.target.value)}
+          />
+          <Muted>Una por línea. Se indexan y se buscan aquí; una tarea que las necesite se resuelve en local.</Muted>
+        </div>
+        <div className="grid content-start gap-1.5">
+          <Label htmlFor="token-budget">Presupuesto mensual de tokens</Label>
+          <Input
+            id="token-budget"
+            inputMode="numeric"
+            placeholder="Sin límite"
+            value={budget}
+            onChange={(e) => setBudget(e.target.value)}
+          />
+          <Muted>
+            Este mes: {tokens(spent)} tokens{limit !== null ? ` de ${tokens(limit)}` : ""}. Al llegar al límite no
+            se envía nada más hasta el mes siguiente.
+          </Muted>
+          {limit !== null && spent >= limit && <StatusBadge tone="attention">Presupuesto agotado</StatusBadge>}
+          {ai.cache_hits > 0 && (
+            <Muted>
+              {tokens(ai.cache_hits)} {ai.cache_hits === 1 ? "respuesta reutilizada" : "respuestas reutilizadas"} sin
+              enviar nada: la misma petición ya tenía respuesta.
+            </Muted>
+          )}
+        </div>
+      </div>
+      <fieldset className="grid gap-1.5">
+        <legend className="mb-1.5 text-sm font-medium">Enmascarar antes de enviar</legend>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={maskPersonal}
+            onChange={(e) => setMaskPersonal(e.target.checked)}
+          />
+          Datos personales: correos, teléfonos, direcciones IP y URL con usuario y contraseña
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={maskLiterals}
+            onChange={(e) => setMaskLiterals(e.target.checked)}
+          />
+          Textos largos entre comillas (24 caracteres o más)
+        </label>
+        <Muted>
+          Cada valor sale como un marcador (&lt;EMAIL_1&gt;) y vuelve a su sitio en la respuesta. La tabla de
+          equivalencias no sale de este equipo ni se guarda. Los nombres de funciones y tablas no se tocan.
+        </Muted>
+      </fieldset>
+      <div className="flex items-center gap-3">
+        <Button type="submit" variant="outline">
+          Guardar límites
+        </Button>
+        {saved && <StatusBadge tone="verified">Guardado</StatusBadge>}
+      </div>
+      <ErrorText>{error}</ErrorText>
+    </form>
+  )
+}
+
+function RequestLog({ requests }: { requests: AiRequestRecord[] }) {
+  if (requests.length === 0) return <Muted>Todavía no se ha enviado nada desde este proyecto.</Muted>
+  return (
+    <ul className="grid divide-y rounded-lg border text-sm">
+      {requests.map((request) => {
+        const outcome = OUTCOME_LABELS[request.outcome] ?? { label: request.outcome, tone: "attention" as const }
+        return (
+          <li key={request.id} className="grid gap-1 p-3">
+            <span className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <span className="font-medium">{TASK_LABELS[request.task] ?? request.task}</span>{" "}
+                <span className="text-muted-foreground">· {relativeTime(request.created_at)}</span>
+              </span>
+              <StatusBadge tone={outcome.tone}>{outcome.label}</StatusBadge>
+            </span>
+            <code className="text-xs break-words text-muted-foreground">
+              {request.answered_by || request.model} · {request.host} · {tokens(request.prompt_tokens)} tokens enviados
+              {request.cached_tokens > 0 ? ` (${tokens(request.cached_tokens)} en caché)` : ""} ·{" "}
+              {tokens(request.completion_tokens)} recibidos
+              {request.masked > 0 ? ` · ${request.masked} ${request.masked === 1 ? "valor enmascarado" : "valores enmascarados"}` : ""}
+            </code>
+            {request.sources.length > 0 && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground">
+                  {request.sources.length} {request.sources.length === 1 ? "pasaje" : "pasajes"}
+                </summary>
+                <ul className="mt-1 grid gap-0.5">
+                  {request.sources.map((source) => (
+                    <li key={source}>
+                      <code className="break-all">{source}</code>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function ActivityTab({
+  project,
+  ai,
+  onSessionLost,
+}: {
+  project: Project
+  ai: ProjectAi
+  onSessionLost: (error: unknown) => void
+}) {
+  const [requests, setRequests] = useState<AiRequestRecord[] | null>(null)
+  const [task, setTask] = useState("all")
+  const [outcome, setOutcome] = useState("all")
+  const { error, fail } = useErrors(onSessionLost)
+  useEffect(() => {
+    listAiRequests(project.id).then(setRequests).catch(fail)
+  }, [project.id, fail])
+  const shown = (requests ?? []).filter(
+    (request) => (task === "all" || request.task === task) && (outcome === "all" || request.outcome === outcome),
+  )
+  return (
+    <Section
+      title="Qué salió de este equipo"
+      description="Cada envío a un modelo externo: cuándo, a dónde, qué pasajes y cuántos tokens. Nunca el contenido."
+    >
+      <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+        <div className="grid gap-0.5 rounded-lg border p-3">
+          <dt className="text-xs text-muted-foreground">Tokens este mes</dt>
+          <dd className="font-medium">
+            {tokens(ai.remote_tokens_this_month)}
+            {ai.remote_token_budget !== null && (
+              <span className="font-normal text-muted-foreground"> de {tokens(ai.remote_token_budget)}</span>
+            )}
+          </dd>
+        </div>
+        <div className="grid gap-0.5 rounded-lg border p-3">
+          <dt className="text-xs text-muted-foreground">Envíos registrados</dt>
+          <dd className="font-medium">{tokens(requests?.length ?? 0)}</dd>
+        </div>
+        <div className="grid gap-0.5 rounded-lg border p-3">
+          <dt className="text-xs text-muted-foreground">Respuestas reutilizadas</dt>
+          <dd className="font-medium">{tokens(ai.cache_hits)}</dd>
+        </div>
+      </dl>
+      <div className="flex flex-wrap gap-2">
+        <Select
+          aria-label="Filtrar por tarea"
+          value={task}
+          options={[{ value: "all", label: "Todas las tareas" }, ...TASKS.map((value) => ({ value, label: TASK_LABELS[value] }))]}
+          onValueChange={setTask}
+        />
+        <Select
+          aria-label="Filtrar por resultado"
+          value={outcome}
+          options={[
+            { value: "all", label: "Todos los resultados" },
+            ...Object.entries(OUTCOME_LABELS).map(([value, { label }]) => ({ value, label })),
+          ]}
+          onValueChange={setOutcome}
+        />
+      </div>
+      {requests && <RequestLog requests={shown} />}
+      <ErrorText>{error}</ErrorText>
+    </Section>
+  )
+}
+
+const TABS = [
+  { value: "modelos", label: "Modelos", icon: Cpu },
+  { value: "limites", label: "Límites", icon: Gauge },
+  { value: "actividad", label: "Actividad", icon: Activity },
+] as const
+
+/** The project's AI: which model each task uses, what never leaves, and what did. */
+export function ProjectAiScreen({
+  project,
+  onAiChanged,
+  onSessionLost,
+}: {
+  project: Project
+  onAiChanged: () => void
+  onSessionLost: (error: unknown) => void
+}) {
+  const { tab = "modelos" } = useParams()
+  const navigate = useNavigate()
+  const current = TABS.some((option) => option.value === tab) ? tab : "modelos"
+  const [ai, setAi] = useState<ProjectAi | null>(null)
+  const [providers, setProviders] = useState<ModelProvider[]>([])
+  const { error, fail } = useErrors(onSessionLost)
+  const load = useCallback(() => {
+    getProjectAi(project.id).then(setAi).catch(fail)
+    listModelProviders()
+      .then((loaded) => setProviders(loaded.providers))
+      .catch(fail)
+  }, [project.id, fail])
+  useEffect(load, [load])
+  const changed = () => {
+    load()
+    onAiChanged()
+  }
+  return (
+    <>
+      <PageHeader
+        title="IA del proyecto"
+        description={`Qué modelo usa cada tarea de «${project.name}», qué nunca sale de este equipo y qué salió.`}
+      />
+      <Tabs value={current} onValueChange={(value) => navigate(`/ia/${value}`)}>
+        <TabsList aria-label="Secciones de IA del proyecto">
+          {TABS.map(({ value, label, icon: Icon }) => (
+            <TabsTrigger key={value} value={value}>
+              <Icon />
+              {label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+      {ai === null ? (
+        error ? (
+          <ErrorText>{error}</ErrorText>
+        ) : (
+          <Muted>Cargando…</Muted>
+        )
+      ) : current === "modelos" ? (
+        <ModelsTab project={project} ai={ai} providers={providers} onChanged={changed} onSessionLost={onSessionLost} />
+      ) : current === "limites" ? (
+        <Section
+          title="Límites"
+          description="Se aplican a todo lo que este proyecto envíe a un modelo externo."
+        >
+          <LimitsForm key={project.id} project={project} ai={ai} onSaved={changed} onSessionLost={onSessionLost} />
+        </Section>
+      ) : (
+        <ActivityTab project={project} ai={ai} onSessionLost={onSessionLost} />
+      )}
+    </>
+  )
+}

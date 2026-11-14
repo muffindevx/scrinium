@@ -1,6 +1,6 @@
 import { Cpu, LogOut, Monitor, Moon, Palette, Search, ShieldCheck, Sun, UserRound } from "lucide-react"
 import { type FormEvent, useEffect, useState } from "react"
-import { useNavigate, useParams } from "react-router"
+import { Link, useNavigate, useParams } from "react-router"
 import { CodeThemePreview } from "@/components/code-excerpt"
 import { InfoRow, PageHeader, Section } from "@/components/page"
 import { ModelStatusBadge, StatusBadge } from "@/components/status"
@@ -24,7 +24,7 @@ import { CODE_THEMES, type CodeThemeId, setCodeTheme } from "@/lib/highlight"
 import { type ThemePreference, setTheme, storedTheme } from "@/lib/theme"
 import { useCodeTheme } from "@/lib/use-code-theme"
 import { PrivacyCard } from "@/screens/PrivacyCard"
-import { RemoteAiSections } from "@/screens/RemoteAiSection"
+import { ModelCatalog } from "@/screens/RemoteAiSection"
 import { useErrors } from "@/screens/hooks"
 import { ErrorText, Eyebrow, Muted } from "@/screens/shared"
 
@@ -407,13 +407,11 @@ export function SettingsScreen({
   onProjectDeleted,
   onWiped,
   onEndSession,
-  onAiChanged,
   onSessionLost,
 }: {
   project: Project | null
   status: SecurityStatus
   dataFlow: DataFlow
-  onAiChanged: () => void
   profileName: string | null
   onProfileSaved: (name: string) => void
   onProjectDeleted: (projectId: string) => void
@@ -422,11 +420,11 @@ export function SettingsScreen({
   onSessionLost: (error: unknown) => void
 }) {
   // What the privacy summary says follows consents given or revoked on this screen.
+  // Consents change on the project's AI page: the privacy summary is read fresh here.
   const [flow, setFlow] = useState(dataFlow)
-  const aiChanged = () => {
+  useEffect(() => {
     getDataFlow().then(setFlow).catch(onSessionLost)
-    onAiChanged()
-  }
+  }, [onSessionLost])
   const { tab = "general" } = useParams()
   const navigate = useNavigate()
   const current = SETTINGS_TABS.some((option) => option.value === tab) ? tab : "general"
@@ -456,7 +454,14 @@ export function SettingsScreen({
       {current === "modelos" && (
         <>
           <EngineSection status={status} />
-          <RemoteAiSections project={project} onAiChanged={aiChanged} onSessionLost={onSessionLost} />
+          <ModelCatalog onSessionLost={onSessionLost} />
+          <p className="text-sm text-muted-foreground">
+            Qué modelo usa cada tarea de un proyecto se elige en{" "}
+            <Link to="/ia" className="font-medium text-foreground underline-offset-4 hover:underline">
+              IA del proyecto
+            </Link>
+            .
+          </p>
         </>
       )}
       {current === "privacidad" && (

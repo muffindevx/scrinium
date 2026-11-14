@@ -12,6 +12,7 @@ import {
   ScanSearch,
   ScrollText,
   Settings,
+  Sparkles,
   Tags,
   TriangleAlert,
 } from "lucide-react"
@@ -43,6 +44,7 @@ import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
 import { ArchitectureScreen } from "@/screens/ArchitectureScreen"
 import { MapScreen } from "@/screens/MapScreen"
+import { ProjectAiScreen } from "@/screens/ProjectAiScreen"
 import { RulesScreen } from "@/screens/RulesScreen"
 import { SettingsScreen } from "@/screens/SettingsScreen"
 import { SourcesScreen } from "@/screens/SourcesScreen"
@@ -105,6 +107,7 @@ const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
 ]
 const FOOTER_NAVIGATION: NavItem[] = [
   { path: "/fuentes", label: "Fuentes", icon: FolderGit2 },
+  { path: "/ia", label: "IA del proyecto", icon: Sparkles },
   { path: "/ajustes", label: "Ajustes", icon: Settings },
 ]
 
@@ -197,8 +200,8 @@ export function PrivacyPill({ ai }: { ai: ProjectAi | null }) {
   const names = [...new Set(remote.map((consent) => consent.provider_name))].join(", ")
   return (
     <NavLink
-      to="/ajustes/modelos"
-      title={`Este proyecto envía tareas a ${names}. Ver o cambiar en Ajustes.`}
+      to="/ia"
+      title={`Este proyecto envía tareas a ${names}. Ver o cambiar en IA del proyecto.`}
       className="inline-flex h-7 items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium whitespace-nowrap text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
     >
       <Cloud className="size-3.5" aria-hidden="true" />
@@ -345,6 +348,12 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                 }
               />
               <Route
+                path="/ia/:tab?"
+                element={needsProject((c) => (
+                  <ProjectAiScreen key={c.id} project={c} onAiChanged={loadAi} onSessionLost={sessionLost} />
+                ))}
+              />
+              <Route
                 path="/ajustes/:tab?"
                 element={
                   <SettingsScreen
@@ -366,7 +375,6 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                       window.location.assign("/fuentes")
                     }}
                     onEndSession={endSession}
-                    onAiChanged={loadAi}
                     onSessionLost={sessionLost}
                   />
                 }

@@ -953,5 +953,8 @@ export const revokeAiConsents = async (projectId: string) =>
     revoked: number
     ai_mode: AiMode
   }>
+/** One task back to the local model; its consent's other tasks keep their model. */
+export const taskToLocal = async (projectId: string, task: AiTask) =>
+  (await mutate(`/api/v1/projects/${projectId}/ai/tasks/${task}`, undefined, "DELETE")).json() as Promise<ProjectAi>
 export const listAiRequests = async (projectId: string) =>
   (await getJson<{ requests: AiRequestRecord[] }>(`/api/v1/projects/${projectId}/ai/requests`)).requests

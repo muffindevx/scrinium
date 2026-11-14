@@ -248,6 +248,15 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
                 raise _error(error) from None
             return providers.describe_consent(given)
 
+    @router.delete("/api/v1/projects/{project_id}/ai/tasks/{task}")
+    def task_to_local(project_id: uuid.UUID, task: AiTask, request: Request) -> dict[str, Any]:
+        """One task back to the local model; the others keep their model."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            providers.task_to_local(session, project, task, _request_id(request))
+            spent = tokens_spent(session, project.id, utc_now())
+            return providers.project_ai(session, project, spent)
+
     @router.delete("/api/v1/projects/{project_id}/ai/consents")
     def revoke(project_id: uuid.UUID, request: Request) -> dict[str, Any]:
         """Back to local. What the provider already received cannot be recalled."""

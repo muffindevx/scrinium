@@ -286,3 +286,16 @@ def test_editing_a_provider_keeps_its_key_unless_the_host_changes(client: Client
     after = _provider(client.runtime, provider)
     assert after.secret_ref != before
     assert client.runtime.environment.secret_store.get(before or "") is None
+
+
+def test_one_task_goes_back_to_local_and_the_others_stay(client: Client) -> None:
+    provider = client.register()["id"]
+    _consent(client, provider, "claude-opus-5-5", ["questions", "rule_map"])
+    base = f"/api/v1/projects/{client.project_id}/ai"
+    state = client.send("DELETE", f"{base}/tasks/questions")
+    [consent] = state["consents"]
+    assert consent["tasks"] == ["rule_map"] and state["ai_mode"] == "remote_allowed"
+    state = client.send("DELETE", f"{base}/tasks/rule_map")
+    assert _mode(state) == ("local_only", [])
+    # Already local: nothing to do, and nothing breaks.
+    assert _mode(client.send("DELETE", f"{base}/tasks/rule_map")) == ("local_only", [])
