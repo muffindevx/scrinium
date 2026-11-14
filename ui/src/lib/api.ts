@@ -841,6 +841,8 @@ export interface ProjectAi {
   never_send: string[]
   remote_token_budget: number | null
   remote_tokens_this_month: number
+  mask_personal: boolean
+  mask_literals: boolean
 }
 
 export interface AiRequestRecord {
@@ -855,6 +857,7 @@ export interface AiRequestRecord {
   prompt_tokens: number
   cached_tokens: number
   completion_tokens: number
+  masked: number
   created_at: string
 }
 
@@ -880,7 +883,12 @@ export const checkModelProvider = async (providerId: string, model: string) =>
 export const getProjectAi = (projectId: string) => getJson<ProjectAi>(`/api/v1/projects/${projectId}/ai`)
 export const updateProjectAiSettings = async (
   projectId: string,
-  settings: { never_send: string[]; remote_token_budget: number | null },
+  settings: {
+    never_send: string[]
+    remote_token_budget: number | null
+    mask_personal: boolean
+    mask_literals: boolean
+  },
 ) => (await mutate(`/api/v1/projects/${projectId}/ai/settings`, settings, "PUT")).json() as Promise<ProjectAi>
 export const giveAiConsent = async (
   projectId: string,

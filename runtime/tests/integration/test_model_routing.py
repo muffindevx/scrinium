@@ -302,3 +302,31 @@ def test_a_spent_budget_pauses_extraction_and_keeps_its_queue(runtime: Runtime, 
     with runtime.database.session() as session:
         left = queue.counts(session, uuid.UUID(api.project_id))
     assert left["pending"] > 0 and left["failed"] == 0
+
+
+def test_masking_hides_personal_data_and_the_answer_gets_it_back(
+    runtime: Runtime, repo: Path
+) -> None:
+    remote = _remote(
+        runtime,
+        _reply(
+            summary="Escribe a <EMAIL_1>.",
+            claims=[{"text": "calculate_invoice_total avisa a <EMAIL_1>", "sources": [1]}],
+        ),
+    )
+    csrf, project = _setup(runtime, repo)
+    _consent(runtime, csrf, project, ["questions"])
+    state = _settings(runtime, csrf, project, {"mask_personal": True})
+    assert (state["mask_personal"], state["mask_literals"]) == (True, False)
+
+    detail = _ask(runtime, csrf, project, "¿Avisa a ana@example.com el cálculo del total?")
+    sent = json.dumps([m.content for m in remote.received[0]], ensure_ascii=False)
+    assert "ana@example.com" not in sent and "<EMAIL_1>" in sent
+    assert "calculate_invoice_total" in sent
+    # What is stored has the real address back; the record counts, never says which.
+    assert detail["result"]["summary"] == "Escribe a ana@example.com."
+    assert "ana@example.com" in detail["result"]["claims"][0]["text"]
+    [request] = _requests(runtime)
+    assert request.masked == 1
+    entry = runtime.client.get(f"/api/v1/projects/{project}/ai/requests").json()["requests"][0]
+    assert entry["masked"] == 1 and "ana@example.com" not in json.dumps(entry)

@@ -17,13 +17,14 @@ import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Any, ClassVar, Final
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from scrinium.application.ai.masking import Masker
 from scrinium.application.ai.providers import ProviderError, consent_for_task, provider_key
 from scrinium.application.ingestion.policy import matches_user_pattern
 from scrinium.core.secret_patterns import redact_tokens
@@ -107,6 +108,8 @@ class _Route:
     adapter: LLMProvider
     never_send: tuple[str, ...]
     budget: int | None
+    mask_personal: bool = False
+    mask_literals: bool = False
 
     def keeps_local(self, sources: tuple[str, ...]) -> bool:
         """True if a passage of this request is in a path the project never sends."""
@@ -165,6 +168,7 @@ class Router:
             return _Route(
                 consent.id, project_id, consent.workspace_id, consent.host, consent.model,
                 self._adapters[key], tuple(project.never_send or ()), project.remote_token_budget,
+                bool(project.mask_personal), bool(project.mask_literals),
             )  # fmt: skip
 
     def spent(self, project_id: uuid.UUID, now: datetime) -> int:
@@ -173,7 +177,7 @@ class Router:
 
     def record(
         self, route: _Route, task: AiTask, messages: list[ChatMessage],
-        completion: Completion | None, outcome: Outcome,
+        completion: Completion | None, outcome: Outcome, masked: int = 0,
     ) -> None:  # fmt: skip
         with self._database.session() as session:
             session.add(
@@ -191,6 +195,7 @@ class Router:
                     prompt_tokens=completion.prompt_tokens if completion else 0,
                     cached_tokens=completion.cached_tokens if completion else 0,
                     completion_tokens=completion.completion_tokens if completion else 0,
+                    masked=masked,
                 )
             )
 
@@ -240,8 +245,10 @@ class TaskModel:
             and self._router.spent(self._project_id, utc_now()) >= route.budget
         ):
             raise BudgetExceededError
-        # Secrets in a format Scrinium knows never leave, whatever passed ingestion.
-        sent = [ChatMessage(m.role, redact_tokens(m.content)) for m in messages]
+        # Secrets in a format Scrinium knows never leave, whatever passed ingestion. Then, if
+        # the project asked for it, personal data and long literals become placeholders.
+        masker = Masker(route.mask_personal, route.mask_literals)
+        sent = [ChatMessage(m.role, masker.mask(redact_tokens(m.content))) for m in messages]
         try:
             completion = route.adapter.complete(sent, max_tokens, json_schema)
         except ProviderError:
@@ -249,7 +256,8 @@ class TaskModel:
             # sent, so there is nothing to record.
             raise ProviderAuthError from None
         except ModelError as error:
-            self._router.record(route, self._task, sent, None, error.outcome)
+            self._router.record(route, self._task, sent, None, error.outcome, masker.masked)
             raise
-        self._router.record(route, self._task, sent, completion, Outcome.COMPLETED)
-        return completion
+        self._router.record(route, self._task, sent, completion, Outcome.COMPLETED, masker.masked)
+        # The real values are back before the task reads, checks or stores the answer.
+        return replace(completion, text=masker.unmask(completion.text))

@@ -37,6 +37,8 @@ class SettingsBody(BaseModel):
 
     never_send: list[str] = Field(default_factory=list, max_length=100)
     remote_token_budget: int | None = Field(default=None, ge=0)
+    mask_personal: bool = False
+    mask_literals: bool = False
 
 
 class CheckBody(BaseModel):
@@ -167,7 +169,7 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
             try:
                 providers.update_settings(
                     session, project, body.never_send, body.remote_token_budget,
-                    _request_id(request),
+                    _request_id(request), body.mask_personal, body.mask_literals,
                 )  # fmt: skip
             except ProviderError as error:
                 raise _error(error) from None

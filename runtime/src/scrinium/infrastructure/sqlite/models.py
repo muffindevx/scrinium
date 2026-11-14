@@ -145,6 +145,9 @@ class Project(Timestamps, Base):
     never_send: Mapped[list[str]] = mapped_column(JSON, default=list, server_default="[]")
     # Tokens per calendar month (UTC) for remote calls; None: no limit (T6).
     remote_token_budget: Mapped[int | None] = mapped_column(Integer)
+    # Masking before a remote request (off by default): personal data, and long literals.
+    mask_personal: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    mask_literals: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
 
 class ModelProvider(Timestamps, Base):
@@ -224,6 +227,8 @@ class AiRequest(Base):
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cached_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    # How many distinct values were masked in what was sent (never the values).
+    masked: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now, index=True)
 
 

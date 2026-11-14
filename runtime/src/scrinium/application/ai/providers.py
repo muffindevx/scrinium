@@ -201,6 +201,8 @@ def project_ai(session: Session, project: Project, spent: int = 0) -> dict[str, 
         "never_send": list(project.never_send or []),
         "remote_token_budget": project.remote_token_budget,
         "remote_tokens_this_month": spent,
+        "mask_personal": bool(project.mask_personal),
+        "mask_literals": bool(project.mask_literals),
     }
 
 
@@ -236,7 +238,7 @@ def _describe_request(row: AiRequest) -> dict[str, Any]:
         "answered_by": row.answered_by, "outcome": row.outcome, "sources": list(row.sources),
         "sent_chars": row.sent_chars, "prompt_tokens": row.prompt_tokens,
         "cached_tokens": row.cached_tokens, "completion_tokens": row.completion_tokens,
-        "created_at": row.created_at.isoformat(),
+        "masked": row.masked, "created_at": row.created_at.isoformat(),
     }  # fmt: skip
 
 
@@ -249,6 +251,8 @@ def update_settings(
     never_send: list[str],
     remote_token_budget: int | None,
     request_id: str | None = None,
+    mask_personal: bool = False,
+    mask_literals: bool = False,
 ) -> None:
     """Paths never sent (source exclusion patterns) and the monthly budget (None: no limit)."""
     try:
@@ -259,10 +263,13 @@ def update_settings(
         raise ProviderError("invalid_budget")
     project.never_send = patterns
     project.remote_token_budget = remote_token_budget
+    project.mask_personal = mask_personal
+    project.mask_literals = mask_literals
     record_audit(
         session, project.workspace_id, "ai_settings.update", "project", str(project.id),
         AuditResult.SUCCESS, request_id,
-        {"never_send": len(patterns), "budget": remote_token_budget},
+        {"never_send": len(patterns), "budget": remote_token_budget,
+         "mask_personal": mask_personal, "mask_literals": mask_literals},
     )  # fmt: skip
 
 

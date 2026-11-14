@@ -446,6 +446,8 @@ function LimitsForm({
 }) {
   const [paths, setPaths] = useState(ai.never_send.join("\n"))
   const [budget, setBudget] = useState(ai.remote_token_budget === null ? "" : String(ai.remote_token_budget))
+  const [maskPersonal, setMaskPersonal] = useState(ai.mask_personal)
+  const [maskLiterals, setMaskLiterals] = useState(ai.mask_literals)
   const [saved, setSaved] = useState(false)
   const { error, setError, fail } = useErrors(onSessionLost)
   const save = (event: FormEvent) => {
@@ -461,7 +463,12 @@ function LimitsForm({
       setError("El presupuesto debe ser un número entero de tokens, o quedar vacío.")
       return
     }
-    updateProjectAiSettings(project.id, { never_send: patterns, remote_token_budget: limit })
+    updateProjectAiSettings(project.id, {
+      never_send: patterns,
+      remote_token_budget: limit,
+      mask_personal: maskPersonal,
+      mask_literals: maskLiterals,
+    })
       .then((updated) => {
         setSaved(true)
         onSaved(updated)
@@ -501,6 +508,31 @@ function LimitsForm({
           {limit !== null && spent >= limit && <StatusBadge tone="attention">Presupuesto agotado</StatusBadge>}
         </div>
       </div>
+      <fieldset className="grid gap-1.5">
+        <legend className="mb-1.5 text-sm font-medium">Enmascarar antes de enviar</legend>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={maskPersonal}
+            onChange={(e) => setMaskPersonal(e.target.checked)}
+          />
+          Datos personales: correos, teléfonos, direcciones IP y URL con usuario y contraseña
+        </label>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 accent-primary"
+            checked={maskLiterals}
+            onChange={(e) => setMaskLiterals(e.target.checked)}
+          />
+          Textos largos entre comillas (24 caracteres o más)
+        </label>
+        <Muted>
+          Cada valor sale como un marcador (&lt;EMAIL_1&gt;) y vuelve a su sitio en la respuesta. La tabla de
+          equivalencias no sale de este equipo ni se guarda. Los nombres de funciones y tablas no se tocan.
+        </Muted>
+      </fieldset>
       <div className="flex items-center gap-3">
         <Button type="submit" variant="outline">
           Guardar límites
@@ -531,6 +563,7 @@ function RequestLog({ requests }: { requests: AiRequestRecord[] }) {
               {request.answered_by || request.model} · {request.host} · {tokens(request.prompt_tokens)} tokens enviados
               {request.cached_tokens > 0 ? ` (${tokens(request.cached_tokens)} en caché)` : ""} ·{" "}
               {tokens(request.completion_tokens)} recibidos
+              {request.masked > 0 ? ` · ${request.masked} ${request.masked === 1 ? "valor enmascarado" : "valores enmascarados"}` : ""}
             </code>
             {request.sources.length > 0 && (
               <details className="text-xs">
