@@ -506,6 +506,12 @@ function LimitsForm({
             se envía nada más hasta el mes siguiente.
           </Muted>
           {limit !== null && spent >= limit && <StatusBadge tone="attention">Presupuesto agotado</StatusBadge>}
+          {ai.cache_hits > 0 && (
+            <Muted>
+              {tokens(ai.cache_hits)} {ai.cache_hits === 1 ? "respuesta reutilizada" : "respuestas reutilizadas"} sin
+              enviar nada: la misma petición ya tenía respuesta.
+            </Muted>
+          )}
         </div>
       </div>
       <fieldset className="grid gap-1.5">

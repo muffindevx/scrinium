@@ -14,7 +14,7 @@ from datetime import date
 from typing import Any, Final
 from urllib.parse import urlsplit
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai.retention import notice_for
@@ -23,6 +23,7 @@ from scrinium.application.workspaces import local_workspace, record_audit, revie
 from scrinium.domain.enums import AiMode, AiTask, AuditResult, ProviderKind
 from scrinium.infrastructure.secret_store import SecretStore, SecretStoreUnavailableError
 from scrinium.infrastructure.sqlite.models import (
+    AiCacheEntry,
     AiConsent,
     AiRequest,
     ModelProvider,
@@ -201,6 +202,14 @@ def project_ai(session: Session, project: Project, spent: int = 0) -> dict[str, 
         "never_send": list(project.never_send or []),
         "remote_token_budget": project.remote_token_budget,
         "remote_tokens_this_month": spent,
+        "cache_hits": int(
+            session.scalar(
+                select(func.coalesce(func.sum(AiCacheEntry.hits), 0)).where(
+                    AiCacheEntry.project_id == project.id
+                )
+            )
+            or 0
+        ),
         "mask_personal": bool(project.mask_personal),
         "mask_literals": bool(project.mask_literals),
     }

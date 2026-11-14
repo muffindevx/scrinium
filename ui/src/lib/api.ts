@@ -841,6 +841,7 @@ export interface ProjectAi {
   never_send: string[]
   remote_token_budget: number | null
   remote_tokens_this_month: number
+  cache_hits: number
   mask_personal: boolean
   mask_literals: boolean
 }

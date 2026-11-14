@@ -11,6 +11,8 @@ Deciding on every call means a consent revoked during an extraction takes effect
 batch: the rest runs locally. A failure is the task's failed batch, never a retry elsewhere.
 """
 
+import hashlib
+import json
 import logging
 import re
 import uuid
@@ -18,10 +20,10 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, ClassVar, Final
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai.masking import Masker
@@ -30,13 +32,14 @@ from scrinium.application.ingestion.policy import matches_user_pattern
 from scrinium.core.secret_patterns import redact_tokens
 from scrinium.domain.enums import AiTask, ProviderKind
 from scrinium.infrastructure.llm.anthropic_chat import AnthropicChat
-from scrinium.infrastructure.llm.base import ChatMessage, Completion, LLMProvider
+from scrinium.infrastructure.llm.base import KEY_NAME, ChatMessage, Completion, LLMProvider
 from scrinium.infrastructure.llm.remote_openai import RemoteOpenAIChat
 from scrinium.infrastructure.local_http import ModelError, ModelStatus, Outcome
 from scrinium.infrastructure.remote_http import ProviderAuthError
 from scrinium.infrastructure.secret_store import SecretStore
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
+    AiCacheEntry,
     AiRequest,
     ModelProvider,
     Project,
@@ -49,6 +52,11 @@ MAX_SOURCES: Final = 200
 # Reasoning depth for models that take it (Claude): the rule map is many short classifications.
 _EFFORT: Final = {AiTask.RULE_MAP: "low"}
 _DEFAULT_EFFORT: Final = "medium"
+
+# T5: a remote answer is reused for the very same request for this long, and a project keeps
+# at most this many (the oldest go first).
+CACHE_TTL: Final = timedelta(days=30)
+CACHE_MAX_ENTRIES: Final = 5000
 
 # What the current request sends, set by the task around its call (`sending`).
 _SOURCES: ContextVar[tuple[str, ...]] = ContextVar("scrinium_sent_sources", default=())
@@ -171,6 +179,53 @@ class Router:
                 bool(project.mask_personal), bool(project.mask_literals),
             )  # fmt: skip
 
+    def cached(self, route: _Route, key: str, now: datetime) -> AiCacheEntry | None:
+        """The answer kept for this very request, if it is recent enough; counts the reuse."""
+        with self._database.session() as session:
+            entry = session.scalars(
+                select(AiCacheEntry).where(
+                    AiCacheEntry.project_id == route.project_id,
+                    AiCacheEntry.key == key,
+                    AiCacheEntry.created_at >= now - CACHE_TTL,
+                )
+            ).first()
+            if entry is None:
+                return None
+            session.execute(
+                update(AiCacheEntry)
+                .where(AiCacheEntry.id == entry.id)
+                .values(hits=AiCacheEntry.hits + 1)
+            )
+            session.expunge(entry)
+            return entry
+
+    def remember(
+        self, route: _Route, task: AiTask, key: str, completion: Completion, now: datetime
+    ) -> None:
+        with self._database.session() as session:
+            project = route.project_id
+            session.execute(delete(AiCacheEntry).where(
+                AiCacheEntry.project_id == project,
+                (AiCacheEntry.key == key) | (AiCacheEntry.created_at < now - CACHE_TTL),
+            ))  # fmt: skip
+            entry = AiCacheEntry(
+                workspace_id=route.workspace_id, project_id=project, key=key,
+                task=task.value, answered_by=completion.model_id, text=completion.text,
+            )  # fmt: skip
+            session.add(entry)
+            session.flush()
+            # Past the cap, the oldest go.
+            surplus = list(
+                session.scalars(
+                    select(AiCacheEntry.id)
+                    .where(AiCacheEntry.project_id == project)
+                    .order_by(AiCacheEntry.created_at.desc())
+                    .offset(CACHE_MAX_ENTRIES)
+                )
+            )
+            if surplus:
+                session.execute(delete(AiCacheEntry).where(AiCacheEntry.id.in_(surplus)))
+
     def spent(self, project_id: uuid.UUID, now: datetime) -> int:
         with self._database.session() as session:
             return tokens_spent(session, project_id, now)
@@ -198,6 +253,31 @@ class Router:
                     masked=masked,
                 )
             )
+
+
+_KEY_LINE: Final = re.compile(rf"{re.escape(KEY_NAME)} de las marcas de esta peticion: (\S+)\n")
+# A noncharacter: text from sources does not carry it.
+_FENCE: Final = "\uffff"
+
+
+def cache_key(
+    route: _Route, task: AiTask, messages: list[ChatMessage], max_tokens: int,
+    json_schema: dict[str, Any] | None,
+) -> str:  # fmt: skip
+    """SHA-256 of everything that decides the answer: where, which model, which task, the
+    output limits and exactly what would be sent, except the request's fence key (`key_line`):
+    it is random on every request, and content never holds it (each task strips it), so
+    replacing it leaves two requests equal only if everything else is."""
+    contents = [m.content for m in messages]
+    nonce = next((match.group(1) for c in contents if (match := _KEY_LINE.match(c))), None)
+    if nonce:
+        contents = [c.replace(nonce, _FENCE) for c in contents]
+    payload = json.dumps(
+        [route.host, route.model, task.value, max_tokens, json_schema,
+         [[m.role, c] for m, c in zip(messages, contents, strict=True)]],
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    )  # fmt: skip
+    return hashlib.sha256(payload.encode()).hexdigest()
 
 
 class TaskModel:
@@ -240,15 +320,20 @@ class TaskModel:
             # A path the project never sends: this request runs here, and nothing leaves.
             logger.info("remote_kept_local project=%s task=%s", self._project_id, self._task.value)
             return self._local.complete(messages, max_tokens, json_schema)
-        if (
-            route.budget is not None
-            and self._router.spent(self._project_id, utc_now()) >= route.budget
-        ):
-            raise BudgetExceededError
         # Secrets in a format Scrinium knows never leave, whatever passed ingestion. Then, if
         # the project asked for it, personal data and long literals become placeholders.
         masker = Masker(route.mask_personal, route.mask_literals)
         sent = [ChatMessage(m.role, masker.mask(redact_tokens(m.content))) for m in messages]
+        now = utc_now()
+        key = cache_key(route, self._task, sent, max_tokens, json_schema)
+        hit = self._router.cached(route, key, now)
+        if hit is not None:
+            # T5: the very same request was answered already. Nothing is sent, nothing is spent
+            # and nothing is recorded as having left.
+            logger.info("remote_cache_hit project=%s task=%s", self._project_id, self._task.value)
+            return Completion(masker.unmask(hit.text), hit.answered_by, 0, 0, 0)
+        if route.budget is not None and self._router.spent(self._project_id, now) >= route.budget:
+            raise BudgetExceededError
         try:
             completion = route.adapter.complete(sent, max_tokens, json_schema)
         except ProviderError:
@@ -259,5 +344,6 @@ class TaskModel:
             self._router.record(route, self._task, sent, None, error.outcome, masker.masked)
             raise
         self._router.record(route, self._task, sent, completion, Outcome.COMPLETED, masker.masked)
+        self._router.remember(route, self._task, key, completion, now)
         # The real values are back before the task reads, checks or stores the answer.
         return replace(completion, text=masker.unmask(completion.text))

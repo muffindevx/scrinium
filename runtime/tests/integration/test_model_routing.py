@@ -16,7 +16,7 @@ from scrinium.application.analysis import extraction_queue as queue
 from scrinium.application.analysis.extraction import answered_by
 from scrinium.infrastructure.llm.base import ChatMessage, Completion, ModelRefusedError
 from scrinium.infrastructure.local_http import ModelStatus
-from scrinium.infrastructure.sqlite.models import AiRequest, AnalysisRun
+from scrinium.infrastructure.sqlite.models import AiCacheEntry, AiRequest, AnalysisRun
 from tests.conftest import ORIGIN, Runtime
 from tests.integration.test_analyses import Api
 from tests.integration.test_questions import GH_TOKEN, _ask, _reply, _setup, repo
@@ -191,6 +191,8 @@ def test_deleting_the_project_takes_its_record_of_requests(runtime: Runtime, rep
     assert response.status_code == 200, response.text
     assert response.json()["ai_requests_deleted"] == 1
     assert _requests(runtime) == []
+    with runtime.database.session() as session:
+        assert session.scalars(select(AiCacheEntry)).all() == []
 
 
 def test_provenance_names_the_model_that_answered() -> None:
@@ -238,7 +240,8 @@ def test_a_spent_budget_sends_nothing(runtime: Runtime, repo: Path) -> None:
     state = runtime.client.get(f"/api/v1/projects/{project}/ai").json()
     # 900 in and 30 out: under 1000, so this one went.
     assert state["remote_tokens_this_month"] == 930 and len(remote.received) == 1
-    _ask(runtime, csrf, project, "¿Cómo se calcula el total?")
+    # Another question (the same one would come from the cache, T5).
+    _ask(runtime, csrf, project, "¿Dónde se calcula el total de la factura?")
     detail = _ask(runtime, csrf, project, "¿Y los descuentos?")
     # 1860 spent after the second: the third is refused before sending anything.
     assert detail["status"] == "failed" and detail["error_summary"] == "remote_budget_spent"
@@ -330,3 +333,26 @@ def test_masking_hides_personal_data_and_the_answer_gets_it_back(
     assert request.masked == 1
     entry = runtime.client.get(f"/api/v1/projects/{project}/ai/requests").json()["requests"][0]
     assert entry["masked"] == 1 and "ana@example.com" not in json.dumps(entry)
+
+
+def test_the_same_request_is_answered_from_the_cache_without_sending(
+    runtime: Runtime, repo: Path
+) -> None:
+    """T5: the fence key is random on every request, yet the same question and passages reuse
+    the answer: nothing leaves, nothing is spent, even with the budget gone."""
+    remote = _remote(
+        runtime,
+        _reply(summary="Suma.", claims=[{"text": "calculate_invoice_total suma", "sources": [1]}]),
+    )
+    csrf, project = _setup(runtime, repo)
+    _consent(runtime, csrf, project, ["questions"])
+    first = _ask(runtime, csrf, project, "¿Cómo se calcula el total?")
+    _settings(runtime, csrf, project, {"remote_token_budget": 0})
+    again = _ask(runtime, csrf, project, "¿Cómo se calcula el total?")
+    assert again["status"] == "completed" and again["result"]["summary"] == "Suma."
+    assert again["result"]["claims"] == first["result"]["claims"]
+    assert len(remote.received) == 1 and len(_requests(runtime)) == 1
+    assert runtime.client.get(f"/api/v1/projects/{project}/ai").json()["cache_hits"] == 1
+    # Another question is another request: with the budget gone, it is not sent.
+    other = _ask(runtime, csrf, project, "¿Dónde se aplica el IVA?")
+    assert other["status"] == "failed" and len(remote.received) == 1

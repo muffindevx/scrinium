@@ -28,6 +28,7 @@ from scrinium.domain.enums import AnalysisStatus, AnalysisType, AuditResult, Syn
 from scrinium.infrastructure.secret_store import SecretStore
 from scrinium.infrastructure.sqlite.database import DATABASE_FILENAME, Database
 from scrinium.infrastructure.sqlite.models import (
+    AiCacheEntry,
     AiConsent,
     AiRequest,
     AnalysisRun,
@@ -161,6 +162,7 @@ def delete_project(
         summary["ai_requests_deleted"] = session.execute(
             delete(AiRequest).where(AiRequest.project_id == project.id)
         ).rowcount  # type: ignore[attr-defined]
+        session.execute(delete(AiCacheEntry).where(AiCacheEntry.project_id == project.id))
         summary["ai_consents_deleted"] = session.execute(
             delete(AiConsent).where(AiConsent.project_id == project.id)
         ).rowcount  # type: ignore[attr-defined]

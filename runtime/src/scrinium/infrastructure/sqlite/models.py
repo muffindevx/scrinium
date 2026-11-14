@@ -232,6 +232,28 @@ class AiRequest(Base):
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now, index=True)
 
 
+class AiCacheEntry(Base):
+    """A remote answer kept to be reused for the very same request (T5, ADR-010).
+
+    `key` is the SHA-256 of what would be sent: host, model, task, output limits and the
+    messages after redaction and masking. `text` is the answer as received, so with the same
+    placeholders as what was sent: masked values are never stored here.
+    """
+
+    __tablename__ = "ai_cache"
+    __table_args__ = (UniqueConstraint("project_id", "key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    key: Mapped[str] = mapped_column(String(64))
+    task: Mapped[str] = mapped_column(String(32))
+    answered_by: Mapped[str] = mapped_column(String(300))
+    text: Mapped[str] = mapped_column(Text)
+    hits: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now, index=True)
+
+
 class LocalProfile(Timestamps, Base):
     """This installation's settings. Not an account: the MVP has no users."""
 
