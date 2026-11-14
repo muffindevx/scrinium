@@ -331,6 +331,8 @@ def project_ai(session: Session, project: Project, spent: int = 0) -> dict[str, 
     return {
         "ai_mode": project.ai_mode.value,
         "consents": [describe_consent(consent) for consent in _active(session, project)],
+        # Each task's default model ({"provider_id", "model"}); a task not here runs locally.
+        "task_models": dict(project.task_models or {}),
         "never_send": list(project.never_send or []),
         "remote_token_budget": project.remote_token_budget,
         "remote_tokens_this_month": spent,
@@ -423,11 +425,14 @@ def give_consent(
     retention_acknowledged: bool,
     today: date,
     request_id: str | None = None,
+    make_default: bool = True,
 ) -> AiConsent:
     """A person consents to send these tasks of this project to this model.
 
     The retention notice is computed here, not taken from the request: what is recorded is what
-    Scrinium showed. A task already sent elsewhere moves to the new consent.
+    Scrinium showed. Permissions add up: the model keeps the tasks it already had, and other
+    models keep theirs. With `make_default`, these tasks use this model unless a run chooses
+    another; without it, the model is only allowed, to be chosen for a run.
     """
     model = model.strip()
     if not tasks or not 1 <= len(model) <= 200:
@@ -441,47 +446,34 @@ def give_consent(
         raise ProviderError("key_missing")
     # A model consented to is in the catalog, whoever typed it.
     add_model(session, provider.id, model, request_id)
-    chosen = sorted({task.value for task in tasks})
+    chosen = {task.value for task in tasks}
     for consent in _active(session, project):
-        kept = [task for task in consent.tasks if task not in chosen]
-        if kept != list(consent.tasks):
-            _revoke(session, consent, request_id)
-            if kept:
-                _copy(session, consent, kept)
+        if consent.provider_id == provider.id and consent.model == model:
+            # One consent per model: its earlier tasks join, under the notice shown now.
+            chosen |= set(consent.tasks)
+            consent.revoked_at = utc_now()
     consent = AiConsent(
         workspace_id=project.workspace_id, project_id=project.id, provider_id=provider.id,
-        provider_name=provider.name, host=provider.host, model=model, tasks=chosen,
+        provider_name=provider.name, host=provider.host, model=model, tasks=sorted(chosen),
         retention=retention_notice(provider, model, today),
         consented_by=reviewer_name(session),
     )  # fmt: skip
     session.add(consent)
     project.ai_mode = AiMode.REMOTE_ALLOWED
+    if make_default:
+        defaults = dict(project.task_models or {})
+        for task in tasks:
+            defaults[task.value] = {"provider_id": str(provider.id), "model": model}
+        project.task_models = defaults
     session.flush()
     record_audit(
         session, project.workspace_id, "ai_consent.give", "project", str(project.id),
         AuditResult.SUCCESS, request_id,
-        {"host": provider.host, "model": model, "tasks": chosen,
+        {"host": provider.host, "model": model, "tasks": sorted(chosen),
+         "default_for": sorted(t.value for t in tasks) if make_default else [],
          "retention_verified": consent.retention.get("verified", False)},
     )  # fmt: skip
     return consent
-
-
-def _copy(session: Session, consent: AiConsent, tasks: list[str]) -> None:
-    """What is left of a consent when some of its tasks move to another model."""
-    session.add(
-        AiConsent(
-            workspace_id=consent.workspace_id,
-            project_id=consent.project_id,
-            provider_id=consent.provider_id,
-            provider_name=consent.provider_name,
-            host=consent.host,
-            model=consent.model,
-            tasks=tasks,
-            retention=dict(consent.retention),
-            consented_by=consent.consented_by,
-        )
-    )
-    session.flush()
 
 
 def _revoke(session: Session, consent: AiConsent, request_id: str | None) -> None:
@@ -490,28 +482,64 @@ def _revoke(session: Session, consent: AiConsent, request_id: str | None) -> Non
     project = session.get_one(Project, consent.project_id)
     if not _active(session, project):
         project.ai_mode = AiMode.LOCAL_ONLY
+    _prune_defaults(session, project)
     record_audit(
         session, consent.workspace_id, "ai_consent.revoke", "project", str(consent.project_id),
         AuditResult.SUCCESS, request_id, {"host": consent.host, "model": consent.model},
     )  # fmt: skip
 
 
-def task_to_local(
-    session: Session, project: Project, task: AiTask, request_id: str | None = None
-) -> bool:
-    """This task goes back to the local model; the consent's other tasks stay where they were.
-    Returns whether it was going anywhere else."""
-    moved = False
-    for consent in _active(session, project):
-        if task.value not in consent.tasks:
-            continue
-        moved = True
-        kept = [value for value in consent.tasks if value != task.value]
-        _revoke(session, consent, request_id)
-        if kept:
-            _copy(session, consent, kept)
-    project.ai_mode = AiMode.REMOTE_ALLOWED if _active(session, project) else AiMode.LOCAL_ONLY
-    return moved
+def _permits(consent: AiConsent, task: str, provider_id: str, model: str) -> bool:
+    return (
+        str(consent.provider_id) == provider_id and consent.model == model and task in consent.tasks
+    )
+
+
+def _prune_defaults(session: Session, project: Project) -> None:
+    """Defaults whose model no longer has a consent for that task go back to local."""
+    active = _active(session, project)
+    project.task_models = {
+        task: choice
+        for task, choice in (project.task_models or {}).items()
+        if any(_permits(c, task, choice.get("provider_id", ""), choice.get("model", ""))
+               for c in active)
+    }  # fmt: skip
+
+
+def set_default(
+    session: Session,
+    project: Project,
+    task: AiTask,
+    provider_id: uuid.UUID | None,
+    model: str | None,
+    request_id: str | None = None,
+) -> None:
+    """The model this task uses by default: local (None), or a model already allowed for it.
+    Nothing is consented here; allowing a model is `give_consent`."""
+    defaults = dict(project.task_models or {})
+    if provider_id is None or not model:
+        defaults.pop(task.value, None)
+    else:
+        if not any(
+            _permits(c, task.value, str(provider_id), model) for c in _active(session, project)
+        ):
+            raise ProviderError("model_not_permitted")
+        defaults[task.value] = {"provider_id": str(provider_id), "model": model}
+    project.task_models = defaults
+    record_audit(
+        session, project.workspace_id, "ai_default.set", "project", str(project.id),
+        AuditResult.SUCCESS, request_id, {"task": task.value, "model": model or "local"},
+    )  # fmt: skip
+
+
+def revoke_consent(
+    session: Session, project: Project, consent_id: uuid.UUID, request_id: str | None = None
+) -> None:
+    """One permission withdrawn; the tasks that used it by default go back to local."""
+    consent = session.get(AiConsent, consent_id)
+    if consent is None or consent.project_id != project.id or consent.revoked_at is not None:
+        raise LookupError
+    _revoke(session, consent, request_id)
 
 
 def revoke_all(session: Session, project: Project, request_id: str | None = None) -> int:
@@ -523,11 +551,51 @@ def revoke_all(session: Session, project: Project, request_id: str | None = None
     return len(consents)
 
 
-def consent_for_task(session: Session, project: Project, task: AiTask) -> AiConsent | None:
-    """The consent in force for this task, or None: then the task runs locally."""
+LOCAL_CHOICE: Final = "local"
+
+
+def parse_choice(choice: str | None) -> tuple[str, str] | None:
+    """A run's model choice: None for the default, ("", "") for local, else (provider, model)."""
+    if choice is None:
+        return None
+    choice = choice.strip()
+    if choice == LOCAL_CHOICE:
+        return "", ""
+    provider_id, _, model = choice.partition(" ")
+    try:
+        uuid.UUID(provider_id)
+    except ValueError:
+        raise ProviderError("invalid_model_choice") from None
+    if not model.strip():
+        raise ProviderError("invalid_model_choice")
+    return provider_id, model.strip()
+
+
+def consent_for_task(
+    session: Session, project: Project, task: AiTask, choice: str | None = None
+) -> AiConsent | None:
+    """The consent this task sends under, or None: then it runs locally.
+
+    Without a choice, the task's default model; with one, that model, which must be allowed
+    for the task (`model_not_permitted` otherwise: the run is refused, not sent elsewhere)."""
     if project.ai_mode is not AiMode.REMOTE_ALLOWED:
+        if parse_choice(choice) not in (None, ("", "")):
+            raise ProviderError("model_not_permitted")
+        return None
+    parsed = parse_choice(choice)
+    if parsed is None:
+        default = (project.task_models or {}).get(task.value)
+        if not default:
+            return None
+        parsed = (default.get("provider_id", ""), default.get("model", ""))
+        explicit = False
+    else:
+        explicit = True
+    if parsed == ("", ""):
         return None
     for consent in _active(session, project):
-        if task.value in consent.tasks:
+        if _permits(consent, task.value, *parsed):
             return consent
+    if explicit:
+        raise ProviderError("model_not_permitted")
     return None

@@ -188,7 +188,12 @@ function Sidebar() {
 
 /** Says what really leaves: local unless the current project consented to a remote model. */
 export function PrivacyPill({ ai }: { ai: ProjectAi | null }) {
-  const remote = ai?.consents ?? []
+  // What leaves by default: the tasks whose default model is external. A model only allowed
+  // leaves when someone chooses it for a run, and that screen says so.
+  const defaults = Object.values(ai?.task_models ?? {})
+  const remote = (ai?.consents ?? []).filter((consent) =>
+    defaults.some((chosen) => chosen.provider_id === consent.provider_id && chosen.model === consent.model),
+  )
   if (remote.length === 0) {
     return (
       <span className="inline-flex h-7 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium whitespace-nowrap text-emerald-600 dark:text-emerald-400">

@@ -4,31 +4,29 @@ import { Link, useNavigate, useParams } from "react-router"
 import { PageHeader, Section } from "@/components/page"
 import { StatusBadge } from "@/components/status"
 import { Button } from "@/components/ui/button"
-import { Dialog } from "@/components/ui/dialog"
 import { InfoPopover } from "@/components/ui/info-popover"
 import { Input, Label, Textarea } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { OUTCOME_LABELS, TASKS, TASK_LABELS, tokens } from "@/lib/ai"
+import { LOCAL, OUTCOME_LABELS, TASKS, TASK_LABELS, choiceOf, currentChoice, permission, tokens } from "@/lib/ai"
 import {
-  type AiConsent,
   type AiRequestRecord,
   type AiTask,
   type ModelProvider,
   type Project,
   type ProjectAi,
-  type RetentionNotice,
   getProjectAi,
-  getRetention,
-  giveAiConsent,
   listAiRequests,
   listModelProviders,
+  revokeAiConsent,
   revokeAiConsents,
+  setTaskDefault,
   taskToLocal,
   updateProjectAiSettings,
 } from "@/lib/api"
 import { relativeTime } from "@/lib/time"
 import { RetentionDetails } from "@/screens/ai-shared"
+import { ConsentDialog } from "@/screens/ConsentDialog"
 import { useErrors } from "@/screens/hooks"
 import { ErrorText, Muted } from "@/screens/shared"
 
@@ -38,94 +36,6 @@ const TASK_HELP: Record<AiTask, string> = {
   rule_statements: "Redactar el enunciado de cada regla.",
   consistency: "Buscar reglas duplicadas o contradictorias.",
   change_impact: "Revisar qué reglas toca un cambio de código.",
-}
-
-const LOCAL = "local"
-
-/** An external model of the catalog, as a choice: "<provider id> <model>". */
-function choiceOf(providerId: string, model: string) {
-  return `${providerId} ${model}`
-}
-
-function currentChoice(ai: ProjectAi, task: AiTask): string {
-  const consent = ai.consents.find((candidate) => candidate.tasks.includes(task))
-  return consent?.provider_id ? choiceOf(consent.provider_id, consent.model) : LOCAL
-}
-
-/** Consent to send these tasks to this model, read in a modal (ADR-010). The model's other
- * tasks in this project stay with it, so the consent covers them all. */
-function ConsentDialog({
-  project,
-  provider,
-  model,
-  tasks,
-  onClose,
-  onGiven,
-  onSessionLost,
-}: {
-  project: Project
-  provider: ModelProvider
-  model: string
-  tasks: AiTask[]
-  onClose: () => void
-  onGiven: () => void
-  onSessionLost: (error: unknown) => void
-}) {
-  const [notice, setNotice] = useState<RetentionNotice | null>(null)
-  const [acknowledged, setAcknowledged] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const { error, setError, fail } = useErrors(onSessionLost)
-  useEffect(() => {
-    getRetention(provider.id, model).then(setNotice).catch(fail)
-  }, [provider.id, model, fail])
-  const allow = (event: FormEvent) => {
-    event.preventDefault()
-    setError(null)
-    setBusy(true)
-    giveAiConsent(project.id, { provider_id: provider.id, model, tasks, retention_acknowledged: acknowledged })
-      .then(onGiven)
-      .catch(fail)
-      .finally(() => setBusy(false))
-  }
-  return (
-    <Dialog
-      open
-      onOpenChange={(next) => !next && onClose()}
-      title={`Usar ${provider.name} · ${model}`}
-      description={`Para ${tasks.map((task) => TASK_LABELS[task].toLowerCase()).join(", ")} de «${project.name}».`}
-    >
-      <form className="grid gap-3" onSubmit={allow}>
-        <p className="text-sm">
-          Lo que se envíe queda en manos de un tercero: los pasajes que necesite cada tarea salen a{" "}
-          <strong>{provider.host}</strong>. Antes, Scrinium quita las claves que reconoce y nunca envía las rutas
-          marcadas en Límites. Cada envío queda en Actividad.
-        </p>
-        <div className="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-          <span className="font-medium">Qué guarda {provider.name}</span>
-          {notice ? <RetentionDetails notice={notice} /> : <Muted>Cargando el aviso…</Muted>}
-        </div>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="mt-0.5 size-4 accent-primary"
-            checked={acknowledged}
-            disabled={notice === null}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-          />
-          He leído qué guarda {provider.name} y acepto enviarle esas tareas de este proyecto.
-        </label>
-        <ErrorText>{error}</ErrorText>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button type="submit" disabled={!acknowledged || busy}>
-            Permitir
-          </Button>
-        </div>
-      </form>
-    </Dialog>
-  )
 }
 
 function TaskRow({
@@ -139,7 +49,8 @@ function TaskRow({
   options: { value: string; label: string }[]
   onChoose: (task: AiTask, choice: string) => void
 }) {
-  const consent: AiConsent | undefined = ai.consents.find((candidate) => candidate.tasks.includes(task))
+  const chosen = ai.task_models[task]
+  const consent = chosen ? permission(ai, task, chosen.provider_id, chosen.model) : undefined
   return (
     <li className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
       <span className="grid min-w-0 flex-1 gap-0.5">
@@ -163,6 +74,73 @@ function TaskRow({
         className="w-60 max-sm:w-full"
       />
     </li>
+  )
+}
+
+/** The models this project has allowed, for which tasks; each can be withdrawn. */
+function Permissions({
+  project,
+  ai,
+  onChanged,
+  onSessionLost,
+}: {
+  project: Project
+  ai: ProjectAi
+  onChanged: () => void
+  onSessionLost: (error: unknown) => void
+}) {
+  const [confirming, setConfirming] = useState<string | null>(null)
+  const { error, fail } = useErrors(onSessionLost)
+  const withdraw = (consentId: string) =>
+    revokeAiConsent(project.id, consentId)
+      .then(() => {
+        setConfirming(null)
+        onChanged()
+      })
+      .catch(fail)
+  return (
+    <div className="grid gap-2 border-t pt-4">
+      <span className="flex items-center gap-1 text-sm font-medium">
+        Modelos permitidos
+        <InfoPopover label="Qué es un modelo permitido" title="Modelos permitidos">
+          <p>
+            Un modelo permitido puede elegirse para una tarea al preguntar o al extraer reglas, aunque no sea el de por
+            defecto. Retirarlo hace que esas tareas vuelvan a este equipo.
+          </p>
+        </InfoPopover>
+      </span>
+      <ul className="grid gap-2">
+        {ai.consents.map((consent) => (
+          <li key={consent.id} className="grid gap-1 rounded-lg border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="min-w-0">
+                <span className="font-medium">{consent.provider_name}</span>{" "}
+                <code className="text-xs text-muted-foreground">{consent.model}</code>
+              </span>
+              {confirming === consent.id ? (
+                <span className="flex items-center gap-1">
+                  <Button size="xs" variant="destructive" onClick={() => withdraw(consent.id)}>
+                    Retirar
+                  </Button>
+                  <Button size="xs" variant="ghost" onClick={() => setConfirming(null)}>
+                    Cancelar
+                  </Button>
+                </span>
+              ) : (
+                <Button size="xs" variant="ghost" onClick={() => setConfirming(consent.id)}>
+                  Retirar permiso
+                </Button>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground">
+              {consent.tasks.map((task) => TASK_LABELS[task]).join(", ")} · {relativeTime(consent.created_at)}
+              {consent.consented_by ? ` por ${consent.consented_by}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <ErrorText>{error}</ErrorText>
+    </div>
   )
 }
 
@@ -205,12 +183,12 @@ function ModelsTab({
     const [providerId, model] = [choice.slice(0, choice.indexOf(" ")), choice.slice(choice.indexOf(" ") + 1)]
     const provider = providers.find((candidate) => candidate.id === providerId)
     if (!provider) return
-    // The tasks this model already has in this project keep it.
-    const already = ai.consents
-      .filter((consent) => consent.provider_id === providerId && consent.model === model)
-      .flatMap((consent) => consent.tasks)
-    const wanted = new Set([...already, task])
-    setAsking({ provider, model, tasks: TASKS.filter((value) => wanted.has(value)) })
+    if (permission(ai, task, providerId, model)) {
+      // Already allowed for this task: it only becomes the default.
+      setTaskDefault(project.id, task, providerId, model).then(onChanged).catch(fail)
+      return
+    }
+    setAsking({ provider, model, tasks: [task] })
   }
   const allLocal = () =>
     revokeAiConsents(project.id)
@@ -249,6 +227,9 @@ function ModelsTab({
           <TaskRow key={task} task={task} ai={ai} options={options} onChoose={choose} />
         ))}
       </ul>
+      {ai.consents.length > 0 && (
+        <Permissions project={project} ai={ai} onChanged={onChanged} onSessionLost={onSessionLost} />
+      )}
       {!hasModels && (
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <Info className="size-4 shrink-0" aria-hidden="true" />

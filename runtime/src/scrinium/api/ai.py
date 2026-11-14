@@ -71,6 +71,15 @@ class ConsentBody(BaseModel):
     model: str = Field(min_length=1, max_length=200)
     tasks: list[AiTask] = Field(min_length=1, max_length=len(AiTask))
     retention_acknowledged: bool
+    # False: only allowed, to choose it for a run; the tasks keep their default model.
+    make_default: bool = True
+
+
+class DefaultBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_id: uuid.UUID | None = None
+    model: str | None = Field(default=None, max_length=200)
 
 
 _CODES = {
@@ -241,6 +250,7 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
                 given = providers.give_consent(
                     session, project, body.provider_id, body.model, body.tasks,
                     body.retention_acknowledged, date.today(), _request_id(request),
+                    make_default=body.make_default,
                 )  # fmt: skip
             except LookupError:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
@@ -248,12 +258,42 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
                 raise _error(error) from None
             return providers.describe_consent(given)
 
-    @router.delete("/api/v1/projects/{project_id}/ai/tasks/{task}")
-    def task_to_local(project_id: uuid.UUID, task: AiTask, request: Request) -> dict[str, Any]:
-        """One task back to the local model; the others keep their model."""
+    @router.put("/api/v1/projects/{project_id}/ai/tasks/{task}")
+    def set_default(
+        project_id: uuid.UUID, task: AiTask, body: DefaultBody, request: Request
+    ) -> dict[str, Any]:
+        """The model this task uses by default: local, or one already allowed for it."""
         with database.session() as session:
             project = _project(session, project_id)
-            providers.task_to_local(session, project, task, _request_id(request))
+            try:
+                providers.set_default(
+                    session, project, task, body.provider_id, body.model, _request_id(request)
+                )
+            except ProviderError as error:
+                raise _error(error) from None
+            spent = tokens_spent(session, project.id, utc_now())
+            return providers.project_ai(session, project, spent)
+
+    @router.delete("/api/v1/projects/{project_id}/ai/tasks/{task}")
+    def task_to_local(project_id: uuid.UUID, task: AiTask, request: Request) -> dict[str, Any]:
+        """This task uses the local model by default; the permissions stay."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            providers.set_default(session, project, task, None, None, _request_id(request))
+            spent = tokens_spent(session, project.id, utc_now())
+            return providers.project_ai(session, project, spent)
+
+    @router.delete("/api/v1/projects/{project_id}/ai/consents/{consent_id}")
+    def revoke_one(
+        project_id: uuid.UUID, consent_id: uuid.UUID, request: Request
+    ) -> dict[str, Any]:
+        """One permission withdrawn; its tasks that used it by default go back to local."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            try:
+                providers.revoke_consent(session, project, consent_id, _request_id(request))
+            except LookupError:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
             spent = tokens_spent(session, project.id, utc_now())
             return providers.project_ai(session, project, spent)
 

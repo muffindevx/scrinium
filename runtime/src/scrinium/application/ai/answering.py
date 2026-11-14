@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
+from scrinium.application.ai.providers import consent_for_task
 from scrinium.application.ai.routing import passage, sending
 from scrinium.application.ai.service import LlmService
 from scrinium.application.knowledge.evidence import record_finding
@@ -227,12 +228,15 @@ def interpret(raw: str, sources: list[Source]) -> Interpretation:
 
 
 def create_question(
-    session: Session, project: Project, question: str, llm: LlmService
+    session: Session, project: Project, question: str, llm: LlmService, choice: str | None = None
 ) -> AnalysisRun:
+    """A question waiting for its answer. `choice` is the model chosen for it ("local" or
+    "<provider id> <model>"); it must be allowed for questions (ProviderError otherwise)."""
     question = question.strip()
     if not question or len(question) > MAX_QUESTION_CHARS:
         raise QuestionError
-    model = llm.for_task(project.id, AiTask.QUESTIONS)
+    consent_for_task(session, project, AiTask.QUESTIONS, choice)
+    model = llm.for_task(project.id, AiTask.QUESTIONS, choice)
     run = AnalysisRun(
         workspace_id=project.workspace_id,
         project_id=project.id,
@@ -242,6 +246,7 @@ def create_question(
         input_hash=hashlib.sha256(question.encode()).hexdigest(),
         model_provider=provider_name(model),
         model_name=model.model_id,
+        model_choice=choice,
         prompt_version=PROMPT_VERSION,
         retrieval_version=RETRIEVAL_VERSION,
     )
@@ -289,6 +294,7 @@ def answer_question(
         run.status = AnalysisStatus.RUNNING
         run.started_at = utc_now()
         project_id = run.project_id
+        choice = run.model_choice
 
     # Separate, read-only transaction: search calls the model, and keeping a write open
     # during that call would block every other write to SQLite.
@@ -309,7 +315,7 @@ def answer_question(
         )  # fmt: skip
         return
     # The local model, or the remote one this project consented to for questions (ADR-010).
-    model = llm.for_task(project_id, AiTask.QUESTIONS)
+    model = llm.for_task(project_id, AiTask.QUESTIONS, choice)
     if (llm.status() if model.is_local else model.status()) is not ModelStatus.READY:
         _finish(database, run_id, AnalysisStatus.FAILED, error="llm_unavailable")
         return

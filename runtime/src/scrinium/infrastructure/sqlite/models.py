@@ -148,6 +148,9 @@ class Project(Timestamps, Base):
     # Masking before a remote request (off by default): personal data, and long literals.
     mask_personal: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     mask_literals: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    # The model each task uses unless a run chooses another: {task: {"provider_id", "model"}}.
+    # A task not here, or whose model lost its consent, runs locally (ADR-010).
+    task_models: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
 
 
 class ModelProvider(Timestamps, Base):
@@ -561,6 +564,8 @@ class AnalysisRun(Base):
     result: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     model_provider: Mapped[str | None] = mapped_column(String(100))
     model_name: Mapped[str | None] = mapped_column(String(200))
+    # The model chosen for this run ("local" or "<provider id> <model>"); None: the default.
+    model_choice: Mapped[str | None] = mapped_column(String(300))
     prompt_version: Mapped[str] = mapped_column(String(20))
     retrieval_version: Mapped[str] = mapped_column(String(20))
     error_summary: Mapped[str | None] = mapped_column(String(200))

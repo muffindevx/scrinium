@@ -270,8 +270,8 @@ export interface CitedLines {
   lines: string[]
 }
 
-export const askQuestion = async (projectId: string, question: string) =>
-  (await mutate(`/api/v1/projects/${projectId}/questions`, { question })).json() as Promise<Question>
+export const askQuestion = async (projectId: string, question: string, model?: string) =>
+  (await mutate(`/api/v1/projects/${projectId}/questions`, { question, ...(model ? { model } : {}) })).json() as Promise<Question>
 export const getQuestion = (questionId: string) => getJson<Question>(`/api/v1/questions/${questionId}`)
 export const listQuestions = async (projectId: string) =>
   (await getJson<{ questions: Question[] }>(`/api/v1/projects/${projectId}/questions`)).questions
@@ -630,10 +630,11 @@ export const getFlow = (projectId: string, entityId: string) =>
   getJson<FlowDetail>(`/api/v1/projects/${projectId}/flows/${entityId}`)
 
 const started = async (path: string, body: unknown) => (await mutate(path, body)).json() as Promise<Analysis>
-export const startExtraction = (projectId: string, pathPrefix: string, allFunctions = false) =>
+export const startExtraction = (projectId: string, pathPrefix: string, allFunctions = false, model?: string) =>
   started(`/api/v1/projects/${projectId}/extractions`, {
     path_prefix: pathPrefix || null,
     ...(allFunctions ? { min_score: 0 } : {}),
+    ...(model ? { model } : {}),
   })
 export const analyzeDiff = (projectId: string, diff: string) =>
   started(`/api/v1/projects/${projectId}/analyses/code-diff`, { diff })
@@ -807,9 +808,10 @@ export type ExtractionEstimate =
       statements_remote: boolean
     }
 
-export const getExtractionEstimate = (projectId: string, pathPrefix: string, allFunctions: boolean) => {
+export const getExtractionEstimate = (projectId: string, pathPrefix: string, allFunctions: boolean, model?: string) => {
   const query = new URLSearchParams({ path_prefix: pathPrefix })
   if (allFunctions) query.set("min_score", "0")
+  if (model) query.set("model", model)
   return getJson<ExtractionEstimate>(`/api/v1/projects/${projectId}/extraction-estimate?${query}`)
 }
 
@@ -872,6 +874,8 @@ export interface ProjectAi {
   never_send: string[]
   remote_token_budget: number | null
   remote_tokens_this_month: number
+  /** Each task's default model; a task not here uses the local model. */
+  task_models: Partial<Record<AiTask, { provider_id: string; model: string }>>
   cache_hits: number
   mask_personal: boolean
   mask_literals: boolean
@@ -946,7 +950,14 @@ export const updateProjectAiSettings = async (
 ) => (await mutate(`/api/v1/projects/${projectId}/ai/settings`, settings, "PUT")).json() as Promise<ProjectAi>
 export const giveAiConsent = async (
   projectId: string,
-  consent: { provider_id: string; model: string; tasks: AiTask[]; retention_acknowledged: boolean },
+  consent: {
+    provider_id: string
+    model: string
+    tasks: AiTask[]
+    retention_acknowledged: boolean
+    /** false: only allowed, to choose it for a run; the tasks keep their default. */
+    make_default?: boolean
+  },
 ) => (await mutate(`/api/v1/projects/${projectId}/ai/consents`, consent)).json() as Promise<AiConsent>
 export const revokeAiConsents = async (projectId: string) =>
   (await mutate(`/api/v1/projects/${projectId}/ai/consents`, undefined, "DELETE")).json() as Promise<{
@@ -956,5 +967,15 @@ export const revokeAiConsents = async (projectId: string) =>
 /** One task back to the local model; its consent's other tasks keep their model. */
 export const taskToLocal = async (projectId: string, task: AiTask) =>
   (await mutate(`/api/v1/projects/${projectId}/ai/tasks/${task}`, undefined, "DELETE")).json() as Promise<ProjectAi>
+export const setTaskDefault = async (projectId: string, task: AiTask, providerId: string, model: string) =>
+  (
+    await mutate(`/api/v1/projects/${projectId}/ai/tasks/${task}`, { provider_id: providerId, model }, "PUT")
+  ).json() as Promise<ProjectAi>
+export const revokeAiConsent = async (projectId: string, consentId: string) =>
+  (await mutate(`/api/v1/projects/${projectId}/ai/consents/${consentId}`, undefined, "DELETE")).json() as Promise<ProjectAi>
+
+/** A run's model: "local", "<provider id> <model>", or undefined for the task's default. */
+export type ModelChoice = string | undefined
+
 export const listAiRequests = async (projectId: string) =>
   (await getJson<{ requests: AiRequestRecord[] }>(`/api/v1/projects/${projectId}/ai/requests`)).requests

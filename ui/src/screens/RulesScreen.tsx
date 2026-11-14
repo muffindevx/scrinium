@@ -34,12 +34,14 @@ import {
   listRules,
   setVerification,
   startConsistencyReview,
+  type ModelChoice,
   startExtraction,
   type ExtractionEstimate,
   getExtractionEstimate,
 } from "@/lib/api"
 import { ASSESSMENT_LABELS, errorMessage } from "@/lib/labels"
 import { useErrors } from "@/screens/hooks"
+import { ModelPicker } from "@/screens/ModelPicker"
 import { AnalysisDetail, ErrorText, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
 const CATEGORY_LABELS: Record<RuleCategory, string> = {
@@ -182,6 +184,8 @@ function RemoteEstimate({ estimate }: { estimate: Extract<ExtractionEstimate, { 
 function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & { onFinished: () => void }) {
   const [prefix, setPrefix] = useState("")
   const [allFunctions, setAllFunctions] = useState(false)
+  // The model for this extraction: undefined is the project's default for the rule map.
+  const [model, setModel] = useState<ModelChoice>(undefined)
   const [analysisId, setAnalysisId] = useState<string | null>(null)
   const [status, setStatus] = useState<ExtractionStatus | null>(null)
   const [pausing, setPausing] = useState(false)
@@ -203,12 +207,12 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
 
   // Only shown when the rule map goes to a remote model; recalculated as the options change.
   const [estimate, setEstimate] = useState<{ key: string; value: ExtractionEstimate } | null>(null)
-  const estimateKey = `${prefix.trim()}\n${allFunctions}`
+  const estimateKey = `${prefix.trim()}\n${allFunctions}\n${model ?? ""}`
   useEffect(() => {
     if (running) return
     let live = true
     const timer = window.setTimeout(() => {
-      getExtractionEstimate(project.id, prefix.trim(), allFunctions)
+      getExtractionEstimate(project.id, prefix.trim(), allFunctions, model)
         .then((value) => live && setEstimate({ key: estimateKey, value }))
         .catch(() => live && setEstimate(null))
     }, 400)
@@ -216,14 +220,14 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
       live = false
       window.clearTimeout(timer)
     }
-  }, [project.id, prefix, allFunctions, estimateKey, running])
+  }, [project.id, prefix, allFunctions, model, estimateKey, running])
   const shown = estimate?.key === estimateKey && estimate.value.remote ? estimate.value : null
 
   const start = () => {
     setError(null)
     setPausing(false)
     askToNotify()
-    startExtraction(project.id, prefix.trim(), allFunctions)
+    startExtraction(project.id, prefix.trim(), allFunctions, model)
       .then((analysis) => {
         setAnalysisId(analysis.id)
         setRunning(true)
@@ -321,6 +325,13 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
               </span>
             </label>
           </details>
+          <ModelPicker
+            project={project}
+            task="rule_map"
+            value={model}
+            onChange={setModel}
+            onSessionLost={onSessionLost}
+          />
           {shown && <RemoteEstimate estimate={shown} />}
           <Button type="submit" className="justify-self-start">
             <Sparkles data-icon="inline-start" />

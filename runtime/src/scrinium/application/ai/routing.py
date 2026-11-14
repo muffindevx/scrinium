@@ -76,6 +76,12 @@ def passage(path: str, start: int, end: int) -> str:
     return f"{path}:{start}-{end}" if end != start else f"{path}:{start}"
 
 
+class ModelNotPermittedError(ModelError):
+    """The model chosen for a run is no longer allowed for its task: nothing was sent."""
+
+    outcome: ClassVar[Outcome] = Outcome.ERROR
+
+
 class BudgetExceededError(ModelError):
     """The project's monthly token budget for remote models is spent: nothing was sent (T6)."""
 
@@ -153,12 +159,20 @@ class Router:
         self._factory = factory
         self._adapters: dict[tuple[Any, ...], LLMProvider] = {}
 
-    def route(self, project_id: uuid.UUID, task: AiTask) -> _Route | None:
+    def route(
+        self, project_id: uuid.UUID, task: AiTask, choice: str | None = None
+    ) -> _Route | None:
+        """Where this task goes: the run's choice, or the task's default (None: local)."""
         with self._database.session() as session:
             project = session.get(Project, project_id)
             if project is None:
                 return None
-            consent = consent_for_task(session, project, task)
+            try:
+                consent = consent_for_task(session, project, task, choice)
+            except ProviderError:
+                # The chosen model lost its permission after the run was accepted: this
+                # request is refused, never sent elsewhere.
+                raise ModelNotPermittedError from None
             if consent is None or consent.provider_id is None:
                 return None
             provider = session.get(ModelProvider, consent.provider_id)
@@ -285,27 +299,43 @@ class TaskModel:
     """The model of one task of one project, decided on every call (see the module)."""
 
     def __init__(
-        self, local: LLMProvider, router: Router | None, project_id: uuid.UUID, task: AiTask
-    ) -> None:
+        self, local: LLMProvider, router: Router | None, project_id: uuid.UUID, task: AiTask,
+        choice: str | None = None,
+    ) -> None:  # fmt: skip
         self._local = local
         self._router = router
         self._project_id = project_id
         self._task = task
+        # "local", "<provider id> <model>", or None for the task's default.
+        self._choice = choice
 
     def _route(self) -> _Route | None:
-        return None if self._router is None else self._router.route(self._project_id, self._task)
+        if self._router is None:
+            return None
+        return self._router.route(self._project_id, self._task, self._choice)
+
+    def _route_or_refused(self) -> _Route | ModelNotPermittedError | None:
+        try:
+            return self._route()
+        except ModelNotPermittedError as error:
+            return error
 
     @property
     def model_id(self) -> str:
-        route = self._route()
+        route = self._route_or_refused()
+        if isinstance(route, ModelNotPermittedError):
+            return (self._choice or "")[:200]
         return self._local.model_id if route is None else route.adapter.model_id
 
     @property
     def is_local(self) -> bool:
-        return self._route() is None
+        return self._route_or_refused() is None
 
     def status(self) -> ModelStatus:
-        route = self._route()
+        """A chosen model that lost its permission is unavailable: the run fails, unsent."""
+        route = self._route_or_refused()
+        if isinstance(route, ModelNotPermittedError):
+            return ModelStatus.UNAVAILABLE
         return self._local.status() if route is None else route.adapter.status()
 
     def complete(

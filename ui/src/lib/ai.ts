@@ -1,4 +1,4 @@
-import type { AiTask, ProviderCheck, ProviderKind } from "@/lib/api"
+import type { AiConsent, AiTask, ProjectAi, ProviderCheck, ProviderKind } from "@/lib/api"
 
 export const TASK_LABELS: Record<AiTask, string> = {
   questions: "Preguntas",
@@ -54,4 +54,29 @@ export function kindFor(url: string): ProviderKind {
   } catch {
     return "openai_compatible"
   }
+}
+
+export const LOCAL = "local"
+
+/** An external model of the catalog, as a choice: "<provider id> <model>". */
+export function choiceOf(providerId: string, model: string) {
+  return `${providerId} ${model}`
+}
+
+export function currentChoice(ai: ProjectAi, task: AiTask): string {
+  const chosen = ai.task_models[task]
+  return chosen ? choiceOf(chosen.provider_id, chosen.model) : LOCAL
+}
+
+/** The consent that lets this task use this model, if any. */
+export function permission(ai: ProjectAi, task: AiTask, providerId: string, model: string): AiConsent | undefined {
+  return ai.consents.find(
+    (consent) => consent.provider_id === providerId && consent.model === model && consent.tasks.includes(task),
+  )
+}
+
+/** "<provider id> <model>" back into its parts. */
+export function splitChoice(choice: string): [string, string] {
+  const space = choice.indexOf(" ")
+  return [choice.slice(0, space), choice.slice(space + 1)]
 }

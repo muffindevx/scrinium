@@ -44,9 +44,9 @@ class LlmService:
         self._interactive = 0
         self._idle = threading.Condition()
 
-    def for_task(self, project_id: uuid.UUID, task: AiTask) -> TaskModel:
+    def for_task(self, project_id: uuid.UUID, task: AiTask, choice: str | None = None) -> TaskModel:
         """The model this task of this project uses, decided on every call."""
-        return TaskModel(self.provider, self.router, project_id, task)
+        return TaskModel(self.provider, self.router, project_id, task, choice)
 
     def wait_for_background_turn(
         self, should_stop: Callable[[], bool], check_seconds: float = _TURN_CHECK_SECONDS

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
+from scrinium.application.ai.providers import ProviderError, consent_for_task
 from scrinium.application.analysis import (
     bug_investigation,
     code_diff,
@@ -45,6 +46,7 @@ from scrinium.domain.enums import (
     ReleaseStatus,
     Severity,
 )
+from scrinium.infrastructure.local_http import ModelError
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
@@ -69,6 +71,8 @@ class ExtractionRequest(_Body):
     path_prefix: str | None = Field(default=None, max_length=500)
     # Minimum score for the model to read a function; 0 = all of them (much slower).
     min_score: int = Field(default=DEFAULT_MIN_SCORE, ge=0, le=20)
+    # "local" or "<provider id> <model>"; absent: the project's default for the rule map.
+    model: str | None = Field(default=None, max_length=300)
 
 
 class DiffRequest(_Body):
@@ -272,11 +276,18 @@ def build_analyses_router(
     @router.post("/api/v1/projects/{project_id}/extractions", status_code=accepted)
     def extract(project_id: uuid.UUID, body: ExtractionRequest, request: Request) -> AnalysisDetail:
         prefix = body.path_prefix or None
+        with database.session() as session:
+            try:
+                project = _project(session, project_id)
+                consent_for_task(session, project, AiTask.RULE_MAP, body.model)
+            except ProviderError as error:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
         return _start(
             project_id, request, AnalysisType.KNOWLEDGE_EXTRACTION,
             f"Extraer reglas{f' de {prefix}' if prefix else ''}", prefix or "",
             extraction.extraction_task(database, llm, runner, prefix, body.min_score),
             one_extraction_at_a_time=True, llm=llm, prompt_version=extraction.PROMPT_VERSION,
+            choice=body.model,
         )  # fmt: skip
 
     @router.post("/api/v1/projects/{project_id}/analyses/code-diff", status_code=accepted)
@@ -389,14 +400,23 @@ def build_analyses_router(
 
     @router.get("/api/v1/projects/{project_id}/extraction-estimate")
     def extraction_estimate(
-        project_id: uuid.UUID, path_prefix: str = "", min_score: int = DEFAULT_MIN_SCORE
+        project_id: uuid.UUID,
+        path_prefix: str = "",
+        min_score: int = DEFAULT_MIN_SCORE,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Before extracting: what would go to the project's remote model, and the budget left.
         Nothing is worked out when the rule map runs locally."""
         with database.session() as session:
             _project(session, project_id)
         router_ = llm.router
-        route = router_.route(project_id, AiTask.RULE_MAP) if router_ is not None else None
+        try:
+            route = (
+                router_.route(project_id, AiTask.RULE_MAP, model) if router_ is not None else None
+            )
+        except ModelError:
+            refused = "model_not_permitted"
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, refused) from None
         if router_ is None or route is None:
             return {"remote": False}
         prefix = path_prefix.strip()[:500] or None

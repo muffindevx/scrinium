@@ -804,6 +804,7 @@ def extract_rules(
         project = session.get_one(Project, run.project_id)
         fragments, stats = select_work(session, project, path_prefix, min_score)
         project_id = project.id
+        choice = run.model_choice
     groups = batches(fragments)
     result: dict[str, Any] = {
         "path_prefix": path_prefix, "min_score": min_score, **stats,
@@ -816,7 +817,8 @@ def extract_rules(
     if not fragments:
         finish_run(database, run_id, AnalysisStatus.COMPLETED, result)
         return
-    model = llm.for_task(project_id, AiTask.RULE_MAP)
+    # The model chosen for this run, or the rule map's default (ADR-010).
+    model = llm.for_task(project_id, AiTask.RULE_MAP, choice)
     if (llm.status() if model.is_local else model.status()) is not ModelStatus.READY:
         finish_run(database, run_id, AnalysisStatus.FAILED, result, "llm_unavailable")
         return

@@ -50,11 +50,13 @@ def create_run(
     target_revision: str | None = None,
     release_ref: str | None = None,
     request_id: str | None = None,
+    choice: str | None = None,
 ) -> AnalysisRun:
-    # The model this run's task uses for this project: local, or the consented one (ADR-010).
+    # The model this run's task uses for this project: the run's choice, or the task's default
+    # (local or a consented one, ADR-010).
     model = None
     if llm is not None:
-        model = llm.for_task(project.id, task or _TASKS.get(analysis_type, AiTask.RULE_MAP))
+        model = llm.for_task(project.id, task or _TASKS.get(analysis_type, AiTask.RULE_MAP), choice)
     run = AnalysisRun(
         workspace_id=project.workspace_id,
         project_id=project.id,
@@ -63,6 +65,7 @@ def create_run(
         input_hash=hashlib.sha256(input_text.encode()).hexdigest(),
         model_provider=provider_name(model) if model is not None else None,
         model_name=model.model_id if model is not None else None,
+        model_choice=choice,
         prompt_version=prompt_version,
         retrieval_version=retrieval_version,
         base_revision=base_revision,

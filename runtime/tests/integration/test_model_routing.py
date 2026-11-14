@@ -407,3 +407,56 @@ def test_check_says_which_part_failed(error: Exception, reason: str) -> None:
     if isinstance(error, ProviderRequestError):
         assert (result["http_status"], result["error_type"]) == (error.status, error.kind)
         assert result["detail"] == error.detail
+
+
+def _ask_with(
+    runtime: Runtime, csrf: str, project: str, question: str, model: str, code: int = 202
+) -> Any:
+    response = runtime.client.post(
+        f"/api/v1/projects/{project}/questions", json={"question": question, "model": model},
+        headers={"Origin": ORIGIN, "X-CSRF-Token": csrf},
+    )  # fmt: skip
+    assert response.status_code == code, response.text
+    if code != 202:
+        return response.json()
+    return runtime.client.get(f"/api/v1/questions/{response.json()['id']}").json()
+
+
+def test_a_run_can_choose_its_model_among_the_allowed_ones(runtime: Runtime, repo: Path) -> None:
+    remote = _remote(runtime, _reply(summary="remoto"))
+    csrf, project = _setup(runtime, repo)
+    _consent(runtime, csrf, project, ["questions"])
+    provider = runtime.client.get("/api/v1/model-providers").json()["providers"][0]["id"]
+    runtime.chat.reply = _reply(summary="local")
+    local_calls = len(runtime.chat.received)
+
+    # The default is the remote model; this question chooses to stay here.
+    detail = _ask_with(runtime, csrf, project, "¿Cómo se calcula el total?", "local")
+    assert detail["status"] == "completed"
+    assert remote.received == [] and len(runtime.chat.received) == local_calls + 1
+
+    # Choosing the allowed model by name sends it there.
+    chosen = f"{provider} modelo-remoto"
+    assert _ask_with(runtime, csrf, project, "¿Y el IVA?", chosen)["status"] == "completed"
+    assert len(remote.received) == 1
+
+    # A model not allowed for questions is refused before anything starts.
+    refused = _ask_with(runtime, csrf, project, "¿Y?", f"{provider} otro-modelo", 422)
+    assert refused == {"error": "model_not_permitted"}
+    assert len(remote.received) == 1
+
+
+def test_an_extraction_choosing_a_model_not_allowed_is_refused(
+    runtime: Runtime, repo: Path
+) -> None:
+    _remote(runtime, _reply())
+    api = Api(runtime, repo)
+    csrf = api.headers["X-CSRF-Token"]
+    _consent(runtime, csrf, api.project_id, ["questions"])
+    provider = runtime.client.get("/api/v1/model-providers").json()["providers"][0]["id"]
+    response = runtime.client.post(
+        f"/api/v1/projects/{api.project_id}/extractions",
+        json={"model": f"{provider} modelo-remoto"}, headers=api.headers,
+    )  # fmt: skip
+    # Allowed for questions only, not for the rule map.
+    assert response.status_code == 422 and response.json() == {"error": "model_not_permitted"}

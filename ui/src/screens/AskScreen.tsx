@@ -12,6 +12,7 @@ import {
   type IndexStatus,
   type Question,
   type SearchHit,
+  type ModelChoice,
   askQuestion,
   deleteQuestion,
   getIndexStatus,
@@ -20,7 +21,8 @@ import {
   rebuildIndex,
   searchProject,
 } from "@/lib/api"
-import { ERROR_LABELS } from "@/lib/labels"
+import { ERROR_LABELS, errorMessage } from "@/lib/labels"
+import { ModelPicker } from "@/screens/ModelPicker"
 import { POLL_MS } from "@/screens/hooks"
 import { ErrorText, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
@@ -139,7 +141,7 @@ function AskPanel({ project, onSessionLost, initial }: ScreenProps & { initial: 
 
   const handleError = useCallback(
     (caught: unknown) => {
-      if (caught instanceof ApiError) setError("No se pudo completar la operación.")
+      if (caught instanceof ApiError) setError(errorMessage(caught.code, "No se pudo completar la operación."))
       else onSessionLost(caught)
     },
     [onSessionLost],
@@ -149,10 +151,12 @@ function AskPanel({ project, onSessionLost, initial }: ScreenProps & { initial: 
   }, [project.id, handleError])
   useEffect(refreshHistory, [refreshHistory])
 
+  // The model for the next question: undefined is the project's default for questions.
+  const [model, setModel] = useState<ModelChoice>(undefined)
   const send = useCallback(
     (question: string) => {
       setError(null)
-      askQuestion(project.id, question)
+      askQuestion(project.id, question, model)
         .then((asked) => {
           setCurrent(asked)
           setText("")
@@ -160,7 +164,7 @@ function AskPanel({ project, onSessionLost, initial }: ScreenProps & { initial: 
         })
         .catch(handleError)
     },
-    [project.id, refreshHistory, handleError],
+    [project.id, refreshHistory, handleError, model],
   )
 
   // A question typed on Home is sent on arrival, only once.
@@ -217,6 +221,13 @@ function AskPanel({ project, onSessionLost, initial }: ScreenProps & { initial: 
                 event.currentTarget.form?.requestSubmit()
               }
             }}
+          />
+          <ModelPicker
+            project={project}
+            task="questions"
+            value={model}
+            onChange={setModel}
+            onSessionLost={onSessionLost}
           />
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted-foreground">Intro para enviar, Mayús+Intro para otra línea.</p>
@@ -394,7 +405,7 @@ export function AskScreen(props: ScreenProps) {
     <>
       <PageHeader
         title="Preguntar"
-        description="Pregunta en lenguaje natural o busca directamente en el código. Todo se calcula en este equipo."
+        description="Pregunta en lenguaje natural o busca directamente en el código. La búsqueda se calcula siempre en este equipo; la respuesta, con el modelo que elijas."
       />
       <Tabs defaultValue="ask">
         <TabsList>

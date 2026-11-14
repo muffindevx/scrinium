@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from scrinium.application.ai import answering
+from scrinium.application.ai.providers import ProviderError
 from scrinium.application.ingestion import sources
 from scrinium.application.knowledge.deletion import forget_analysis_run
 from scrinium.application.workspaces import local_workspace, record_audit
@@ -22,6 +23,8 @@ class QuestionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     question: str = Field(min_length=1, max_length=answering.MAX_QUESTION_CHARS)
+    # "local" or "<provider id> <model>"; absent: the project's default model for questions.
+    model: str | None = Field(default=None, max_length=300)
 
 
 class QuestionSummary(BaseModel):
@@ -68,7 +71,12 @@ def build_questions_router(database: Database, runner: answering.QuestionRunner)
                 project = sources.project_of(session, project_id)
             except sources.SourceNotFoundError:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
-            run = answering.create_question(session, project, body.question, runner.llm)
+            try:
+                run = answering.create_question(
+                    session, project, body.question, runner.llm, body.model
+                )
+            except ProviderError as error:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
             # Without the question text: the audit log only records that it happened.
             record_audit(
                 session, project.workspace_id, "question.ask", "analysis_run", str(run.id),

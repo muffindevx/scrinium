@@ -161,7 +161,7 @@ def test_a_project_sends_nothing_until_someone_consents(client: Client) -> None:
     state = client.send("GET", project)
     assert state["ai_mode"] == "remote_allowed" and len(state["consents"]) == 1
 
-    # A task given to another model moves; the rest of the first consent stays.
+    # Another model allowed for a task becomes its default; the first stays allowed for it.
     other = client.register(
         name="GLM", kind="openai_compatible", base_url="https://api.z.ai/api/paas/v4"
     )
@@ -173,17 +173,23 @@ def test_a_project_sends_nothing_until_someone_consents(client: Client) -> None:
         assert consent_for_task(session, stored, AiTask.RULE_STATEMENTS).model == "glm-5"  # type: ignore[union-attr]
         assert consent_for_task(session, stored, AiTask.QUESTIONS).model == "claude-opus-5-5"  # type: ignore[union-attr]
         assert consent_for_task(session, stored, AiTask.RULE_MAP) is None
+        # A run may still choose Claude for rule statements: it is allowed.
+        claude = f"{provider['id']} claude-opus-5-5"
+        chosen = consent_for_task(session, stored, AiTask.RULE_STATEMENTS, claude)
+        assert chosen is not None and chosen.model == "claude-opus-5-5"
+        # And never a model not allowed for the task: refused, not sent elsewhere.
+        with pytest.raises(ProviderError):
+            consent_for_task(session, stored, AiTask.RULE_MAP, claude)
+        assert consent_for_task(session, stored, AiTask.QUESTIONS, "local") is None
 
     revoked = client.send("DELETE", f"{project}/consents")
     assert revoked == {"revoked": 2, "ai_mode": "local_only"}
     assert _mode(client.send("GET", project)) == ("local_only", [])
     with client.runtime.database.session() as session:
-        # Revoked consents are kept: they record what was allowed, and when. The first one, its
-        # remainder after rule statements moved to GLM, and GLM's.
+        # Revoked consents are kept: they record what was allowed, and when.
         consents = session.scalars(select(AiConsent).order_by(AiConsent.created_at)).all()
         assert [(c.model, c.tasks) for c in consents] == [
             ("claude-opus-5-5", ["questions", "rule_statements"]),
-            ("claude-opus-5-5", ["questions"]),
             ("glm-5", ["rule_statements"]),
         ]
         assert all(c.revoked_at is not None for c in consents)
@@ -288,14 +294,36 @@ def test_editing_a_provider_keeps_its_key_unless_the_host_changes(client: Client
     assert client.runtime.environment.secret_store.get(before or "") is None
 
 
-def test_one_task_goes_back_to_local_and_the_others_stay(client: Client) -> None:
+def test_one_task_goes_back_to_local_and_keeps_its_permission(client: Client) -> None:
     provider = client.register()["id"]
     _consent(client, provider, "claude-opus-5-5", ["questions", "rule_map"])
     base = f"/api/v1/projects/{client.project_id}/ai"
     state = client.send("DELETE", f"{base}/tasks/questions")
+    assert set(state["task_models"]) == {"rule_map"}
+    # Still allowed: it can be the default again, or chosen for one run, without a new consent.
     [consent] = state["consents"]
-    assert consent["tasks"] == ["rule_map"] and state["ai_mode"] == "remote_allowed"
-    state = client.send("DELETE", f"{base}/tasks/rule_map")
-    assert _mode(state) == ("local_only", [])
-    # Already local: nothing to do, and nothing breaks.
-    assert _mode(client.send("DELETE", f"{base}/tasks/rule_map")) == ("local_only", [])
+    assert consent["tasks"] == ["questions", "rule_map"]
+    back = {"provider_id": provider, "model": "claude-opus-5-5"}
+    assert set(client.send("PUT", f"{base}/tasks/questions", back)["task_models"]) == {
+        "questions",
+        "rule_map",
+    }
+    # A model not allowed for a task cannot be its default.
+    assert client.send("PUT", f"{base}/tasks/consistency", back, 422) == {
+        "error": "model_not_permitted"
+    }
+    # Withdrawing the permission sends its tasks home.
+    state = client.send("DELETE", f"{base}/consents/{consent['id']}")
+    assert _mode(state) == ("local_only", []) and state["task_models"] == {}
+
+
+def test_allowing_a_model_without_making_it_the_default(client: Client) -> None:
+    provider = client.register()["id"]
+    _consent(client, provider, "claude-opus-5-5", ["questions"])
+    base = f"/api/v1/projects/{client.project_id}/ai"
+    client.send("POST", f"{base}/consents", {
+        "provider_id": provider, "model": "claude-sonnet-5-5", "tasks": ["questions"],
+        "retention_acknowledged": True, "make_default": False}, 201)  # fmt: skip
+    state = client.send("GET", base)
+    assert state["task_models"]["questions"]["model"] == "claude-opus-5-5"
+    assert sorted(c["model"] for c in state["consents"]) == ["claude-opus-5-5", "claude-sonnet-5-5"]
