@@ -37,6 +37,8 @@ class SourceRequest(BaseModel):
     kind: SourceKind
     path: str = Field(min_length=1, max_length=4096)
     exclude_patterns: list[str] = Field(default_factory=list, max_length=MAX_USER_PATTERNS)
+    # Generated code (`@generated`, `DO NOT EDIT`, `*.pb.go`…) is left out unless asked for.
+    include_generated: bool = False
 
     @field_validator("exclude_patterns")
     @classmethod
@@ -93,6 +95,7 @@ class SourceResponse(BaseModel):
     display_name: str
     root: str
     exclude_patterns: list[str]
+    include_generated: bool
     status: ConnectionStatus
     active_files: int
     last_successful_sync_at: datetime | None
@@ -160,6 +163,7 @@ def _source_response(session: DbSession, connection: SourceConnection) -> Source
         display_name=connection.display_name,
         root=str(settings.root),
         exclude_patterns=settings.exclude_patterns,
+        include_generated=settings.include_generated,
         status=connection.status,
         active_files=sources.count_active_items(session, connection.id),
         last_successful_sync_at=connection.last_successful_sync_at,
@@ -200,7 +204,9 @@ def build_sources_router(
     def preview_source(project_id: uuid.UUID, body: SourceRequest, db: Db) -> PreviewResponse:
         with _http_errors():
             sources.project_of(db, project_id)
-            plan = sources.preview(body.kind, body.path, body.exclude_patterns, config.data_dir)
+            plan = sources.preview(
+                body.kind, body.path, body.exclude_patterns, config.data_dir, body.include_generated
+            )
         return _preview_response(plan)
 
     @router.post("/api/v1/projects/{project_id}/sources", status_code=status.HTTP_201_CREATED)
@@ -217,6 +223,7 @@ def build_sources_router(
                 body.exclude_patterns,
                 config.data_dir,
                 _request_id(request),
+                body.include_generated,
             )
             run_id, connection_id = run.id, connection.id
         runner.submit(run_id)

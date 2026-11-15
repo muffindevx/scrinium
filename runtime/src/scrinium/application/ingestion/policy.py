@@ -44,6 +44,7 @@ class ExclusionReason(StrEnum):
     TOO_DEEP = "too_deep"
     BAD_PATH = "bad_path"
     LIMIT_REACHED = "limit_reached"
+    GENERATED = "generated"
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,17 @@ _CODE_FILENAMES: Final = frozenset(
         ".editorconfig", ".dockerignore",
     }
 )  # fmt: skip
+
+# Generated code says nothing about the rules a person wrote, and it is rewritten wholesale on
+# every regeneration. It is left out with its reason; a source can opt back in.
+_GENERATED_DIRS: Final = frozenset({"__generated__"})
+_GENERATED_GLOBS: Final = ("*.pb.go", "*_pb2.py", "*_pb2_grpc.py", "*.pb.cc", "*.pb.h")
+# Only the top of the file counts: a marker further down is usually a comment about it.
+GENERATED_HEADER_LINES: Final = 5
+_GENERATED_HEADER_CHARS: Final = 2000
+_GENERATED_MARKERS: Final = ("@generated", "DO NOT EDIT")
+_OPENAPI_MARKERS: Final = ("openapi generator", "openapi-generator")
+
 
 # A literal assigned to a credential name: `DB_PASSWORD = "s3cr3t-valor"`.
 _ASSIGNED_SECRET: Final = re.compile(
@@ -237,3 +249,29 @@ def check_content(data: bytes) -> tuple[str | None, Exclusion | None]:
     if secret is not None:
         return None, secret
     return text, None
+
+
+def generated_by_path(path: str) -> Exclusion | None:
+    """Known output folders and file names of code generators."""
+    parts = PurePosixPath(path).parts
+    for directory in parts[:-1]:
+        if directory in _GENERATED_DIRS:
+            return Exclusion(ExclusionReason.GENERATED, f"{directory}/")
+    name = parts[-1].lower()
+    for glob in _GENERATED_GLOBS:
+        if fnmatch.fnmatchcase(name, glob):
+            return Exclusion(ExclusionReason.GENERATED, glob)
+    return None
+
+
+def generated_by_header(text: str) -> Exclusion | None:
+    """The markers generators write at the top: `@generated`, `DO NOT EDIT`, OpenAPI Generator."""
+    head = text[:_GENERATED_HEADER_CHARS].split("\n")[:GENERATED_HEADER_LINES]
+    for number, line in enumerate(head, start=1):
+        for marker in _GENERATED_MARKERS:
+            if marker in line:
+                return Exclusion(ExclusionReason.GENERATED, marker, number)
+        lowered = line.lower()
+        if "generated" in lowered and any(marker in lowered for marker in _OPENAPI_MARKERS):
+            return Exclusion(ExclusionReason.GENERATED, "openapi-generator", number)
+    return None

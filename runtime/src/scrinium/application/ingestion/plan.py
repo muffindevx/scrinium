@@ -21,6 +21,8 @@ from scrinium.application.ingestion.policy import (
     SourceKind,
     check_content,
     check_path,
+    generated_by_header,
+    generated_by_path,
     skip_directory,
 )
 from scrinium.infrastructure.local_files import folder_reader
@@ -111,8 +113,21 @@ def resolve_root(kind: SourceKind, raw_path: str, data_dir: Path) -> Path:
     return root
 
 
-def _add_content(plan: Plan, path: str, data: bytes, revision_key: str | None) -> None:
+def _check_path(
+    path: str, kind: SourceKind, user_patterns: list[str], include_generated: bool
+) -> Exclusion | None:
+    exclusion = check_path(path, kind, user_patterns)
+    if exclusion is None and not include_generated:
+        exclusion = generated_by_path(path)
+    return exclusion
+
+
+def _add_content(
+    plan: Plan, path: str, data: bytes, revision_key: str | None, include_generated: bool
+) -> None:
     text, exclusion = check_content(data)
+    if exclusion is None and text is not None and not include_generated:
+        exclusion = generated_by_header(text)
     if exclusion is not None or text is None:
         plan.exclude(path, exclusion or Exclusion(ExclusionReason.BINARY))
         return
@@ -129,7 +144,7 @@ _GIT_KIND_EXCLUSIONS = {
 }
 
 
-def _git_plan(root: Path, user_patterns: list[str]) -> Plan:
+def _git_plan(root: Path, user_patterns: list[str], include_generated: bool) -> Plan:
     with GitRepository(root) as repository:
         repository.check_root()
         commit = repository.head()
@@ -143,8 +158,8 @@ def _git_plan(root: Path, user_patterns: list[str]) -> Plan:
                 )
                 continue
             # First what the entry is: a link is not an "unsupported type".
-            exclusion = _GIT_KIND_EXCLUSIONS.get(entry.kind) or check_path(
-                path, SourceKind.GIT_REPOSITORY, user_patterns
+            exclusion = _GIT_KIND_EXCLUSIONS.get(entry.kind) or _check_path(
+                path, SourceKind.GIT_REPOSITORY, user_patterns, include_generated
             )
             if exclusion is None and (entry.size or 0) > MAX_FILE_BYTES:
                 exclusion = Exclusion(ExclusionReason.TOO_LARGE)
@@ -154,7 +169,7 @@ def _git_plan(root: Path, user_patterns: list[str]) -> Plan:
                 to_read.setdefault(entry.blob, []).append(path)
         for blob, data in repository.read_blobs(list(to_read)):
             for path in to_read[blob]:
-                _add_content(plan, path, data, blob)
+                _add_content(plan, path, data, blob, include_generated)
     plan.included.sort(key=lambda item: item.path)
     return plan
 
@@ -167,7 +182,7 @@ _FOLDER_EXCLUSIONS = {
 }
 
 
-def _folder_plan(root: Path, user_patterns: list[str]) -> Plan:
+def _folder_plan(root: Path, user_patterns: list[str], include_generated: bool) -> Plan:
     plan = Plan(SourceKind.FOLDER, root, None)
     entries = folder_reader.walk(
         root,
@@ -185,7 +200,7 @@ def _folder_plan(root: Path, user_patterns: list[str]) -> Plan:
         if entry.kind in _FOLDER_EXCLUSIONS:
             exclusion: Exclusion | None = Exclusion(_FOLDER_EXCLUSIONS[entry.kind])
         else:
-            exclusion = check_path(entry.path, SourceKind.FOLDER, user_patterns)
+            exclusion = _check_path(entry.path, SourceKind.FOLDER, user_patterns, include_generated)
         if exclusion is None and entry.size > MAX_FILE_BYTES:
             exclusion = Exclusion(ExclusionReason.TOO_LARGE)
         if exclusion is not None:
@@ -196,13 +211,16 @@ def _folder_plan(root: Path, user_patterns: list[str]) -> Plan:
         except FolderChangedError:
             plan.exclude(entry.path, Exclusion(ExclusionReason.SPECIAL_FILE, "changed"))
             continue
-        _add_content(plan, entry.path, data, None)
+        _add_content(plan, entry.path, data, None, include_generated)
     plan.included.sort(key=lambda item: item.path)
     return plan
 
 
-def build_plan(kind: SourceKind, root: Path, user_patterns: list[str]) -> Plan:
-    """Raises `GitError` if the repository cannot be read."""
+def build_plan(
+    kind: SourceKind, root: Path, user_patterns: list[str], include_generated: bool = False
+) -> Plan:
+    """Raises `GitError` if the repository cannot be read. Generated code is left out unless
+    `include_generated`."""
     if kind is SourceKind.GIT_REPOSITORY:
-        return _git_plan(root, user_patterns)
-    return _folder_plan(root, user_patterns)
+        return _git_plan(root, user_patterns, include_generated)
+    return _folder_plan(root, user_patterns, include_generated)

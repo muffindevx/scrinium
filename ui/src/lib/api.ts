@@ -84,6 +84,8 @@ export interface SourceRequest {
   kind: SourceKind
   path: string
   exclude_patterns: string[]
+  /** Generated code (`@generated`, `DO NOT EDIT`, `*.pb.go`…) is left out unless true. */
+  include_generated?: boolean
 }
 
 export interface SourcePreview {
@@ -121,6 +123,7 @@ export interface Source {
   display_name: string
   root: string
   exclude_patterns: string[]
+  include_generated: boolean
   status: "pending" | "active" | "error" | "revoked" | "disabled"
   active_files: number
   last_successful_sync_at: string | null

@@ -42,6 +42,7 @@ const REASONS: Record<string, string> = {
   too_deep: "Demasiado profundo",
   bad_path: "Ruta no válida",
   limit_reached: "Límite alcanzado",
+  generated: "Código generado",
 }
 
 function formatBytes(bytes: number): string {
@@ -55,7 +56,8 @@ function samePreviewInput(a: SourceRequest, b: SourceRequest | null): boolean {
     b !== null &&
     a.kind === b.kind &&
     a.path === b.path &&
-    a.exclude_patterns.join("\n") === b.exclude_patterns.join("\n")
+    a.exclude_patterns.join("\n") === b.exclude_patterns.join("\n") &&
+    Boolean(a.include_generated) === Boolean(b.include_generated)
   )
 }
 
@@ -251,6 +253,7 @@ export function SourcesCard({
   // A repository's address on a server (https, ssh, git@…) instead of a folder of this machine.
   const looksLikeUrl = /^(https?:\/\/|ssh:\/\/|git@|git:\/\/)/i.test(path.trim())
   const [patterns, setPatterns] = useState("")
+  const [includeGenerated, setIncludeGenerated] = useState(false)
   const [preview, setPreview] = useState<SourcePreview | null>(null)
   const [previewedInput, setPreviewedInput] = useState<SourceRequest | null>(null)
   const [busy, setBusy] = useState(false)
@@ -264,6 +267,7 @@ export function SourcesCard({
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean),
+    include_generated: includeGenerated,
   }
 
   const handleError = useCallback(
@@ -395,6 +399,24 @@ export function SourcesCard({
               onChange={(event) => setPatterns(event.target.value)}
             />
           </div>
+          {kind === "git_repository" && (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={includeGenerated}
+                onChange={(event) => setIncludeGenerated(event.target.checked)}
+              />
+              <span>
+                Incluir el código generado
+                <span className="block text-xs text-muted-foreground">
+                  Por defecto se excluyen los archivos que dicen ser generados (@generated, DO NOT EDIT) y
+                  los de generadores conocidos (__generated__/, *.pb.go, *_pb2.py): no los escribe una
+                  persona y no contienen sus reglas.
+                </span>
+              </span>
+            </label>
+          )}
           {error && (
             <p role="alert" className="text-sm text-destructive">
               {error}

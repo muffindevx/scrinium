@@ -69,12 +69,17 @@ class SourceSettings:
     kind: SourceKind
     root: Path
     exclude_patterns: list[str]
+    # Sources created before this option exist without it: generated code stays out.
+    include_generated: bool = False
 
 
 def settings_of(connection: SourceConnection) -> SourceSettings:
     config = connection.configuration
     return SourceSettings(
-        _KINDS[connection.provider], Path(config["root"]), list(config["exclude_patterns"])
+        _KINDS[connection.provider],
+        Path(config["root"]),
+        list(config["exclude_patterns"]),
+        bool(config.get("include_generated", False)),
     )
 
 
@@ -95,8 +100,14 @@ def project_of(session: Session, project_id: uuid.UUID) -> Project:
     return project
 
 
-def preview(kind: SourceKind, raw_path: str, patterns: list[str], data_dir: Path) -> Plan:
-    return build_plan(kind, resolve_root(kind, raw_path, data_dir), patterns)
+def preview(
+    kind: SourceKind,
+    raw_path: str,
+    patterns: list[str],
+    data_dir: Path,
+    include_generated: bool = False,
+) -> Plan:
+    return build_plan(kind, resolve_root(kind, raw_path, data_dir), patterns, include_generated)
 
 
 def latest_run(session: Session, connection_id: uuid.UUID) -> SyncRun | None:
@@ -158,6 +169,7 @@ def create_source(
     patterns: list[str],
     data_dir: Path,
     request_id: str | None,
+    include_generated: bool = False,
 ) -> tuple[SourceConnection, SyncRun]:
     root = resolve_root(kind, raw_path, data_dir)
     connection = SourceConnection(
@@ -166,7 +178,11 @@ def create_source(
         provider=PROVIDERS[kind],
         display_name=root.name or str(root),
         status=ConnectionStatus.ACTIVE,
-        configuration={"root": str(root), "exclude_patterns": patterns},
+        configuration={
+            "root": str(root),
+            "exclude_patterns": patterns,
+            "include_generated": include_generated,
+        },
     )
     session.add(connection)
     session.flush()
@@ -354,7 +370,9 @@ def run_sync(database: Database, run_id: uuid.UUID, data_dir: Path) -> None:
     plan: Plan | None = None
     try:
         root = resolve_root(settings.kind, str(settings.root), data_dir)
-        plan = build_plan(settings.kind, root, settings.exclude_patterns)
+        plan = build_plan(
+            settings.kind, root, settings.exclude_patterns, settings.include_generated
+        )
     except (SourceError, GitError) as failure:
         error = str(failure)
     except Exception as failure:
