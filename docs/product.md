@@ -10,7 +10,9 @@
 - what may be affected;
 - what we still do not know.
 
-**Main use case.** Connect a local repository, documentation and a ticket source. Then look up rules, decisions, flows and changes between releases.
+**Main use case.** Connect a local repository and its documentation. Then look up the business rules the code implements, what a change touches, and what changed between releases.
+
+**Tickets come last.** A ticket source (Linear first, then Jira) is the final stage: it touches third-party systems, credentials and people's data, so it is built once the core works. Until then, ticket keys are read only from the local Git history.
 
 **Out of the MVP:**
 

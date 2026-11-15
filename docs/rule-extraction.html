@@ -316,14 +316,8 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
     <p>The word "map" has two uses in Scrinium, and they should not be mixed up:</p>
     <ul>
       <li><strong>The rule map (phase 1)</strong> is the list of rules with title, category and citation, before they have a statement.</li>
-      <li><strong>The "Mapa del sistema" screen</strong> draws a graph in columns: requirements, rules, flows, modules, code, tests…
-        <ul>
-          <li>It takes up to 200 entities and 500 relationships from <code>entity_relationships</code>.</li>
-          <li>Below it, a "Procesos" section shows the flows.</li>
-        </ul>
-        <span class="ref">ui/src/screens/MapScreen.tsx:278-304</span>, <span class="ref">knowledge/views.py:38-39, 229-292</span>, <span class="ref">ui/src/lib/graph.ts:4-22</span></li>
+      <li><strong>The "Mapa" screen was removed.</strong> It drew rule relationships as facts, and a hand review found 14–24 % of them wrong. The relationships stay in <code>entity_relationships</code> and feed the rule detail ("Si cambia esta regla") and Impacto. A map comes back only as processes built without the model from entry points (routes, commands, handlers), and only if it passes its own measurement.</li>
     </ul>
-    <p class="note">Extraction only creates rules, and nothing creates relationships or flows. So the screen shows <strong>a single column of rules with no arrows</strong>, with the notice "N elements have no known relationships", and an empty processes section. The drawing is ready; the data is not.</p>
   </div>
 </section>
 

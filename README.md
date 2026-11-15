@@ -13,14 +13,17 @@ Local-first software change intelligence. It explains:
 - data-protection checks;
 - ingestion of Git repositories and local document folders, with citations to exact lines;
 - search by text and by meaning, with local models;
-- questions about your sources: the local LLM answers citing every claim, or says it has no evidence;
-- business-rule extraction from code.
+- business-rule extraction from code, with every rule citing its lines. On two reference projects (a business API and a game) the candidate filter keeps 94–97 % of the reference rules, extraction finds about 80 % of them, and 96 % of the rules extracted from the game were correct;
+- what a pasted diff or bug description touches, and what changed between releases;
+- your own model provider if you want one: DeepSeek, GLM, Claude or any OpenAI-compatible server, per project and task, only after you consent. Without that, nothing leaves the machine.
+
+Answering free questions has no screen today: general assistants connected to the repository already do it. The pipeline stays, for a command palette and for agents.
 
 What it does not do yet is described in [Rule extraction](docs/rule-extraction.html#limits).
 
 ## Hardware requirements
 
-Everything runs on your machine. The heaviest task is extracting the rules of a project for the first time. After that, only changed code is read again, which takes seconds or a few minutes. Questions work on all three tiers.
+By default everything runs on your machine. The heaviest task is extracting the rules of a project for the first time. After that, only changed code is read again, which takes seconds or a few minutes. With your own provider, extraction runs at its speed and these tiers matter much less.
 
 | Tier | Machine | First extraction of a project like `reference-a` (~50 000 lines, ~500 rules) |
 |---|---|---|
