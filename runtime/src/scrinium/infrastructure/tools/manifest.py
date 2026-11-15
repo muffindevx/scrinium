@@ -34,7 +34,7 @@ class Tool:
 
 
 _GITLEAKS_RELEASE = "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/"
-_LLAMA_RELEASE = "https://github.com/ggml-org/llama.cpp/releases/download/b12110/"
+_LLAMA_RELEASE = "https://github.com/ggml-org/llama.cpp/releases/download/b12359/"
 
 GITLEAKS = Tool(
     "gitleaks",
@@ -79,69 +79,69 @@ GITLEAKS = Tool(
     },
 )
 
-# llama.cpp v0.9.0 publishes its binaries in build b12110.
+# llama.cpp v1.0.0 publishes its binaries in build b12359.
 LLAMA_SERVER = Tool(
     "llama-server",
-    "b12110",
+    "b12359",
     {
         ("linux", "x64", Variant.CPU): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-ubuntu-x64.tar.gz",
-            "368227edcc229be5f9bed16a2223d79b5e41d0ac2e19bcf5825e82291c060e55",
-            23051958,
-            "llama-b12110/llama-server",
+            _LLAMA_RELEASE + "llama-b12359-bin-ubuntu-x64.tar.gz",
+            "0bc1f091e8916102b6d8f2cf944233a620e90a0f856c72d0ce41150c65c2e72e",
+            23311084,
+            "llama-b12359/llama-server",
         ),
         ("linux", "x64", Variant.VULKAN): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-ubuntu-vulkan-x64.tar.gz",
-            "a5d741940956ec62e8783aee7e5a4c7c761af867d6f027c3277a51e1a3ac59b0",
-            35858360,
-            "llama-b12110/llama-server",
+            _LLAMA_RELEASE + "llama-b12359-bin-ubuntu-vulkan-x64.tar.gz",
+            "19b60f00395a3f4954e46a5037695bc1d843404fc9d3124f82a612ecd8fbe9f0",
+            36153377,
+            "llama-b12359/llama-server",
         ),
         ("linux", "arm64", Variant.CPU): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-ubuntu-arm64.tar.gz",
-            "4758b51335e37b4346251f2687d64841ff1c07ecb27fc46323945bb2ec9c44d2",
-            18723578,
-            "llama-b12110/llama-server",
+            _LLAMA_RELEASE + "llama-b12359-bin-ubuntu-arm64.tar.gz",
+            "dc7aa17a67884619b7223870aca9fd6addbc01717713b04a714add1c31137359",
+            18949862,
+            "llama-b12359/llama-server",
         ),
         ("linux", "arm64", Variant.VULKAN): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-ubuntu-vulkan-arm64.tar.gz",
-            "1c68bf23d35230cc607e3d30f8d447d21fef500d9fa8d65e15520dfa3619ad73",
-            29168359,
-            "llama-b12110/llama-server",
+            _LLAMA_RELEASE + "llama-b12359-bin-ubuntu-vulkan-arm64.tar.gz",
+            "3f8ae812a58ac92e5a596ca9fbc988f52854d147c5a7fe1264dddc90c1d085b4",
+            29435221,
+            "llama-b12359/llama-server",
         ),
         ("macos", "x64", Variant.DEFAULT): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-macos-x64.tar.gz",
-            "c8094268b6bf62f4998f0e45656fd9f5e2d4afb6b1cd0044d761db64be1dd47d",
-            12388601,
-            "llama-b12110/llama-server",
+            _LLAMA_RELEASE + "llama-b12359-bin-macos-x64.tar.gz",
+            "25320d529077ef5a3d16e7b5da26438f221d88c8c0930a32b0c79457f5eede56",
+            12661621,
+            "llama-b12359/llama-server",
         ),
         ("macos", "arm64", Variant.DEFAULT): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-macos-arm64.tar.gz",
-            "4f5b8de12e0b9516658ca6a5764c6ffb3d7c659c3dd538556b1413c7b4050662",
-            16650691,
-            "llama-b12110/llama-server",
+            _LLAMA_RELEASE + "llama-b12359-bin-macos-arm64.tar.gz",
+            "82b00abc740160e1b9980e6cc79c117345fa34af058c80e6c0a69aa8ddccde75",
+            16907811,
+            "llama-b12359/llama-server",
         ),
         ("windows", "x64", Variant.CPU): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-win-cpu-x64.zip",
-            "98901e327c252875accaf2d1bf364e10e868843b0b63468baad1aa945cdc5da2",
-            24708445,
+            _LLAMA_RELEASE + "llama-b12359-bin-win-cpu-x64.zip",
+            "837c1655e87df3b66989f4be33a792a1399c785bf259038dc75c900096683e69",
+            25097509,
             "llama-server.exe",
         ),
         ("windows", "x64", Variant.VULKAN): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-win-vulkan-x64.zip",
-            "9732a5e48887ca54d0bfe4af4324dc85fd56cd8cda19b52df3542fa6ebe6874f",
-            37661146,
+            _LLAMA_RELEASE + "llama-b12359-bin-win-vulkan-x64.zip",
+            "e8d18c6e4210cca87e7307c2ea78363ac8d158e4e1397358ec96ab70b53a0d5e",
+            38090643,
             "llama-server.exe",
         ),
         ("windows", "arm64", Variant.CPU): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-win-cpu-arm64.zip",
-            "f8d20fb07d0b499988ced8963afcd5ded2d2cdd9983b757fbc7e51c4abd722e8",
-            13197637,
+            _LLAMA_RELEASE + "llama-b12359-bin-win-cpu-arm64.zip",
+            "d27564c754478d2832789dfcebfc5ace018e36a224c41d810b7cbc1ba8243ec0",
+            13455326,
             "llama-server.exe",
         ),
         ("windows", "arm64", Variant.VULKAN): Asset(
-            _LLAMA_RELEASE + "llama-b12110-bin-win-vulkan-arm64.zip",
-            "2be672cf538aabfc9fcb22c21648422b01d623673f15c2742bd43a9bd1a11ce2",
-            25728494,
+            _LLAMA_RELEASE + "llama-b12359-bin-win-vulkan-arm64.zip",
+            "62cd50089cffdd825524a91c5a8819041eb75d8e2beacd6eca68194dba50574f",
+            26027698,
             "llama-server.exe",
         ),
     },
