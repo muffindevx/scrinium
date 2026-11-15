@@ -173,12 +173,12 @@ def test_clean_removes_only_leftovers(tmp_path: Path) -> None:
     assert cancelled.returncode == 1
     assert all(path.exists() for path in paths.values())
 
-    cleaned = _cli(data_dir, "clean", "--si")
+    cleaned = _cli(data_dir, "clean", "--yes")
     assert cleaned.returncode == 0, cleaned.stderr
     kept = {"current_tool", "current_model", "database"}
     for name, path in paths.items():
         assert path.exists() == (name in kept), name
-    assert "No hay nada que limpiar" in _cli(data_dir, "clean", "--si").stdout
+    assert "No hay nada que limpiar" in _cli(data_dir, "clean", "--yes").stdout
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions of the test directory")
@@ -201,5 +201,5 @@ def test_uninstall_needs_the_word_and_leaves_foreign_files(tmp_path: Path) -> No
 
     foreign.unlink()
     _fake_install(data_dir)
-    assert _cli(data_dir, "uninstall", "--si").returncode == 0
+    assert _cli(data_dir, "uninstall", "--yes").returncode == 0
     assert not data_dir.exists()

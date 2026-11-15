@@ -51,9 +51,9 @@ def build_control_router(config: RuntimeConfig, sessions: LocalSessionManager) -
         return {"status": "stopping"}
 
     @router.get("/control/logs")
-    def logs(contenido: bool = False) -> StreamingResponse:
-        subscription = HUB.subscribe(contenido)
-        logger.info("Consola enganchada con scrinium attach (contenido=%s)", contenido)
+    def logs(content: bool = False) -> StreamingResponse:
+        subscription = HUB.subscribe(content)
+        logger.info("Consola enganchada con scrinium attach (content=%s)", content)
 
         def stream() -> Iterator[str]:
             try:

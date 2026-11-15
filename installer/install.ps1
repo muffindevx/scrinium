@@ -1,11 +1,11 @@
 # Installs Scrinium on Windows from this folder (the release zip).
 #
 #   powershell -ExecutionPolicy Bypass -File install.ps1        installs
-#   powershell -ExecutionPolicy Bypass -File install.ps1 -Si    does not ask before installing uv
+#   powershell -ExecutionPolicy Bypass -File install.ps1 -Yes   does not ask before installing uv
 #
 # Steps: uv (if missing, after confirming), Scrinium, its tools and models (about 3.2 GB, with
 # pinned SHA256) and a final check with `scrinium doctor`. No administrator needed.
-param([switch]$Si)
+param([switch]$Yes)
 
 $ErrorActionPreference = "Stop"
 $UvVersion = "0.13.7"
@@ -29,7 +29,7 @@ if (-not $uv -and (Test-Path $localUv)) { $uv = $localUv }
 if (-not $uv) {
     Write-Host "Scrinium necesita uv (de Astral) para instalarse. Se instalara uv $UvVersion en tu"
     Write-Host "cuenta, en $HOME\.local\bin, desde: $UvInstallerUrl"
-    if (-not $Si) {
+    if (-not $Yes) {
         $answer = Read-Host "Continuar? [s/N]"
         if ($answer -notmatch '^(s|si)$') {
             Fail "Cancelado. Instala uv por tu cuenta (https://docs.astral.sh/uv/) y repite."

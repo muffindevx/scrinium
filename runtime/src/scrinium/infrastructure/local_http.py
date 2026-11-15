@@ -18,7 +18,7 @@ from scrinium.core.log_hub import HUB, content_extra
 
 # A model response should never get close to this; if it does, something is wrong.
 MAX_RESPONSE_BYTES: Final = 16 * 1024 * 1024
-# What `scrinium attach --contenido` shows of each request and response.
+# What `scrinium attach --content` shows of each request and response.
 _TRACE_CHARS: Final = 4000
 
 content_logger = logging.getLogger("scrinium.contenido")

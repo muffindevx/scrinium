@@ -103,12 +103,12 @@ def attach(data_dir: Path, port: int | None, content: bool) -> int:
         return 1
     if content:
         print(
-            "Aviso: --contenido muestra las preguntas, los prompts y el codigo que va al modelo. "
+            "Aviso: --content muestra las preguntas, los prompts y el codigo que va al modelo. "
             "Lo que salga aqui puede quedar en el historial de la terminal o en capturas.",
             file=sys.stderr,
             flush=True,
         )
-    path = "/control/logs?contenido=true" if content else "/control/logs"
+    path = "/control/logs?content=true" if content else "/control/logs"
     print(
         f"Enganchado a Scrinium {instance.version} en el puerto {instance.port}. "
         "Ctrl+C suelta la consola; Scrinium sigue en marcha.",

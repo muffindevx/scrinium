@@ -503,7 +503,7 @@ Other variables:
 ### Watching what it does
 
 - **`scrinium attach`,** in another terminal, streams requests, syncs, analyses and the llama.cpp output live.
-- **`--contenido`** adds prompts and answers, with secrets hidden.
+- **`--content`** adds prompts and answers, with secrets hidden.
 - **`scrinium stop`** stops every running Scrinium and its llama-server.
 - **`scrinium link`** asks the running Scrinium for a new single-use entry link (`POST /control/launch-link`), without restarting it.
 - **`make demo`** starts a separate instance in `~/.cache/scrinium-demo` with an example project, for trying changes away from the real data.

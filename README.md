@@ -59,8 +59,8 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 The installer:
 
-1. Installs [uv](https://docs.astral.sh/uv/) if missing, after asking (`--si` skips the question). It uses a pinned version and checks the SHA-256 of its installer.
-2. Installs Scrinium. On Linux with a desktop it adds the Qt window (about 540 MB). `--sin-ventana` skips it, and Scrinium uses the browser instead.
+1. Installs [uv](https://docs.astral.sh/uv/) if missing, after asking (`--yes` skips the question). It uses a pinned version and checks the SHA-256 of its installer.
+2. Installs Scrinium. On Linux with a desktop it adds the Qt window (about 540 MB). `--no-window` skips it, and Scrinium uses the browser instead.
 3. Downloads the tools and models (`scrinium tools install`).
 4. Ends with `scrinium doctor`, which checks the machine and explains how to fix anything missing. It can be run again at any time.
 
@@ -85,8 +85,8 @@ For the window on Linux, install `"scrinium[window] @ file://$PWD/dist/scrinium-
 - **See everything it does.**
   - With Scrinium open, `scrinium attach` in another terminal streams every request, sync, analysis and the llama.cpp output.
   - Ctrl+C detaches without stopping Scrinium.
-  - `--contenido` adds the questions, prompts and model answers, with secrets hidden. It warns first, because terminal output can stay in its history.
-- **Lost the entry link?** `scrinium link` asks the running Scrinium for a new one, without restarting it (`--abrir` also opens it in the browser). Using it closes the session open in another tab or window.
+  - `--content` adds the questions, prompts and model answers, with secrets hidden. It warns first, because terminal output can stay in its history.
+- **Lost the entry link?** `scrinium link` asks the running Scrinium for a new one, without restarting it (`--open` also opens it in the browser). Using it closes the session open in another tab or window.
 - **Stopping.** Do any of these:
   - close the window;
   - press Ctrl+C in the terminal where it started;
@@ -231,7 +231,7 @@ make demo
 - Builds the UI and starts a Scrinium with its own data directory in `~/.cache/scrinium-demo/data` (`SCRINIUM_DEMO_DIR` moves it). Your real projects are never touched.
 - `tools/` and `models/` are symbolic links to the real data directory: nothing is copied or downloaded. Run `make tools` first if you have no models.
 - The first time, it creates a small example Git repository (`~/.cache/scrinium-demo/repo`: a shop with discounts, shipping and stock, in two commits), the project «Demo» with that repository as its source, and the profile «Usuario de pruebas».
-- It opens the browser already signed in, on port 47630. Running `make demo` again while it runs only opens a new entry link; so does `SCRINIUM_DATA_DIR=~/.cache/scrinium-demo/data scrinium link --abrir`.
+- It opens the browser already signed in, on port 47630. Running `make demo` again while it runs only opens a new entry link; so does `SCRINIUM_DATA_DIR=~/.cache/scrinium-demo/data uv run --project runtime scrinium link --open` (with `uv run`: an installed `scrinium` may be an older copy without `link`).
 - Ctrl+C stops it. `rm -rf ~/.cache/scrinium-demo` starts over from scratch (the links do not take the real models with them).
 
 ### Working on the UI

@@ -2,7 +2,7 @@
 
 While someone is attached, everything is logged at DEBUG; on detach, each logger
 returns to its level. Content (prompts, model answers) goes in records marked
-`CONTENT` and only reaches whoever asked with `--contenido`: never the normal terminal.
+`CONTENT` and only reaches whoever asked with `--content`: never the normal terminal.
 """
 
 import contextlib
@@ -30,7 +30,7 @@ def is_content(record: logging.LogRecord) -> bool:
 
 
 class HideContent(logging.Filter):
-    """For the normal terminal: content only goes to whoever attached with `--contenido`."""
+    """For the normal terminal: content only goes to whoever attached with `--content`."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         return not is_content(record)

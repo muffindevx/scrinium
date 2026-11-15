@@ -1,4 +1,4 @@
-"""The content sent to the model only reaches whoever asked with `attach --contenido`."""
+"""The content sent to the model only reaches whoever asked with `attach --content`."""
 
 import json
 import logging

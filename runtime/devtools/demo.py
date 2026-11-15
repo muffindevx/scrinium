@@ -240,7 +240,10 @@ def wait_for_instance(
 def enter(instance: instances.Instance, open_browser: bool) -> None:
     url = request_launch_link(instance)
     if url is None:
-        print("La demo no dio un enlace de entrada. Prueba: scrinium link", file=sys.stderr)
+        print(
+            "La demo no dio un enlace de entrada. Prueba: uv run --project runtime scrinium link",
+            file=sys.stderr,
+        )
         return
     if open_browser and webbrowser.open(url):
         print(f"Demo abierta en el navegador ({instance.url}).", flush=True)

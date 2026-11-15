@@ -2,8 +2,8 @@
 # Installs Scrinium on Linux and macOS from this folder (the release zip).
 #
 #   sh install.sh               installs, with its own window if there is a desktop
-#   sh install.sh --sin-ventana without the Linux Qt window (about 540 MB less)
-#   sh install.sh --si          does not ask before installing uv
+#   sh install.sh --no-window   without the Linux Qt window (about 540 MB less)
+#   sh install.sh --yes         does not ask before installing uv
 #
 # Steps: uv (if missing, after confirming), Scrinium, its tools and models (about 3.2 GB, with
 # pinned SHA256) and a final check with `scrinium doctor`. No sudo.
@@ -18,8 +18,8 @@ window=auto
 assume_yes=no
 for arg in "$@"; do
     case "$arg" in
-        --sin-ventana) window=no ;;
-        --si) assume_yes=yes ;;
+        --no-window) window=no ;;
+        --yes) assume_yes=yes ;;
         *) echo "Opcion desconocida: $arg" >&2; exit 2 ;;
     esac
 done

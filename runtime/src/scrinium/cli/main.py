@@ -402,7 +402,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     attach_parser.add_argument("--port", type=int, help="El de ese puerto, si hay varios.")
     attach_parser.add_argument(
-        "--contenido",
+        "--content",
         action="store_true",
         help="Tambien preguntas, prompts y respuestas del modelo. Los secretos se ocultan.",
     )
@@ -410,18 +410,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "link", help="Pide al Scrinium en marcha un enlace de entrada nuevo, sin reiniciarlo."
     )
     link_parser.add_argument("--port", type=int, help="El de ese puerto, si hay varios.")
-    link_parser.add_argument(
-        "--abrir", action="store_true", help="Abrirlo tambien en el navegador."
-    )
+    link_parser.add_argument("--open", action="store_true", help="Abrirlo tambien en el navegador.")
     clean_parser = commands.add_parser(
         "clean", help="Borra restos y versiones viejas. No toca proyectos ni reglas."
     )
-    clean_parser.add_argument("--si", action="store_true", help="No pedir confirmacion.")
+    clean_parser.add_argument("--yes", action="store_true", help="No pedir confirmacion.")
     uninstall_parser = commands.add_parser(
         "uninstall", help="Borra todo Scrinium de este equipo: datos, modelos y el programa."
     )
     uninstall_parser.add_argument(
-        "--si", action="store_true", help=f"No pedir que se escriba {UNINSTALL_CONFIRMATION}."
+        "--yes", action="store_true", help=f"No pedir que se escriba {UNINSTALL_CONFIRMATION}."
     )
 
     args = parser.parse_args(argv)
@@ -438,12 +436,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "stop":
             return stop(data_dir)
         if args.command == "attach":
-            return attach(data_dir, args.port, args.contenido)
+            return attach(data_dir, args.port, args.content)
         if args.command == "link":
-            return link(data_dir, args.port, args.abrir)
+            return link(data_dir, args.port, args.open)
         if args.command == "clean":
-            return clean(data_dir, args.si)
-        return uninstall(data_dir, args.si)
+            return clean(data_dir, args.yes)
+        return uninstall(data_dir, args.yes)
     if not 0 <= args.port <= 65535:
         parser.error("--port debe estar entre 0 y 65535")
     return start(args.port, args.interface, args.verbose)
