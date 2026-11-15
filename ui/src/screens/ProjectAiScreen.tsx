@@ -31,7 +31,7 @@ import { useErrors } from "@/screens/hooks"
 import { ErrorText, Muted } from "@/screens/shared"
 
 const TASK_HELP: Record<AiTask, string> = {
-  questions: "Responder lo que se pregunta en Preguntar.",
+  questions: "Responder preguntas sobre el proyecto, con citas.",
   rule_map: "Leer el código y proponer reglas.",
   rule_statements: "Redactar el enunciado de cada regla.",
   consistency: "Buscar reglas duplicadas o contradictorias.",
@@ -104,7 +104,7 @@ function Permissions({
         Modelos permitidos
         <InfoPopover label="Qué es un modelo permitido" title="Modelos permitidos">
           <p>
-            Un modelo permitido puede elegirse para una tarea al preguntar o al extraer reglas, aunque no sea el de por
+            Un modelo permitido puede elegirse al extraer reglas, en Opciones avanzadas, aunque no sea el de por
             defecto. Retirarlo hace que esas tareas vuelvan a este equipo.
           </p>
         </InfoPopover>

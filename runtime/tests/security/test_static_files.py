@@ -55,7 +55,7 @@ def test_static_files_reject_writes(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize(
-    "path", ["/reglas", "/reglas/1234", "/versiones", "/impacto/abc", "/ajustes", "/mapa"]
+    "path", ["/reglas", "/reglas/1234", "/versiones", "/impacto/abc", "/ajustes", "/fuentes"]
 )
 def test_interface_routes_load_the_ui(client: TestClient, path: str) -> None:
     response = client.get(path)
@@ -64,7 +64,16 @@ def test_interface_routes_load_the_ui(client: TestClient, path: str) -> None:
 
 @pytest.mark.parametrize(
     "path",
-    ["/otra", "/rules", "/reglas/../secret.txt", "/reglas/link.txt", "/reglas/x.js", "/link.txt"],
+    [
+        "/otra",
+        "/rules",
+        "/mapa",
+        "/preguntar",
+        "/reglas/../secret.txt",
+        "/reglas/link.txt",
+        "/reglas/x.js",
+        "/link.txt",
+    ],
 )
 def test_only_known_interface_routes_fall_back_to_the_ui(client: TestClient, path: str) -> None:
     response = client.get(path)

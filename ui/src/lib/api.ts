@@ -270,14 +270,6 @@ export interface CitedLines {
   lines: string[]
 }
 
-export const askQuestion = async (projectId: string, question: string, model?: string) =>
-  (await mutate(`/api/v1/projects/${projectId}/questions`, { question, ...(model ? { model } : {}) })).json() as Promise<Question>
-export const getQuestion = (questionId: string) => getJson<Question>(`/api/v1/questions/${questionId}`)
-export const listQuestions = async (projectId: string) =>
-  (await getJson<{ questions: Question[] }>(`/api/v1/projects/${projectId}/questions`)).questions
-export const deleteQuestion = async (questionId: string) => {
-  await mutate(`/api/v1/questions/${questionId}`, undefined, "DELETE")
-}
 export const getCitedLines = (revisionId: string, start: number, end: number) =>
   getJson<CitedLines>(
     `/api/v1/source-revisions/${revisionId}/lines?${new URLSearchParams({ start: String(start), end: String(end) })}`,
@@ -593,10 +585,6 @@ export interface Architecture {
   dependencies: { from: string; to: string; calls: number }[]
 }
 
-/** One level of the code as modules with their calls (stage 3, phase D). */
-export const getArchitecture = (projectId: string, path = "") =>
-  getJson<Architecture>(`/api/v1/projects/${projectId}/architecture?${new URLSearchParams({ path })}`)
-
 export const listRules = async (
   projectId: string,
   filters: { verification?: VerificationStatus; lifecycle?: string; q?: string } = {},
@@ -620,15 +608,6 @@ export const setVerification = async (versionId: string, status: VerificationSta
     reviewed_by: string | null
   }>
 
-export const getGraph = (projectId: string) => getJson<KnowledgeGraph>(`/api/v1/projects/${projectId}/graph`)
-/** Relates the rules from the code now (phase C), for rules extracted before it existed. */
-export const relateRules = async (projectId: string) =>
-  (await mutate(`/api/v1/projects/${projectId}/relations`)).json() as Promise<{ relationships: number }>
-export const listFlows = async (projectId: string) =>
-  (await getJson<{ flows: FlowSummary[] }>(`/api/v1/projects/${projectId}/flows`)).flows
-export const getFlow = (projectId: string, entityId: string) =>
-  getJson<FlowDetail>(`/api/v1/projects/${projectId}/flows/${entityId}`)
-
 const started = async (path: string, body: unknown) => (await mutate(path, body)).json() as Promise<Analysis>
 export const startExtraction = (projectId: string, pathPrefix: string, allFunctions = false, model?: string) =>
   started(`/api/v1/projects/${projectId}/extractions`, {
@@ -638,12 +617,6 @@ export const startExtraction = (projectId: string, pathPrefix: string, allFuncti
   })
 export const analyzeDiff = (projectId: string, diff: string) =>
   started(`/api/v1/projects/${projectId}/analyses/code-diff`, { diff })
-export const analyzeSql = (projectId: string, sql: string, dialect: string, schemaDdl: string) =>
-  started(`/api/v1/projects/${projectId}/analyses/sql`, {
-    sql,
-    dialect,
-    schema_ddl: schemaDdl || null,
-  })
 export const compareReleases = (projectId: string, baseId: string, targetId: string) =>
   started(`/api/v1/projects/${projectId}/analyses/release-comparison`, {
     base_release_id: baseId,

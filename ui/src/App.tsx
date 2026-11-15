@@ -6,9 +6,6 @@ import {
   LockKeyhole,
   LogOut,
   type LucideIcon,
-  Map as MapIcon,
-  MessageSquare,
-  Network,
   ScanSearch,
   ScrollText,
   Settings,
@@ -39,11 +36,8 @@ import {
   logout,
 } from "@/lib/api"
 import { useFolderDrop } from "@/lib/folder-drop"
-import { AskScreen } from "@/screens/AskScreen"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
-import { ArchitectureScreen } from "@/screens/ArchitectureScreen"
-import { MapScreen } from "@/screens/MapScreen"
 import { ProjectAiScreen } from "@/screens/ProjectAiScreen"
 import { RulesScreen } from "@/screens/RulesScreen"
 import { SettingsScreen } from "@/screens/SettingsScreen"
@@ -87,14 +81,11 @@ interface NavItem {
 
 // The same routes the runtime accepts in api/static.py (UI_ROUTES).
 const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
-  { group: "Proyecto", items: [{ path: "/", label: "Inicio", icon: House }] },
   {
-    group: "Conocimiento",
+    group: "Proyecto",
     items: [
-      { path: "/preguntar", label: "Preguntar", icon: MessageSquare },
+      { path: "/", label: "Inicio", icon: House },
       { path: "/reglas", label: "Reglas", icon: BookOpen },
-      { path: "/mapa", label: "Mapa", icon: MapIcon },
-      { path: "/arquitectura", label: "Arquitectura", icon: Network },
     ],
   },
   {
@@ -322,15 +313,9 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                   />
                 }
               />
-              <Route path="/preguntar" element={needsProject((c) => <AskScreen key={c.id} {...props(c)} />)} />
               <Route
                 path="/reglas/:entityId?"
                 element={needsProject((c) => <RulesScreen key={c.id} {...props(c)} />)}
-              />
-              <Route path="/mapa/:entityId?" element={needsProject((c) => <MapScreen key={c.id} {...props(c)} />)} />
-              <Route
-                path="/arquitectura"
-                element={needsProject((c) => <ArchitectureScreen key={c.id} {...props(c)} />)}
               />
               <Route
                 path="/impacto/:analysisId?"

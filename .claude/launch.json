@@ -2,6 +2,20 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "scrinium-demo",
+      "runtimeExecutable": "/home/gris/.local/bin/uv",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "/media/gris/GRIS/Sandbox/scrinium/runtime",
+        "python",
+        "/media/gris/GRIS/Sandbox/scrinium/runtime/devtools/demo.py",
+        "--no-browser"
+      ],
+      "port": 47630,
+      "url": "http://127.0.0.1:47630"
+    },
+    {
       "name": "scrinium-enunciados",
       "runtimeExecutable": "/usr/bin/env",
       "runtimeArgs": [

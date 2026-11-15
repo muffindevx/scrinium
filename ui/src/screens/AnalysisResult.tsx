@@ -1,6 +1,7 @@
 import { ShieldAlert } from "lucide-react"
 import { Link } from "react-router"
 import { EvidenceCite } from "@/components/evidence-cite"
+import { RuleLink as SharedRuleLink } from "@/components/rule-link"
 import { StatusBadge } from "@/components/status"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -25,9 +26,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function RuleLink({ row }: { row: Row }) {
   return (
-    <Link className="hover:underline" to={`/reglas/${str(row.entity_id)}`}>
+    <SharedRuleLink className="hover:underline" id={str(row.entity_id)}>
       {str(row.name)}
-    </Link>
+    </SharedRuleLink>
   )
 }
 

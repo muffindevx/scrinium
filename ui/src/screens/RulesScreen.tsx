@@ -1,8 +1,9 @@
 import { ArrowLeft, BookOpen, Check, ChevronRight, ListChecks, Pause, PenLine, Sparkles, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
-import { Link, useParams } from "react-router"
+import { Link, useParams, useSearchParams } from "react-router"
 import { cn } from "cn"
 import { CONTEXT_LINES, CodeExcerpt } from "@/components/code-excerpt"
+import { RuleLink } from "@/components/rule-link"
 import { EmptyState, PageHeader, Section } from "@/components/page"
 import { StatusBadge, VerificationStatusBadge } from "@/components/status"
 import { VERIFIED_STATUSES } from "@/lib/status"
@@ -40,7 +41,7 @@ import {
   getExtractionEstimate,
 } from "@/lib/api"
 import { ASSESSMENT_LABELS, errorMessage } from "@/lib/labels"
-import { useErrors } from "@/screens/hooks"
+import { useBackTarget, useErrors } from "@/screens/hooks"
 import { ModelPicker } from "@/screens/ModelPicker"
 import { AnalysisDetail, ErrorText, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
@@ -324,14 +325,16 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
                 </span>
               </span>
             </label>
+            <div className="mt-3">
+              <ModelPicker
+                project={project}
+                task="rule_map"
+                value={model}
+                onChange={setModel}
+                onSessionLost={onSessionLost}
+              />
+            </div>
           </details>
-          <ModelPicker
-            project={project}
-            task="rule_map"
-            value={model}
-            onChange={setModel}
-            onSessionLost={onSessionLost}
-          />
           {shown && <RemoteEstimate estimate={shown} />}
           <Button type="submit" className="justify-self-start">
             <Sparkles data-icon="inline-start" />
@@ -618,12 +621,12 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
                 <X data-icon="inline-start" />
                 No es regla
               </Button>
-              <Link
-                to={`/reglas/${rule.entity_id}`}
+              <RuleLink
+                id={rule.entity_id}
                 className="ml-auto text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
               >
                 {rule.evidence_count > 1 ? `${rule.evidence_count} citas · ` : ""}Ver la regla completa
-              </Link>
+              </RuleLink>
             </div>
           )}
           {editing && (
@@ -667,6 +670,12 @@ const CRITICALITY_RANK: Record<RuleSummary["criticality"], number> = { critical:
 const GROUPING_KEY = "scrinium.rules.grouping"
 // Up to this many rules, every group starts open; past it, they start closed.
 const OPEN_GROUPS_UP_TO = 40
+
+const FILTERS: Filter[] = ["all", "review", "unverified", "verified", "rejected"]
+
+function readFilter(value: string | null): Filter {
+  return FILTERS.find((filter) => filter === value) ?? "all"
+}
 
 function readGrouping(): Grouping {
   try {
@@ -758,8 +767,22 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 function RuleList(props: ScreenProps) {
   const { project, onSessionLost } = props
   const [rules, setRules] = useState<RuleSummary[] | null>(null)
-  const [filter, setFilter] = useState<Filter>("all")
-  const [query, setQuery] = useState("")
+  // Filter and search live in the URL: back from a rule returns to the same list.
+  const [params, setParams] = useSearchParams()
+  const filter = readFilter(params.get("filtro"))
+  const query = params.get("q") ?? ""
+  const setListParam = (name: "filtro" | "q", value: string, empty: string) =>
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        if (value === empty) next.delete(name)
+        else next.set(name, value)
+        return next
+      },
+      { replace: true },
+    )
+  const setFilter = (value: Filter) => setListParam("filtro", value, "all")
+  const setQuery = (value: string) => setListParam("q", value, "")
   const [grouping, setGrouping] = useState<Grouping>(readGrouping)
   const [panel, setPanel] = useState<"extract" | "manual" | "consistency" | null>(null)
   const { error, fail } = useErrors(onSessionLost)
@@ -1156,9 +1179,9 @@ function relationLabel(relation: Relationship): string {
 
 function ImpactName({ id, name, entityType }: { id: string; name: string; entityType: string }) {
   return entityType === "business_rule" ? (
-    <Link to={`/reglas/${id}`} className="font-medium hover:underline">
+    <RuleLink id={id} className="font-medium hover:underline">
       {name}
-    </Link>
+    </RuleLink>
   ) : (
     <span className="font-medium">{name}</span>
   )
@@ -1220,9 +1243,9 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
                   {dependent.via && (
                     <span className="text-xs text-muted-foreground">
                       a través de{" "}
-                      <Link to={`/reglas/${dependent.via.id}`} className="hover:underline">
+                      <RuleLink id={dependent.via.id} className="hover:underline">
                         {dependent.via.name}
-                      </Link>
+                      </RuleLink>
                     </span>
                   )}
                   {dependent.tickets.map((ticket) => (
@@ -1242,9 +1265,7 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
             <ul className="grid gap-1">
               {impact.flows.map((flow) => (
                 <li key={flow.id} className="flex flex-wrap items-baseline gap-x-2">
-                  <Link to={`/mapa/${flow.id}`} className="font-medium hover:underline">
-                    {flow.name}
-                  </Link>
+                  <span className="font-medium">{flow.name}</span>
                   <span className="text-xs text-muted-foreground">por {flow.through.join(", ")}</span>
                 </li>
               ))}
@@ -1289,15 +1310,16 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
   }, [project.id, entityId, fail, write])
   useEffect(load, [load])
   const pending = isPending(rule)
+  const back = useBackTarget()
   if (error) return <ErrorText>{error}</ErrorText>
   if (rule === null) return <Muted>Cargando…</Muted>
   // What depends on this rule, and the same decision elsewhere, are under "Si cambia esta regla".
   const relationships = rule.relationships.filter((relation) => !shownAsImpact(relation))
   return (
     <>
-      <Link to="/reglas" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link to={back.to} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" />
-        Reglas
+        {back.label}
       </Link>
       <PageHeader
         title={rule.name}
@@ -1337,9 +1359,9 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
               <li key={relation.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
                 <span className="text-muted-foreground">{relationLabel(relation)}</span>
                 {relation.other.entity_type === "business_rule" ? (
-                  <Link to={`/reglas/${relation.other.id}`} className="font-medium hover:underline">
+                  <RuleLink id={relation.other.id} className="font-medium hover:underline">
                     {relation.other.name}
-                  </Link>
+                  </RuleLink>
                 ) : (
                   <span className="font-medium">{relation.other.name}</span>
                 )}

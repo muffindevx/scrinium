@@ -5,15 +5,13 @@ import {
   Circle,
   Cpu,
   ScanSearch,
-  Sparkles,
 } from "lucide-react"
-import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react"
-import { Link, useNavigate } from "react-router"
+import { type ReactNode, useCallback, useEffect, useState } from "react"
+import { Link } from "react-router"
 import { cn } from "cn"
 import { ModelStatusBadge, StatusBadge } from "@/components/status"
 import { VERIFIED_STATUSES, sourceTone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/input"
 import {
   type Project,
   type RuleSummary,
@@ -89,10 +87,8 @@ export function HomeScreen({
   onDropUsed: () => void
   onSessionLost: (error: unknown) => void
 }) {
-  const navigate = useNavigate()
   const [sources, setSources] = useState<Source[] | null>(null)
   const [rules, setRules] = useState<RuleSummary[] | null>(null)
-  const [question, setQuestion] = useState("")
   const { error, fail } = useErrors(onSessionLost)
 
   const load = useCallback(() => {
@@ -132,11 +128,6 @@ export function HomeScreen({
         />
       </>
     )
-  }
-
-  const ask = (event: FormEvent) => {
-    event.preventDefault()
-    if (question.trim()) navigate("/preguntar", { state: { question: question.trim() } })
   }
 
   const synced = lastSync(sources ?? [])
@@ -182,36 +173,6 @@ export function HomeScreen({
           onSessionLost={onSessionLost}
         />
       )}
-
-      <form onSubmit={ask} className="grid gap-3 rounded-xl border bg-card p-5">
-        <label htmlFor="home-question" className="font-heading text-lg font-medium">
-          ¿Qué quieres entender hoy?
-        </label>
-        <Textarea
-          id="home-question"
-          rows={2}
-          maxLength={1000}
-          placeholder="¿Cómo se calcula el total de una factura? ¿Quién puede cancelar un pedido?"
-          className="resize-none text-base md:text-base"
-          value={question}
-          onChange={(event) => setQuestion(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault()
-              event.currentTarget.form?.requestSubmit()
-            }
-          }}
-        />
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs text-muted-foreground">
-            Responde solo con lo que hay en el proyecto y cita cada afirmación.
-          </p>
-          <Button type="submit" disabled={!question.trim()}>
-            <Sparkles data-icon="inline-start" />
-            Preguntar
-          </Button>
-        </div>
-      </form>
 
       {pendingSetup && (
         <section className="grid gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
@@ -287,8 +248,8 @@ export function HomeScreen({
           }
         >
           <p className="text-sm text-muted-foreground">
-            Pega un diff, una consulta SQL o la descripción de un bug y mira qué reglas y tests se ven
-            afectados antes de tocar nada.
+            Pega un diff o la descripción de un bug y mira qué reglas y tests se ven afectados antes de
+            tocar nada.
           </p>
         </HealthCard>
       </div>

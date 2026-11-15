@@ -1,31 +1,20 @@
-import { ArrowLeft, Bug, Database, FileDiff, ScanSearch } from "lucide-react"
+import { ArrowLeft, Bug, FileDiff, ScanSearch } from "lucide-react"
 import { type FormEvent, useCallback, useState } from "react"
-import { Link, useNavigate, useParams } from "react-router"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { PageHeader, Section } from "@/components/page"
 import { Button } from "@/components/ui/button"
 import { Label, Textarea } from "@/components/ui/input"
-import { Select } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { type AnalysisType, analyzeDiff, analyzeSql, investigateBug } from "@/lib/api"
+import { type AnalysisType, analyzeDiff, investigateBug } from "@/lib/api"
 import { AnalysisHistory } from "@/screens/AnalysisHistory"
 import { useErrors } from "@/screens/hooks"
 import { AnalysisDetail, ErrorText, type ScreenProps } from "@/screens/shared"
 
-type Mode = "diff" | "sql" | "bug"
+type Mode = "diff" | "bug"
 
+// SQL review left the screen; its past analyses stay readable in the history.
 const IMPACT_TYPES: AnalysisType[] = ["code_diff", "sql_review", "bug_investigation", "impact_analysis"]
 
-const DIALECTS = [
-  { value: "generic", label: "Genérico" },
-  { value: "postgres", label: "PostgreSQL" },
-  { value: "mysql", label: "MySQL" },
-  { value: "sqlite", label: "SQLite" },
-  { value: "tsql", label: "SQL Server" },
-  { value: "oracle", label: "Oracle" },
-  { value: "bigquery", label: "BigQuery" },
-  { value: "snowflake", label: "Snowflake" },
-  { value: "duckdb", label: "DuckDB" },
-]
 
 const MODES: Record<Mode, { label: string; field: string; placeholder: string; rows: number; max: number }> = {
   diff: {
@@ -34,13 +23,6 @@ const MODES: Record<Mode, { label: string; field: string; placeholder: string; r
     placeholder: "diff --git a/src/billing.py b/src/billing.py\n…",
     rows: 12,
     max: 500000,
-  },
-  sql: {
-    label: "Consulta SQL",
-    field: "Pega la consulta",
-    placeholder: "UPDATE invoices SET total = 0 WHERE id = 1",
-    rows: 8,
-    max: 100000,
   },
   bug: {
     label: "Descripción de bug",
@@ -53,10 +35,11 @@ const MODES: Record<Mode, { label: string; field: string; placeholder: string; r
 
 function NewAnalysis({ project, onSessionLost }: ScreenProps) {
   const navigate = useNavigate()
-  const [mode, setMode] = useState<Mode>("diff")
+  // The tab lives in the URL, so going back from a result returns to the same one.
+  const [params, setParams] = useSearchParams()
+  const mode: Mode = params.get("modo") === "bug" ? "bug" : "diff"
+  const setMode = (value: Mode) => setParams(value === "diff" ? {} : { modo: value }, { replace: true })
   const [text, setText] = useState("")
-  const [dialect, setDialect] = useState("generic")
-  const [schema, setSchema] = useState("")
   const [busy, setBusy] = useState(false)
   const { error, setError, fail } = useErrors(onSessionLost)
   const current = MODES[mode]
@@ -65,12 +48,7 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
     event.preventDefault()
     setError(null)
     setBusy(true)
-    const started =
-      mode === "diff"
-        ? analyzeDiff(project.id, text)
-        : mode === "sql"
-          ? analyzeSql(project.id, text, dialect === "generic" ? "" : dialect, schema)
-          : investigateBug(project.id, text.trim())
+    const started = mode === "diff" ? analyzeDiff(project.id, text) : investigateBug(project.id, text.trim())
     started
       .then((analysis) => navigate(`/impacto/${analysis.id}`))
       .catch(fail)
@@ -85,10 +63,6 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
             <TabsTrigger value="diff">
               <FileDiff />
               Diff de Git
-            </TabsTrigger>
-            <TabsTrigger value="sql">
-              <Database />
-              Consulta SQL
             </TabsTrigger>
             <TabsTrigger value="bug">
               <Bug />
@@ -109,25 +83,6 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
             onChange={(event) => setText(event.target.value)}
           />
         </div>
-        {mode === "sql" && (
-          <div className="grid gap-3 md:grid-cols-[auto_1fr]">
-            <div className="grid content-start gap-1.5">
-              <Label htmlFor="sql-dialect">Dialecto</Label>
-              <Select id="sql-dialect" value={dialect} options={DIALECTS} onValueChange={setDialect} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="sql-schema">Esquema (opcional, CREATE TABLE …)</Label>
-              <Textarea
-                id="sql-schema"
-                rows={3}
-                maxLength={200000}
-                className="font-mono text-xs md:text-xs"
-                value={schema}
-                onChange={(event) => setSchema(event.target.value)}
-              />
-            </div>
-          </div>
-        )}
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={busy || !text.trim()}>
             <ScanSearch data-icon="inline-start" />
@@ -151,7 +106,7 @@ export function ImpactScreen(props: ScreenProps) {
     <>
       <PageHeader
         title="Impacto"
-        description="Antes de tocar nada: qué reglas, archivos y tests afecta un cambio, una consulta o un bug. Los hallazgos son hipótesis hasta que los revisas."
+        description="Antes de tocar nada: qué reglas, archivos y tests afecta un cambio o un bug. Los hallazgos son hipótesis hasta que los revisas."
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <div className="grid min-w-0 content-start gap-4">
