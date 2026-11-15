@@ -21,4 +21,8 @@ regexes = [
   '''ghp_abcdefghijklmnopqrstuvwxyz0123456789''',
   '''(sk-)(a1b2c3d4e5){4}''',
   '''AKIA(A){16}''',
+  # Fake provider keys of the remote model tests: a word and a counting sequence.
+  '''sk-(?:nube|remoto)-0123456789''',
+  '''sk-prueba-0123456789abcdef''',
+  '''sk-otra-clave-9876543210''',
 ]
