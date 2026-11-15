@@ -170,7 +170,7 @@ def create_app(
     app.include_router(build_knowledge_router(database, llm_service))
     app.include_router(build_privacy_router(config, database, runner, environment))
     app.include_router(build_ai_router(database, environment))
-    app.include_router(build_control_router())
+    app.include_router(build_control_router(config, sessions))
 
     if config.web_dist.is_dir():
         app.mount("/", InterfaceFiles(directory=config.web_dist, html=True), name="web")

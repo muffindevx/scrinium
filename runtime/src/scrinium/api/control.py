@@ -1,4 +1,4 @@
-"""Control routes for the command line: `scrinium stop` and `scrinium attach`.
+"""Control routes for the command line: `scrinium stop`, `attach` and `link`.
 
 LocalGuardMiddleware protects them: the instance-registry key and no Origin.
 """
@@ -12,7 +12,9 @@ from typing import Any, Final
 from fastapi import APIRouter, Request, status
 from fastapi.responses import StreamingResponse
 
+from scrinium.core.config import RuntimeConfig
 from scrinium.core.log_hub import HUB
+from scrinium.core.session import LAUNCH_TOKEN_TTL_SECONDS, LocalSessionManager
 
 # Short: when Scrinium stops, the thread waiting here finishes right away.
 _HEARTBEAT_SECONDS: Final = 2
@@ -20,8 +22,22 @@ _HEARTBEAT_SECONDS: Final = 2
 logger = logging.getLogger("scrinium.control")
 
 
-def build_control_router() -> APIRouter:
+def build_control_router(config: RuntimeConfig, sessions: LocalSessionManager) -> APIRouter:
     router = APIRouter()
+
+    @router.post("/control/launch-link")
+    def launch_link() -> dict[str, Any]:
+        """A new single-use entry link, like the one printed at start. No restart needed.
+
+        It replaces any link not used yet; redeeming it replaces the active session, as always:
+        there is only one. It needs what `stop` needs: the key in the private instance registry.
+        """
+        token = sessions.issue_launch_token()
+        logger.warning("Enlace de entrada nuevo pedido con scrinium link")
+        return {
+            "url": f"{config.allowed_origin}/auth/launch?token={token}",
+            "expires_in_seconds": int(LAUNCH_TOKEN_TTL_SECONDS),
+        }
 
     @router.post("/control/shutdown", status_code=status.HTTP_202_ACCEPTED)
     def shutdown(request: Request) -> dict[str, Any]:

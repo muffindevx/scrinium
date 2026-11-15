@@ -1,4 +1,4 @@
-.PHONY: setup build dist release start dev check format tools ollama models audit sbom secrets bench size
+.PHONY: setup build dist release start demo dev check format tools ollama models audit sbom secrets bench size
 
 # Alternative to llama.cpp (SCRINIUM_MODEL_PROVIDER=ollama). Scrinium's own Ollama: only on 127.0.0.1, with the models inside the project, in .models/.
 # It never touches the system Ollama. Leave it running in another terminal.
@@ -38,6 +38,13 @@ release: dist
 start:
 	uv run --project runtime scrinium start $(ARGS)
 
+# A Scrinium for trying changes, apart from the real data: its own data directory in
+# ~/.cache/scrinium-demo (tools and models linked, not copied), an example repository, the
+# project «Demo» and the profile «Usuario de pruebas». Opens the browser already inside.
+# Again while it runs: only a new entry link. Options: make demo ARGS="--port 47631 --no-browser"
+demo: build
+	uv run --project runtime python runtime/devtools/demo.py $(ARGS)
+
 # llama.cpp, gitleaks and the local models, in Scrinium's data directory.
 tools:
 	uv run --project runtime scrinium tools install $(ARGS)
@@ -46,8 +53,8 @@ dev:
 	pnpm --dir ui dev
 
 check:
-	cd runtime && uv run ruff format --check src tests benchmarks
-	cd runtime && uv run ruff check src tests benchmarks
+	cd runtime && uv run ruff format --check src tests benchmarks devtools
+	cd runtime && uv run ruff check src tests benchmarks devtools
 	cd runtime && uv run mypy
 	cd runtime && uv run pytest
 	pnpm --dir ui lint
@@ -55,7 +62,7 @@ check:
 	pnpm --dir ui test
 
 format:
-	cd runtime && uv run ruff format src tests benchmarks
+	cd runtime && uv run ruff format src tests benchmarks devtools
 
 # Fixed rule-extraction benchmark. With the real model and the resource
 # limit (Linux with systemd only); never with Scrinium open at the same time. Example:

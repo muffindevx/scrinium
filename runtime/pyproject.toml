@@ -82,7 +82,7 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "C4", "SIM", "RUF"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "devtools"]
 mypy_path = "src"
 # keyring does not annotate its constructors: allow calling them without relaxing the rest.
 untyped_calls_exclude = ["keyring"]

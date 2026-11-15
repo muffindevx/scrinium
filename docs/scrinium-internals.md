@@ -63,7 +63,7 @@ Everything the LLM produces is a **proposal** until a person reviews it.
 
 ![Scrinium on one machine: the browser talks to the API, background runners share one local model through LlmService, and data is kept in SQLite and LanceDB](diagrams/runtime-architecture.svg)
 
-Not drawn: `scrinium start` builds the app, starts llama-server and opens the link; `scrinium stop` and `attach` talk to `/control/*` with their own key. Models and tools live in `models/` and `tools/` in the data directory.
+Not drawn: `scrinium start` builds the app, starts llama-server and opens the link; `scrinium stop`, `attach` and `link` talk to `/control/*` with their own key. Models and tools live in `models/` and `tools/` in the data directory.
 
 Three details explain the rest of the system:
 
@@ -499,6 +499,8 @@ Other variables:
 - **`scrinium attach`,** in another terminal, streams requests, syncs, analyses and the llama.cpp output live.
 - **`--contenido`** adds prompts and answers, with secrets hidden.
 - **`scrinium stop`** stops every running Scrinium and its llama-server.
+- **`scrinium link`** asks the running Scrinium for a new single-use entry link (`POST /control/launch-link`), without restarting it.
+- **`make demo`** starts a separate instance in `~/.cache/scrinium-demo` with an example project, for trying changes away from the real data.
 
 ## Known traps
 

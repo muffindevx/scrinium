@@ -1,14 +1,17 @@
-"""`scrinium stop` and `scrinium attach`: they talk to running instances over /control/."""
+"""`scrinium stop`, `attach` and `link`: they talk to running instances over /control/."""
 
+import json
 import sys
 import urllib.error
 import urllib.request
+import webbrowser
 from pathlib import Path
 from typing import Final
 
 from scrinium.api.middleware import CONTROL_HEADER
 from scrinium.core import instances
 from scrinium.core.instances import Instance
+from scrinium.core.session import LAUNCH_TOKEN_TTL_SECONDS
 
 _STOP_TIMEOUT_SECONDS: Final = 30
 # Longer than the server heartbeat: if this passes with nothing, the connection is dead.
@@ -126,4 +129,44 @@ def attach(data_dir: Path, port: int | None, content: bool) -> int:
         print("Se perdio la conexion con Scrinium.", file=sys.stderr)
         return 1
     print("Scrinium se detuvo.")
+    return 0
+
+
+def request_launch_link(instance: Instance) -> str | None:
+    """A new single-use entry link from a running instance; None if it does not answer."""
+    try:
+        with _opener().open(
+            _request(instance, "/control/launch-link", "POST"), timeout=5
+        ) as response:
+            url = json.loads(response.read(4096)).get("url")
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    return url if isinstance(url, str) and url.startswith(instance.url) else None
+
+
+def link(data_dir: Path, port: int | None, open_browser: bool) -> int:
+    instance = _choose(data_dir, port)
+    if instance is None:
+        where = f" en el puerto {port}" if port is not None else ""
+        print(
+            f"No hay ningun Scrinium en marcha{where}. Arrancalo con: scrinium start",
+            file=sys.stderr,
+        )
+        return 1
+    url = request_launch_link(instance)
+    if url is None:
+        print(
+            f"Scrinium en el puerto {instance.port} no respondio. Si sigue colgado: scrinium stop",
+            file=sys.stderr,
+        )
+        return 1
+    minutes = int(LAUNCH_TOKEN_TTL_SECONDS // 60)
+    print(
+        f"Enlace de entrada de un solo uso (caduca en {minutes} minutos). Al usarlo, se cierra "
+        f"la sesion abierta en otra pestana o ventana:\n{url}",
+        flush=True,
+    )
+    # The link is briefly visible in the process list: see ADR-003.
+    if open_browser and not webbrowser.open(url):
+        print("No se pudo abrir el navegador. Usa el enlace de arriba.", file=sys.stderr)
     return 0

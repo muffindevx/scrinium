@@ -44,7 +44,7 @@ Scrinium is an HTTP server on the user's machine that can read their code and ru
 
 ## Consequences
 
-- After logging out or after the session expires, the user has to restart Scrinium to get in.
+- After logging out or after the session expires, the user gets back in without restarting: `scrinium link` asks the running instance for a new launch token over `/control/` (2026-11-15). It needs the same key as `scrinium stop`, from the private instance registry, so only the account that owns the data directory can ask. The new token replaces any unused one, and redeeming it replaces the active session.
 - The token is briefly visible to other accounts on the machine in the process list (`ps`). Whoever uses it first gets the session; the user's browser would then show "invalid link". The reference machine has a single human account.
 - The link can stay in browser history, but it no longer works after use.
 - The cookie has no `Secure` flag, and cookies ignore the port. See `docs/security/THREAT_MODEL.md`.

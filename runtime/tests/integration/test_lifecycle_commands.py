@@ -104,6 +104,41 @@ def test_control_routes_need_the_key_and_no_browser(tmp_path: Path) -> None:
     assert list((data_dir / "run").iterdir()) == []
 
 
+def test_link_gives_a_new_entry_without_restarting(tmp_path: Path) -> None:
+    data_dir = tmp_path / "data"
+    instance = _spawn(data_dir, "--no-browser")
+    base = f"http://127.0.0.1:{instance.port}"
+    try:
+        # Without the registry key, or from a browser, there is no link.
+        assert httpx.post(f"{base}/control/launch-link").status_code == 403
+        token = json.loads((data_dir / "run" / f"{instance.port}.json").read_text())[
+            "control_token"
+        ]
+        from_browser = httpx.post(
+            f"{base}/control/launch-link", headers={"X-Scrinium-Control": token, "Origin": base}
+        )
+        assert from_browser.status_code == 403
+
+        linked = _cli(data_dir, "link")
+        assert linked.returncode == 0, linked.stderr
+        url = linked.stdout.strip().splitlines()[-1]
+        assert url.startswith(f"{base}/auth/launch?token=")
+        # The new link replaces the one printed at start, which was never used.
+        assert httpx.get(instance.launch_url).status_code == 403
+        entered = httpx.get(url)
+        assert entered.status_code == 303
+        cookies = entered.cookies
+        assert httpx.get(f"{base}/api/v1/projects", cookies=cookies).status_code == 200
+        # Single use, and the same process kept running all along.
+        assert httpx.get(url).status_code == 403
+        assert instance.process.poll() is None
+    finally:
+        instance.process.terminate()
+        instance.process.wait(timeout=30)
+    nothing = _cli(data_dir, "link")
+    assert nothing.returncode == 1 and "scrinium start" in nothing.stderr
+
+
 def _fake_install(data_dir: Path) -> dict[str, Path]:
     tools = data_dir / "tools"
     models = data_dir / "models"

@@ -22,7 +22,7 @@ import uvicorn
 
 from scrinium import __version__
 from scrinium.application.analysis import extraction
-from scrinium.cli.control import attach, stop
+from scrinium.cli.control import attach, link, stop
 from scrinium.cli.doctor import doctor
 from scrinium.cli.maintenance import UNINSTALL_CONFIRMATION, clean, uninstall
 from scrinium.cli.tools import install_tools, show_tools
@@ -406,6 +406,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="Tambien preguntas, prompts y respuestas del modelo. Los secretos se ocultan.",
     )
+    link_parser = commands.add_parser(
+        "link", help="Pide al Scrinium en marcha un enlace de entrada nuevo, sin reiniciarlo."
+    )
+    link_parser.add_argument("--port", type=int, help="El de ese puerto, si hay varios.")
+    link_parser.add_argument(
+        "--abrir", action="store_true", help="Abrirlo tambien en el navegador."
+    )
     clean_parser = commands.add_parser(
         "clean", help="Borra restos y versiones viejas. No toca proyectos ni reglas."
     )
@@ -421,7 +428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.captureWarnings(True)
     if args.command == "tools":
         return tools(args)
-    if args.command in {"doctor", "stop", "attach", "clean", "uninstall"}:
+    if args.command in {"doctor", "stop", "attach", "link", "clean", "uninstall"}:
         configure_logging(verbose=False)
         if _is_root():
             return 1
@@ -432,6 +439,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return stop(data_dir)
         if args.command == "attach":
             return attach(data_dir, args.port, args.contenido)
+        if args.command == "link":
+            return link(data_dir, args.port, args.abrir)
         if args.command == "clean":
             return clean(data_dir, args.si)
         return uninstall(data_dir, args.si)
