@@ -106,6 +106,13 @@ def repo(tmp_path: Path) -> Path:
         "def test_total():\n    assert calculate_invoice_total([]) == 0\n",
     )
     write(root, "docs/reglas.md", "# Reglas\nEl total suma los importes.\n")
+    write(
+        root,
+        "src/discount.py",
+        "VIP_MINIMUM = 100\n\n\ndef discount(order):\n"
+        "    if order.total < VIP_MINIMUM:\n        raise ValueError('too small')\n"
+        "    return order.total * 0.1\n",
+    )
     commit_all(root)
     return root
 
@@ -306,6 +313,9 @@ def test_evidence_points_to_real_lines_of_this_project(ctx: Context) -> None:
         )
         assert record.locator["path"] == "src/billing.py"
         assert record.locator["commit"] == git(ctx.repo, "rev-parse", "HEAD")
+        # (source, path) identifies the file; lines without a decision carry no anchor.
+        assert record.locator["source_id"]
+        assert "anchor" not in record.locator
         assert len(record.excerpt_hash or "") == 64
         # Repeating the same citation does not duplicate it.
         again = _cite(session, project, version, VerificationMethod.DIRECT_REFERENCE)
@@ -683,3 +693,19 @@ def test_unsupported_claims_become_findings_and_go_with_the_question(ctx: Contex
         assert session.scalar(select(func.count()).select_from(Finding)) == 0
         kept = session.get(BusinessRuleVersion, rule_id)
         assert kept is not None and kept.created_from_analysis_id is None
+
+
+def test_a_citation_carries_the_anchor_of_its_decision(ctx: Context) -> None:
+    with ctx.session() as (session, project):
+        version = _new_rule(session, project)
+        record, _ = cite_source(
+            session, project,
+            entity_id=_entity_of(session, version), version_id=version.knowledge_entity_version_id,
+            revision_id=_revision_id(session, "src/discount.py"), start_line=5, end_line=6,
+            role=EvidenceRole.IMPLEMENTS, evidence_type=EvidenceType.CODE,
+            method=VerificationMethod.DIRECT_REFERENCE,
+        )  # fmt: skip
+        anchor = record.locator["anchor"]
+        assert (anchor["kind"], anchor["symbol"]) == ("guard", "discount")
+        assert (anchor["start_line"], anchor["end_line"]) == (5, 6)
+        assert len(anchor["shape"]) == len(anchor["value"]) == 32

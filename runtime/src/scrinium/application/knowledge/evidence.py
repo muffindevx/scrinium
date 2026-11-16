@@ -34,6 +34,12 @@ from scrinium.domain.enums import (
     VerificationMethod,
     VerificationStatus,
 )
+from scrinium.infrastructure.decisions import (
+    DECISIONS_VERSION,
+    Decision,
+    anchor_for,
+    parse_decisions,
+)
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
     BusinessRuleVersion,
@@ -96,6 +102,40 @@ _REVIEWED_FINDINGS: Final = frozenset(
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
+
+
+# Decisions per file content (path, content hash): a revision is parsed once, however many
+# rules cite it. Bounded, since a long extraction touches many files.
+_DECISIONS_CACHE: dict[tuple[str, str], list[Decision]] = {}
+_DECISIONS_CACHE_SIZE: Final = 256
+
+
+def _decisions(path: str, revision: SourceRevision) -> list[Decision]:
+    key = (path, revision.content_hash)
+    found = _DECISIONS_CACHE.get(key)
+    if found is None:
+        found = parse_decisions(path, revision.text_content or "")
+        if len(_DECISIONS_CACHE) >= _DECISIONS_CACHE_SIZE:
+            _DECISIONS_CACHE.pop(next(iter(_DECISIONS_CACHE)))
+        _DECISIONS_CACHE[key] = found
+    return found
+
+
+def anchor_of(path: str, revision: SourceRevision, start: int, end: int) -> dict[str, Any] | None:
+    """The decision node a citation of lines `start`-`end` rests on (ADR-011), as stored in the
+    evidence locator; None when the file has no decisions there or its language has no support."""
+    decision = anchor_for(_decisions(path, revision), start, end)
+    if decision is None:
+        return None
+    return {
+        "version": DECISIONS_VERSION,
+        "kind": decision.kind,
+        "symbol": decision.symbol,
+        "start_line": decision.start_line,
+        "end_line": decision.end_line,
+        "shape": decision.shape,
+        "value": decision.value,
+    }
 
 
 def _revision_in_project(
@@ -171,6 +211,20 @@ def cite_source(
         return duplicate, False
 
     excerpt = redact_tokens("\n".join(lines[start_line - 1 : end_line]))[:MAX_EXCERPT_CHARS]
+    path = revision.metadata_.get("path", "")
+    item = session.get(SourceItem, revision.source_item_id)
+    locator: dict[str, Any] = {
+        # (source, path) identifies a file: two sources may both have `src/utils.ts`.
+        "source_id": str(item.source_connection_id) if item is not None else None,
+        "path": path,
+        "commit": revision.metadata_.get("commit"),
+        "revision_key": revision.revision_key,
+        "start_line": start_line,
+        "end_line": end_line,
+    }
+    anchor = anchor_of(path, revision, start_line, end_line)
+    if anchor is not None:
+        locator["anchor"] = anchor
     record = EvidenceRecord(
         workspace_id=project.workspace_id,
         project_id=project.id,
@@ -179,13 +233,7 @@ def cite_source(
         source_revision_id=revision.id,
         evidence_role=role,
         evidence_type=evidence_type,
-        locator={
-            "path": revision.metadata_.get("path", ""),
-            "commit": revision.metadata_.get("commit"),
-            "revision_key": revision.revision_key,
-            "start_line": start_line,
-            "end_line": end_line,
-        },
+        locator=locator,
         excerpt=excerpt,
         excerpt_hash=_sha256(excerpt),
         verification_method=method,

@@ -1,6 +1,6 @@
 # ADR-011: A rule is identified by its anchors, not by its title
 
-**Status:** proposed, 2026-11-15. Needs the owner's acceptance before phase 1 (stable rule identity) starts.
+**Status:** accepted, 2026-11-16.
 
 ## The question
 
@@ -16,7 +16,7 @@ Every change of model, prompt or provider makes the first failure more likely, a
 ## What we decided
 
 1. **A rule's identity is its id, and it is matched by what it cites, not by what it is called.** Rules keep the UUID they already have (`KnowledgeEntity.id`); new ids are UUIDv7 so they sort by creation time. The title becomes an ordinary, editable field.
-2. **What a rule cites is a decision node with two fingerprints.** The first level of an intermediate representation (guards, thresholds, state changes, formulas, tables, schema constraints, validations) is extracted with tree-sitter queries for TypeScript/JavaScript and Python, and `sqlglot` for SQL; `candidates.py` remains the fallback for other languages. Each node gets:
+2. **What a rule cites is a decision node with two fingerprints.** The first level of an intermediate representation (guards, thresholds, state changes, formulas, tables, schema constraints, validations) is extracted from the tree-sitter syntax tree for TypeScript/JavaScript and Python (node matchers rather than `.scm` query files: the same result, and the predicates need code anyway), and with a block scanner over `sqlglot`'s tokenizer for SQL and PL/pgSQL, whose function bodies `sqlglot` does not parse; `candidates.py` remains the fallback for other languages. Each node gets:
    - a **shape** fingerprint, with literals replaced by their type: "the same decision";
    - a **value** fingerprint, with literals and resolved constants: "the same decision with the same numbers".
 3. **Each citation carries an anchor:** source, path, qualified symbol, node and both fingerprints.
@@ -69,7 +69,7 @@ Each old node ends as: the same rule (with drift if its value changed), moved, o
 
 **Why two fingerprints?** One question is "is this still the same decision?" and another is "did its numbers change?". With one hash, changing a threshold from 40 to 50 would look like a deleted rule and a new one, and the verification would be lost exactly when it matters most.
 
-**Why tree-sitter queries and not the LLM?** Identity must be deterministic and free: it runs on every sync and, in phase 2, in CI. Nothing on that path may call a model.
+**Why a syntax tree and not the LLM?** Identity must be deterministic and free: it runs on every sync and, in phase 2, in CI. Nothing on that path may call a model.
 
 **Why does the acceptance bar say 95 % of reference rules must have a node?** Below that, too many rules fall back to weaker anchors and the guarantee becomes a hope. It is measured on the extended reference set (phase 0.5).
 

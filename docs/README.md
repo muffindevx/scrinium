@@ -44,7 +44,7 @@ Architecture decision records: what was decided, how, why, and the alternatives 
 | [ADR-008](decisions/ADR-008-sql-parser.md) | sqlglot to analyze SQL as text |
 | [ADR-009](decisions/ADR-009-ui-routing.md) | react-router for the UI screens |
 | [ADR-010](decisions/ADR-010-remote-model-providers.md) | Remote model providers, by project and with consent |
-| [ADR-011](decisions/ADR-011-rule-identity.md) | A rule is identified by its anchors, not its title (proposed) |
+| [ADR-011](decisions/ADR-011-rule-identity.md) | A rule is identified by its anchors, not its title |
 | [ADR-012](decisions/ADR-012-rules-as-code.md) | Verified rules live in the repository, one file per rule (proposed) |
 | [ADR-013](decisions/ADR-013-own-provider-by-default.md) | Your own provider is the recommended start (proposed) |
 | [ADR-014](decisions/ADR-014-ticket-connectors.md) | Ticket connectors, read-only, Linear first (proposed) |
