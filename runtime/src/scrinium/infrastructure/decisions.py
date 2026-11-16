@@ -55,6 +55,8 @@ class Decision:
     symbol: str | None
     shape: str
     value: str
+    # MinHash of the shape's 3-token shingles: finds the same decision after a real edit.
+    sketch: str = ""
 
 
 def _fingerprint(kind: str, canonical: str) -> str:
@@ -181,13 +183,52 @@ class _Canon:
         return f"({node.type} {' '.join(parts)})"
 
 
-def _fingerprints(kind: str, nodes: list[Node], constants: dict[str, str]) -> tuple[str, str]:
-    shape = _Canon(keep_values=False, constants=constants)
-    value = _Canon(keep_values=True, constants=constants)
-    return (
-        _fingerprint(kind, " ".join(shape(node) for node in nodes)),
-        _fingerprint(kind, " ".join(value(node) for node in nodes)),
+SKETCH_SIZE: Final = 32
+_SHINGLE: Final = 3
+_PRIME: Final = (1 << 61) - 1
+# Fixed coefficients of the MinHash permutations: the same sketch on every machine and run.
+_PERMUTATIONS: Final = tuple(
+    (
+        int.from_bytes(hashlib.blake2b(f"a{i}".encode(), digest_size=8).digest()) % _PRIME | 1,
+        int.from_bytes(hashlib.blake2b(f"b{i}".encode(), digest_size=8).digest()) % _PRIME,
     )
+    for i in range(SKETCH_SIZE)
+)
+_TOKEN: Final = re.compile(r"[()]|[^\s()]+")
+
+
+def sketch_of(canonical: str) -> str:
+    """MinHash of the 3-token shingles of a canonical form, as hex (8 digits per value)."""
+    tokens = _TOKEN.findall(canonical)
+    shingles = {
+        " ".join(tokens[i : i + _SHINGLE]) for i in range(max(1, len(tokens) - _SHINGLE + 1))
+    }
+    hashed = [
+        int.from_bytes(hashlib.blake2b(shingle.encode(), digest_size=8).digest())
+        for shingle in shingles
+    ]
+    values = (min((a * h + b) % _PRIME for h in hashed) & 0xFFFFFFFF for a, b in _PERMUTATIONS)
+    return "".join(f"{value:08x}" for value in values)
+
+
+def similarity(first: str, second: str) -> float:
+    """Estimated Jaccard similarity of two sketches; 0 if either is missing."""
+    if not first or len(first) != len(second):
+        return 0.0
+    pairs = zip(range(0, len(first), 8), range(0, len(second), 8), strict=True)
+    same = sum(first[i : i + 8] == second[j : j + 8] for i, j in pairs)
+    return same / (len(first) // 8)
+
+
+def _fingerprints(kind: str, nodes: list[Node], constants: dict[str, str]) -> tuple[str, str, str]:
+    canon = _Canon(keep_values=False, constants=constants)
+    parts = [canon(node) for node in nodes]
+    shape = " ".join(parts)
+    value = " ".join(_Canon(keep_values=True, constants=constants)(node) for node in nodes)
+    # A guard's sketch is its condition: the exit (`raise UserError(...)`) is alike everywhere
+    # and would make different guards look the same.
+    sketched = parts[0] if kind == Kind.GUARD else shape
+    return _fingerprint(kind, shape), _fingerprint(kind, value), sketch_of(sketched)
 
 
 # --- Python, TypeScript and JavaScript --------------------------------------------------------
@@ -577,9 +618,10 @@ def _parse_code(path: str, text: str, language: str) -> list[Decision]:
     symbols = [(s.qualified_name, s.start_line, s.end_line) for s in parse_symbols(path, text)]
     found: list[Decision] = []
     for kind, nodes, start, end in _code_nodes(root):
-        shape, value = _fingerprints(kind, nodes, constants)
+        shape, value, sketch = _fingerprints(kind, nodes, constants)
         first, last = start + 1, end + 1
-        found.append(Decision(kind, first, last, _innermost(symbols, first, last), shape, value))
+        symbol = _innermost(symbols, first, last)
+        found.append(Decision(kind, first, last, symbol, shape, value, sketch))
     return found
 
 
@@ -642,14 +684,16 @@ def _parse_sql(text: str) -> list[Decision]:
             if not closes.search(lines[end]):
                 continue
             fragment = "\n".join(lines[index : end + 1])
+            shape = _sql_canonical(fragment, keep_values=False)
             found.append(
                 Decision(
                     kind,
                     index + 1,
                     end + 1,
                     None,
-                    _fingerprint(kind, _sql_canonical(fragment, keep_values=False)),
+                    _fingerprint(kind, shape),
                     _fingerprint(kind, _sql_canonical(fragment, keep_values=True)),
+                    sketch_of(shape),
                 )
             )
             break

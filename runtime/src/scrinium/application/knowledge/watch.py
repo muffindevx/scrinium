@@ -7,6 +7,12 @@ For each rule it looks at the latest citation in each file and the functions it 
 - another hash: the rule is flagged "Review: code changed" and the new function goes to the
   model with the rule, so it says whether it holds, is adjusted or no longer holds;
 - the function or the file is gone: "Review: code removed".
+
+A citation with an anchor (ADR-011) is followed by its decision instead of its function
+(`reanchor`): the same decision with the same value, wherever it moved, keeps the rule as it is
+and is cited again at its new lines; another value flags it; a decision found nowhere flags it as
+changed while its function exists, and as removed otherwise. A file renamed without edits is
+found by its content.
 """
 
 import uuid
@@ -16,14 +22,20 @@ from typing import Final
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from scrinium.application.knowledge.anchoring import Match, OldAnchor, reanchor
+from scrinium.application.knowledge.common import KnowledgeError
+from scrinium.application.knowledge.evidence import cite_source, decisions_of
 from scrinium.domain.enums import EntityLifecycle, EntityType, ItemLifecycle
 from scrinium.infrastructure.code_structure import NESTED
+from scrinium.infrastructure.decisions import Decision
 from scrinium.infrastructure.sqlite.models import (
     BusinessRuleVersion,
     CodeSymbol,
     EvidenceRecord,
     KnowledgeEntity,
     KnowledgeEntityVersion,
+    Project,
+    SourceConnection,
     SourceItem,
     SourceRevision,
 )
@@ -80,6 +92,131 @@ def _symbols(session: Session, revision_id: uuid.UUID) -> list[CodeSymbol]:
     )
 
 
+@dataclass
+class _Followed:
+    """Where each anchored citation's decision is now, for one pass of the watch."""
+
+    anchors: dict[uuid.UUID, OldAnchor] = field(default_factory=dict)
+    matches: dict[uuid.UUID, Match] = field(default_factory=dict)
+    revisions: dict[str, SourceRevision] = field(default_factory=dict)
+    # (evidence, where its decision is now) for decisions that did not change: cited again.
+    recite: list[tuple[EvidenceRecord, Match]] = field(default_factory=list)
+
+
+def _current_files(session: Session, project_id: uuid.UUID) -> dict[str, SourceRevision]:
+    """Path to current revision of every active item of the project."""
+    rows = session.execute(
+        select(SourceRevision)
+        .join(SourceItem, SourceItem.current_revision_id == SourceRevision.id)
+        .join(SourceConnection, SourceConnection.id == SourceItem.source_connection_id)
+        .where(
+            SourceConnection.project_id == project_id,
+            SourceItem.lifecycle_status == ItemLifecycle.ACTIVE,
+        )
+    ).scalars()
+    return {str(revision.metadata_.get("path", "")): revision for revision in rows}
+
+
+def _follow(session: Session, project_id: uuid.UUID, citations: list[EvidenceRecord]) -> _Followed:
+    followed = _Followed()
+    current = _current_files(session, project_id)
+    cited_hashes: dict[str, str] = {}
+    for evidence in citations:
+        anchor = OldAnchor.from_locator(evidence.id, evidence.locator)
+        cited = session.get(SourceRevision, evidence.source_revision_id)
+        if anchor is None or cited is None:
+            continue
+        now = current.get(anchor.path)
+        if now is not None and now.id == cited.id:
+            continue  # The cited code is the current one: nothing to follow.
+        followed.anchors[evidence.id] = anchor
+        cited_hashes[anchor.path] = cited.content_hash
+    if not followed.anchors:
+        return followed
+    # A file gone from its path whose exact content is elsewhere was renamed.
+    by_hash = {revision.content_hash: path for path, revision in current.items()}
+    renames = {
+        path: by_hash[content]
+        for path, content in cited_hashes.items()
+        if path not in current and content in by_hash
+    }
+    near = {renames.get(path, path) for path in cited_hashes}
+    decisions: dict[str, list[Decision]] = {
+        path: decisions_of(path, current[path]) for path in near if path in current
+    }
+    anchors = list(followed.anchors.values())
+    followed.matches = {
+        key: match
+        for key, match in reanchor(anchors, decisions, renames).items()
+        if isinstance(key, uuid.UUID)
+    }
+    lost = [anchor for anchor in anchors if anchor.key not in followed.matches]
+    if lost:
+        # Moved to another file: only then is the rest of the project parsed.
+        everywhere = {path: decisions_of(path, revision) for path, revision in current.items()}
+        for key, match in reanchor(lost, everywhere, renames).items():
+            if isinstance(key, uuid.UUID):
+                followed.matches[key] = match
+    followed.revisions = current
+    return followed
+
+
+def _compare_anchored(
+    session: Session, evidence: EvidenceRecord, rule: WatchedRule, followed: _Followed
+) -> bool:
+    anchor = followed.anchors[evidence.id]
+    match = followed.matches.get(evidence.id)
+    if match is not None:
+        revision = followed.revisions[match.path]
+        if match.value_changed(anchor):
+            decision = match.decision
+            rule.changed.append(
+                ChangedCode(
+                    revision.id, match.path, decision.symbol or "", decision.start_line,
+                    decision.end_line,
+                )
+            )  # fmt: skip
+        else:
+            followed.recite.append((evidence, match))
+        return True
+    # The decision is nowhere: if its function is still there, it was rewritten.
+    still = followed.revisions.get(anchor.path)
+    if still is None or anchor.symbol is None:
+        return False
+    holder = next(
+        (s for s in _symbols(session, still.id) if s.qualified_name == anchor.symbol), None
+    )
+    if holder is None:
+        return False
+    rule.changed.append(
+        ChangedCode(
+            still.id, anchor.path, holder.qualified_name, holder.start_line, holder.end_line
+        )
+    )
+    return True
+
+
+def _recite(session: Session, project_id: uuid.UUID, followed: _Followed) -> None:
+    """Cites again, at their new lines, the decisions that moved without changing."""
+    project = session.get(Project, project_id)
+    if project is None:
+        return
+    for evidence, match in followed.recite:
+        if evidence.target_entity_id is None:
+            continue
+        try:
+            cite_source(
+                session, project, entity_id=evidence.target_entity_id,
+                version_id=evidence.target_version_id,
+                revision_id=followed.revisions[match.path].id,
+                start_line=match.decision.start_line, end_line=match.decision.end_line,
+                role=evidence.evidence_role, evidence_type=evidence.evidence_type,
+                method=evidence.verification_method,
+            )  # fmt: skip
+        except KnowledgeError:
+            continue
+
+
 def _compare(session: Session, evidence: EvidenceRecord, rule: WatchedRule) -> bool:
     """Compares a citation with the current code. True if the cited code still exists."""
     cited = session.get(SourceRevision, evidence.source_revision_id)
@@ -124,6 +261,7 @@ def detect_changes(session: Session, project_id: uuid.UUID) -> list[WatchedRule]
     """Flags for review the rules whose code changed or disappeared. Returns all those
     with changed code (for the model) or removed code."""
     watched: list[WatchedRule] = []
+    rules: list[tuple[KnowledgeEntity, WatchedRule, list[EvidenceRecord]]] = []
     entities = session.scalars(
         select(KnowledgeEntity).where(
             KnowledgeEntity.project_id == project_id,
@@ -147,7 +285,17 @@ def detect_changes(session: Session, project_id: uuid.UUID) -> list[WatchedRule]
         if content is None or not citations:
             continue
         rule = WatchedRule(entity.id, version.id, content.title, content.statement)
-        still_there = [_compare(session, evidence, rule) for evidence in citations]
+        rules.append((entity, rule, citations))
+    followed = _follow(
+        session, project_id, [evidence for _, _, citations in rules for evidence in citations]
+    )
+    for entity, rule, citations in rules:
+        still_there = [
+            _compare_anchored(session, evidence, rule, followed)
+            if evidence.id in followed.anchors
+            else _compare(session, evidence, rule)
+            for evidence in citations
+        ]
         rule.removed = not any(still_there)
         if rule.changed:
             entity.review_reason = REVIEW_CODE_CHANGED
@@ -158,5 +306,6 @@ def detect_changes(session: Session, project_id: uuid.UUID) -> list[WatchedRule]
         elif entity.review_reason in WATCH_REASONS:
             # The code went back to what it was (or was re-anchored): nothing left to review.
             entity.review_reason = None
+    _recite(session, project_id, followed)
     session.flush()
     return watched

@@ -57,6 +57,7 @@ from scrinium.application.knowledge.entities import (
     title_slug,
 )
 from scrinium.application.knowledge.evidence import cite_source
+from scrinium.application.knowledge.identity import RuleIndex
 from scrinium.application.knowledge.tickets import label_rules
 from scrinium.application.knowledge.watch import (
     REVIEW_CODE_CONTRADICTS,
@@ -76,6 +77,7 @@ from scrinium.domain.enums import (
     RuleCategory,
     SyncStatus,
     VerificationMethod,
+    VerificationStatus,
     VersionOrigin,
 )
 from scrinium.domain.paths import is_test_path
@@ -666,6 +668,58 @@ def answered_by(run: AnalysisRun, model_id: str | None) -> tuple[str | None, str
     return model_id.split(":", 1)[0], model_id
 
 
+def _free_key(session: Session, project: Project, key: str) -> str:
+    """The title's key, with a suffix when another rule already uses it: two decisions that a
+    model titled alike are two rules."""
+    taken = session.scalar(
+        select(KnowledgeEntity.id).where(
+            KnowledgeEntity.project_id == project.id,
+            KnowledgeEntity.entity_type == EntityType.BUSINESS_RULE,
+            KnowledgeEntity.canonical_key == key,
+        )
+    )
+    return key if taken is None else f"{key[:190]}-{uuid.uuid4().hex[:8]}"
+
+
+# Versions a person decided on: a later model proposal never adds a version over them.
+_REVIEWED_STATUSES: Final = frozenset(
+    {
+        VerificationStatus.HUMAN_VERIFIED,
+        VerificationStatus.SOURCE_SUPPORTED,
+        VerificationStatus.TEST_SUPPORTED,
+        VerificationStatus.REJECTED,
+    }
+)
+
+
+def _reviewed_version(session: Session, entity_id: uuid.UUID) -> KnowledgeEntityVersion | None:
+    latest = session.scalars(
+        select(KnowledgeEntityVersion)
+        .where(KnowledgeEntityVersion.knowledge_entity_id == entity_id)
+        .order_by(KnowledgeEntityVersion.version_number.desc())
+        .limit(1)
+    ).first()
+    return (
+        latest if latest is not None and latest.verification_status in _REVIEWED_STATUSES else None
+    )
+
+
+def _cite_rule(
+    session: Session,
+    project: Project,
+    entity_id: uuid.UUID,
+    version_id: uuid.UUID,
+    citations: list[tuple[Fragment, int, int]],
+) -> None:
+    for fragment, start, end in citations:
+        cite_source(
+            session, project, entity_id=entity_id, revision_id=fragment.revision_id,
+            start_line=start, end_line=end, role=EvidenceRole.SUPPORTS,
+            evidence_type=evidence_type_for(fragment.path),
+            method=VerificationMethod.LLM_PROPOSAL, version_id=version_id,
+        )  # fmt: skip
+
+
 def store_rules(
     session: Session,
     project: Project,
@@ -680,15 +734,14 @@ def store_rules(
         extractor_version=EXTRACTOR_VERSION, analysis_run_id=run.id,
     )  # fmt: skip
     outcome: dict[str, list[str]] = {"created": [], "updated": [], "unchanged": []}
+    # Identity by what the rule cites, never by its title (ADR-011).
+    index = RuleIndex.load(session, project.id)
     for rule in rules:
-        key = rule_key(rule.content.title)
-        entity_id = session.scalar(
-            select(KnowledgeEntity.id).where(
-                KnowledgeEntity.project_id == project.id,
-                KnowledgeEntity.entity_type == EntityType.BUSINESS_RULE,
-                KnowledgeEntity.canonical_key == key,
-            )
+        fragment, start, end = rule.citations[0]
+        entity_id = index.find(
+            session.get_one(SourceRevision, fragment.revision_id), fragment.path, start, end
         )
+        key = _free_key(session, project, rule_key(rule.content.title))
         try:
             if entity_id is None:
                 version = create_business_rule(
@@ -697,6 +750,13 @@ def store_rules(
                 )  # fmt: skip
                 outcome["created"].append(str(version.knowledge_entity_version_id))
             else:
+                reviewed = _reviewed_version(session, entity_id)
+                if reviewed is not None:
+                    # A person's judgment stands: the model's wording does not replace it.
+                    outcome["unchanged"].append(str(reviewed.id))
+                    if reviewed.verification_status is not VerificationStatus.REJECTED:
+                        _cite_rule(session, project, entity_id, reviewed.id, rule.citations)
+                    continue
                 version, created = add_rule_version(
                     session, project, entity_id, rule.content, provenance
                 )
@@ -706,14 +766,9 @@ def store_rules(
             target = session.get_one(
                 KnowledgeEntityVersion, version.knowledge_entity_version_id
             ).knowledge_entity_id
-            for fragment, start, end in rule.citations:
-                cite_source(
-                    session, project, entity_id=target, revision_id=fragment.revision_id,
-                    start_line=start, end_line=end, role=EvidenceRole.SUPPORTS,
-                    evidence_type=evidence_type_for(fragment.path),
-                    method=VerificationMethod.LLM_PROPOSAL,
-                    version_id=version.knowledge_entity_version_id,
-                )  # fmt: skip
+            _cite_rule(
+                session, project, target, version.knowledge_entity_version_id, rule.citations
+            )
         except KnowledgeError as error:
             logger.warning("rule_skipped run=%s code=%s", run.id, error.code)
     return outcome

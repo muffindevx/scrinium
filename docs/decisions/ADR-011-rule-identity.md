@@ -46,7 +46,7 @@ For each changed file, with old nodes O and new nodes N:
 | Exact | (path, qualified symbol, shape) | Hash lookup |
 | Same file | shape among the file's nodes | Hash lookup |
 | Moved | shape across the project, only if that shape is rare | Hash lookup |
-| Fuzzy | MinHash over 3-token shingles, LSH with 16 bands of 8 rows (Jaccard ≥ 0.8) | Sublinear |
+| Fuzzy | MinHash (32 values) over 3-token shingles of the shape (of the condition, for a guard). In the same function: similarity ≥ 0.5, or ≥ 0.25 when it is the only free decision of that kind left; without a function: ≥ 0.8. LSH banding when the candidate sets grow | Small sets per file |
 | Assignment | Greedy by score, or Hungarian when \|O\|·\|N\| < 10⁴ | Small sets only |
 
 Each old node ends as: the same rule (with drift if its value changed), moved, or retired.

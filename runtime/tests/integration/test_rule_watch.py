@@ -1,6 +1,7 @@
 """Rule watch: the code backing a rule changes, is adjusted or disappears."""
 
 import json
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -150,3 +151,60 @@ def test_changes_are_flagged_even_without_the_model(api: Api) -> None:
     _change(api, COMMISSION.replace("> 100", "> 300"))
     assert api.runtime.chat.received == []
     assert _rule(api)["review_reason"] == "code_changed"
+
+
+def _verify(api: Api) -> None:
+    client = api.runtime.client
+    client.put("/api/v1/profile", json={"display_name": "Ana"}, headers=api.headers)
+    version_id = _rule(api)["detail"]["versions"][0]["id"]
+    response = client.post(
+        f"/api/v1/knowledge-versions/{version_id}/verification",
+        json={"status": "human_verified"},
+        headers=api.headers,
+    )
+    assert response.status_code == 200, response.text
+
+
+def _latest_anchor(api: Api) -> dict[str, Any]:
+    evidence = _rule(api)["detail"]["versions"][0]["evidence"]
+    with api.runtime.database.session() as session:
+        from scrinium.infrastructure.sqlite.models import EvidenceRecord
+
+        records = [session.get(EvidenceRecord, uuid.UUID(e["id"])) for e in evidence]
+        latest = max((r for r in records if r is not None), key=lambda r: r.created_at)
+        return {"path": latest.locator["path"], **latest.locator["anchor"]}
+
+
+def test_a_renamed_function_keeps_its_verified_rule(api: Api) -> None:
+    # ADR-011: identity by anchor. Renaming the function and its local, and a model that
+    # titles the rule differently, leave one rule, still verified.
+    _verify(api)
+    api.runtime.chat.reply = json.dumps(
+        {"d": [{"i": "D1", "r": {**_commission_rule(), "t": "Comision de ventas grandes"}}]}
+    )
+    _change(
+        api, COMMISSION.replace("comision(total)", "commission(amount)").replace("total", "amount")
+    )
+    # The renamed function went to the model as new code, and it proposed the rule again.
+    assert any("funcion: commission" in batch[1].content for batch in api.runtime.chat.received)
+    rules = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/rules").json()["rules"]
+    assert [r["name"] for r in rules if "omision" in r["name"]] == ["Comision por venta"]
+    rule = _rule(api)
+    assert rule["review_reason"] is None
+    assert rule["detail"]["versions"][0]["verification_status"] == "human_verified"
+    assert _latest_anchor(api)["symbol"] == "commission"
+
+
+def test_a_moved_decision_follows_its_rule(api: Api) -> None:
+    api.runtime.chat.reply = _reply()
+    write(api.repo, "src/comisiones.py", COMMISSION)
+    _change(api, "def otra_cosa():\n    return 1\n")
+    assert _rule(api)["review_reason"] is None
+    assert _latest_anchor(api)["path"] == "src/comisiones.py"
+
+
+def test_a_change_beside_the_decision_does_not_flag_the_rule(api: Api) -> None:
+    api.runtime.chat.reply = _reply()
+    _change(api, COMMISSION.replace("    return 0\n", "    nota = 'sin comision'\n    return 0\n"))
+    assert _rule(api)["review_reason"] is None
+    assert all("[R1]" not in batch[1].content for batch in api.runtime.chat.received)

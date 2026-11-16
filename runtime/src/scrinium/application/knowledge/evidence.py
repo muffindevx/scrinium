@@ -110,7 +110,7 @@ _DECISIONS_CACHE: dict[tuple[str, str], list[Decision]] = {}
 _DECISIONS_CACHE_SIZE: Final = 256
 
 
-def _decisions(path: str, revision: SourceRevision) -> list[Decision]:
+def decisions_of(path: str, revision: SourceRevision) -> list[Decision]:
     key = (path, revision.content_hash)
     found = _DECISIONS_CACHE.get(key)
     if found is None:
@@ -124,7 +124,7 @@ def _decisions(path: str, revision: SourceRevision) -> list[Decision]:
 def anchor_of(path: str, revision: SourceRevision, start: int, end: int) -> dict[str, Any] | None:
     """The decision node a citation of lines `start`-`end` rests on (ADR-011), as stored in the
     evidence locator; None when the file has no decisions there or its language has no support."""
-    decision = anchor_for(_decisions(path, revision), start, end)
+    decision = anchor_for(decisions_of(path, revision), start, end)
     if decision is None:
         return None
     return {
@@ -135,6 +135,7 @@ def anchor_of(path: str, revision: SourceRevision, start: int, end: int) -> dict
         "end_line": decision.end_line,
         "shape": decision.shape,
         "value": decision.value,
+        "sketch": decision.sketch,
     }
 
 
