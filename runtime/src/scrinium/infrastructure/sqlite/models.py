@@ -378,7 +378,8 @@ class SourceItem(Timestamps, Base):
             "source_revisions.id",
             use_alter=True,
             name="fk_source_items_current_revision_id_source_revisions",
-        )
+        ),
+        index=True,
     )
 
 

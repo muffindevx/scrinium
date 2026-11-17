@@ -100,6 +100,13 @@ def list_rules(
             | func.lower(KnowledgeEntity.canonical_key).like(pattern)
             # A ticket key finds the rules it labels (IMP-2).
             | func.lower(cast(KnowledgeEntity.metadata_["tickets"], String)).like(pattern)
+            # A file path finds the rules cited in it (the ⌘K palette opens files this way).
+            | select(EvidenceRecord.id)
+            .where(
+                EvidenceRecord.target_entity_id == KnowledgeEntity.id,
+                func.lower(cast(EvidenceRecord.locator["path"], String)).like(pattern),
+            )
+            .exists()
         )
     rules = []
     for entity, rule, evidence in session.execute(query):

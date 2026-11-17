@@ -1,6 +1,15 @@
 // English for the console (phase 5.5). Key: the Spanish text in t(); a key missing here shows
 // in Spanish. `make i18n` lists the keys without a translation.
 export const EN: Record<string, string> = {
+  "Cerrar": "Close",
+  "Funciones": "Functions",
+  "Buscar": "Search",
+  "Buscar reglas, funciones, archivos o tickets": "Search rules, functions, files or tickets",
+  "Reglas, funciones, archivos o tickets…": "Rules, functions, files or tickets…",
+  "Nada con ese nombre.": "Nothing by that name.",
+  "Resultados": "Results",
+  "Buscar (Ctrl+K)": "Search (Ctrl+K)",
+  "Buscar…": "Search…",
   "También el idioma en que el modelo escribe las reglas nuevas.": "Also the language the model writes new rules in.",
   " ({0} de caché)": " ({0} cached)",
   " ({0} en caché)": " ({0} cached)",

@@ -408,6 +408,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     tools_commands.add_parser("status", help="Muestra que esta instalado y donde.")
 
     commands.add_parser("doctor", help="Comprueba el equipo y dice como arreglar lo que falte.")
+    mcp_parser = commands.add_parser(
+        "mcp", help="Servidor MCP (stdio) con las reglas de este repositorio para agentes."
+    )
+    mcp_parser.add_argument(
+        "--project", help="El proyecto de Scrinium (por defecto, el de --root)."
+    )
+    mcp_parser.add_argument(
+        "--root", type=Path, default=Path(), help="El repositorio (por defecto, esta carpeta)."
+    )
     demo_parser = commands.add_parser(
         "demo",
         help="Demo de 5 minutos: reglas verificadas, un cambio que rompe una y el aviso del check.",
@@ -453,6 +462,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1 if _is_root() else run_rule_command(args)
     if args.command == "tools":
         return tools(args)
+    if args.command == "mcp":
+        from scrinium.cli.mcp import main as mcp
+
+        return mcp(args.project, args.root)
     if args.command == "demo":
         from scrinium.cli.demo import demo
 

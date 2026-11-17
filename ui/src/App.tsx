@@ -42,6 +42,7 @@ import {
   logout,
 } from "@/lib/api"
 import { useFolderDrop } from "@/lib/folder-drop"
+import { CommandPalette } from "@/screens/CommandPalette"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
 import { InboxScreen } from "@/screens/InboxScreen"
@@ -318,12 +319,22 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
           )}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-muted-foreground max-sm:hidden"
+            title={t("Buscar (Ctrl+K)")}
+            onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }))}
+          >
+            {t("Buscar…")} <kbd className="text-xs">⌘K</kbd>
+          </Button>
           <PrivacyPill ai={projectAi} isolated={setup?.isolated ?? data.status.profile === "isolated"} />
           <Button variant="ghost" size="icon-sm" aria-label={t("Cerrar sesión")} title={t("Cerrar sesión")} onClick={endSession}>
             <LogOut />
           </Button>
         </div>
       </header>
+      <CommandPalette projectId={project?.id ?? null} />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto">

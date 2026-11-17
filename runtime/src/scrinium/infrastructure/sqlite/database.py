@@ -81,6 +81,35 @@ class Database:
         database.migrate()
         return database
 
+    @classmethod
+    def open_read_only(cls, data_dir: Path) -> "Database":
+        """The database as it is, for readers outside the running Scrinium (`scrinium mcp`):
+        SQLite refuses every write, and nothing is migrated. Raises FileNotFoundError if there
+        is none yet and `IncompatibleDatabaseError` if its schema is not this version's."""
+        path = data_dir / DATABASE_FILENAME
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        engine = create_engine(
+            f"sqlite:///file:{path}?mode=ro&uri=true",
+            connect_args={"check_same_thread": False, "uri": True},
+        )
+
+        def configure(dbapi_connection: sqlite3.Connection, _record: Any) -> None:
+            cursor = dbapi_connection.cursor()
+            try:
+                cursor.execute("PRAGMA busy_timeout = 5000")
+                cursor.execute("PRAGMA query_only = ON")
+            finally:
+                cursor.close()
+
+        event.listen(engine, "connect", configure)
+        heads = set(ScriptDirectory.from_config(alembic_config()).get_heads())
+        with engine.connect() as connection:
+            current = set(MigrationContext.configure(connection).get_current_heads())
+        if current != heads:
+            raise IncompatibleDatabaseError
+        return cls(engine)
+
     def migrate(self) -> None:
         config = alembic_config()
         known = {script.revision for script in ScriptDirectory.from_config(config).walk_revisions()}

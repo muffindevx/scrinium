@@ -2,6 +2,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { X } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "cn"
+import { t } from "@/lib/i18n"
 
 /** A small modal for a short form: title, optional explanation, content and its own buttons.
  * Escape and the close button dismiss it; focus stays inside while it is open. */
@@ -40,7 +41,7 @@ function Dialog({
               )}
             </div>
             <DialogPrimitive.Close
-              aria-label="Cerrar"
+              aria-label={t("Cerrar")}
               className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
             >
               <X className="size-4" />

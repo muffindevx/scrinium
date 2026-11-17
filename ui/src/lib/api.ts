@@ -833,6 +833,16 @@ export const getEngine = () => getJson<EngineInfo>("/api/v1/system/engine")
 
 export const getAiSetup = () => getJson<AiSetup>("/api/v1/ai-setup")
 
+/** ⌘K (phase 6.2): rules, functions, files and tickets by name. */
+export interface Palette {
+  rules: { id: string; title: string }[]
+  functions: { name: string; qualified_name: string; kind: string; path: string; line: number }[]
+  files: { path: string }[]
+  tickets: { ticket: string; rule_id: string; rule: string }[]
+}
+export const getPalette = (projectId: string, query: string) =>
+  getJson<Palette>(`/api/v1/projects/${projectId}/palette?${new URLSearchParams({ q: query })}`)
+
 /** The workspace's language: the console's and the models' (phase 5.5). */
 export const getLanguage = () => getJson<{ language: "es" | "en" }>("/api/v1/workspace/language")
 export async function setLanguage(language: "es" | "en"): Promise<{ language: "es" | "en" }> {

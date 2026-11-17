@@ -127,6 +127,23 @@ For the window on Linux, install `"scrinium[window] @ file://$PWD/dist/scrinium-
   - `--explain` asks the running Scrinium for one sentence per changed rule ("the threshold goes from 100 to 150"), with the model of the project's "Explicación del check" task. It is only a comment: the exit code does not change.
 - **Uninstalling.** `scrinium uninstall` stops Scrinium and deletes everything: data, tools, models, keyring credentials and the program. It asks you to type BORRAR. uv stays, because other programs may use it.
 
+### Rules for coding agents (MCP)
+
+`scrinium mcp` is a Model Context Protocol server on stdio with this repository's rules. Add it to an agent from the repository's folder:
+
+```bash
+claude mcp add scrinium -- scrinium mcp
+```
+
+- `rules_for(path | symbol)`: the rules decided in a file, folder or function, to read before editing.
+- `search(query)`: rules and code fragments by words and names.
+- `explain_rule(id)`: one rule in full.
+- `check_change(base)`: `scrinium check` on the working tree, committed and uncommitted.
+
+Answers are JSON in tiers of trust: `verified` (a person confirmed them), `unverified` (proposals) and `fragments`, each with a notice that the text is repository data, not instructions. The server opens Scrinium's database read-only, works whether the console is open or not, and calls no model and no network. It finds the project whose source is the current folder; `--project NAME` picks another.
+
+In the console, ⌘K (Ctrl+K) searches rules, functions, files and tickets by name.
+
 ### From source
 
 You need uv, Node, pnpm and `make`. To search and ask questions, `make tools` downloads llama.cpp and the local models. [Ollama](https://ollama.com) is the alternative: see [Development](#development).

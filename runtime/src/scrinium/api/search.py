@@ -2,7 +2,7 @@
 
 import uuid
 from collections.abc import Iterator
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from scrinium.application import workspaces
 from scrinium.application.ingestion import sources
+from scrinium.application.retrieval import palette as palette_reads
 from scrinium.application.retrieval import search as retrieval
 from scrinium.application.workspaces import local_workspace, record_audit
 from scrinium.domain.enums import AuditResult
@@ -91,6 +92,15 @@ def build_search_router(database: Database, runner: sources.IngestionRunner) -> 
                 for hit in result.hits
             ],
         )
+
+    @router.get("/api/v1/projects/{project_id}/palette")
+    def palette(
+        project_id: uuid.UUID,
+        db: Db,
+        q: Annotated[str, Query(max_length=palette_reads.MAX_QUERY)] = "",
+    ) -> dict[str, Any]:
+        """⌘K: rules, functions, files and tickets by name (phase 6.2)."""
+        return palette_reads.palette(db, project(db, project_id), q)
 
     @router.get("/api/v1/projects/{project_id}/index-status")
     def index_status(project_id: uuid.UUID, db: Db) -> IndexStatusResponse:
