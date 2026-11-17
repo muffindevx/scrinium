@@ -12,7 +12,14 @@
 It never reads or writes the real database. Ctrl+C stops it; `rm -rf ~/.cache/scrinium-demo`
 starts over (the links do not take the real models with them).
 
+With `--repo` it uses that Git repository instead of the example one (it is only read), and
+`--project` names the project. For example, the reference-c reference set, in its own folder:
+
+    SCRINIUM_DEMO_DIR=~/.cache/scrinium-odoo uv run --project runtime python \\
+        runtime/devtools/demo.py --port 47631 --repo ~/.cache/scrinium-odoo/repo --project reference-c
+
 Usage: uv run --project runtime python runtime/devtools/demo.py [--port 47630] [--no-browser]
+    [--repo PATH] [--project NAME]
 """
 
 import argparse
@@ -205,20 +212,18 @@ class _Client:
         return json.loads(raw) if raw else None
 
 
-def seed_project(client: _Client, repo: Path) -> None:
+def seed_project(client: _Client, repo: Path, name: str = PROJECT_NAME) -> None:
     projects = client.call("GET", "/api/v1/projects")["projects"]
-    if any(project["name"] == PROJECT_NAME for project in projects):
+    if any(project["name"] == name for project in projects):
         return
     client.call("PUT", "/api/v1/profile", {"display_name": PROFILE_NAME})
-    project = client.call("POST", "/api/v1/projects", {"name": PROJECT_NAME})
+    project = client.call("POST", "/api/v1/projects", {"name": name})
     client.call(
         "POST",
         f"/api/v1/projects/{project['id']}/sources",
         {"kind": "git_repository", "path": str(repo)},
     )
-    print(
-        f"Proyecto {PROJECT_NAME} creado; su primera sincronizacion ya esta en marcha.", flush=True
-    )
+    print(f"Proyecto {name} creado; su primera sincronizacion ya esta en marcha.", flush=True)
 
 
 def wait_for_instance(
@@ -258,6 +263,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--no-browser", action="store_true", help="Solo el enlace, sin abrirlo.")
+    parser.add_argument("--repo", type=Path, help="Un repositorio Git propio en vez del ejemplo.")
+    parser.add_argument("--project", default=PROJECT_NAME, help="Nombre del proyecto.")
     args = parser.parse_args()
 
     root = Path(os.environ.get("SCRINIUM_DEMO_DIR", Path.home() / ".cache" / "scrinium-demo"))
@@ -274,7 +281,13 @@ def main() -> int:
 
     prepare_data_dir(data_dir)
     link_shared_downloads(data_dir, real_data_dir)
-    seed_repository(repo)
+    if args.repo is not None:
+        repo = args.repo.expanduser().absolute()
+        if not (repo / ".git").exists():
+            print(f"{repo} no es un repositorio Git.", file=sys.stderr)
+            return 1
+    else:
+        seed_repository(repo)
 
     running = next((i for i in instances.running(data_dir) if i.port == args.port), None)
     if running is not None:
@@ -295,7 +308,7 @@ def main() -> int:
             return process.wait() or 1
         launch = request_launch_link(instance)
         if launch is not None:
-            seed_project(_Client(instance.port, launch), repo)
+            seed_project(_Client(instance.port, launch), repo, args.project)
         enter(instance, not args.no_browser)
         return process.wait()
     except KeyboardInterrupt:
