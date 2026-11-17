@@ -1,23 +1,31 @@
 import { t } from "@/lib/i18n"
-import { ArrowLeft, Bug, FileDiff, ScanSearch } from "lucide-react"
+import { ArrowLeft, Bug, FileDiff, ListTree, ScanSearch } from "lucide-react"
 import { type FormEvent, useCallback, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { PageHeader, Section } from "@/components/page"
 import { Button } from "@/components/ui/button"
 import { Label, Textarea } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { type AnalysisType, analyzeDiff, investigateBug } from "@/lib/api"
+import { type AnalysisType, type Triage, analyzeDiff, investigateBug, triageTrace } from "@/lib/api"
+import { TraceResult } from "@/screens/TraceResult"
 import { AnalysisHistory } from "@/screens/AnalysisHistory"
 import { useErrors } from "@/screens/hooks"
 import { AnalysisDetail, ErrorText, type ScreenProps } from "@/screens/shared"
 
-type Mode = "diff" | "bug"
+type Mode = "trace" | "diff" | "bug"
 
 // SQL review left the screen; its past analyses stay readable in the history.
 const IMPACT_TYPES: AnalysisType[] = ["code_diff", "sql_review", "bug_investigation", "impact_analysis"]
 
 
 const MODES: Record<Mode, { label: string; field: string; placeholder: string; rows: number; max: number }> = {
+  trace: {
+    label: t("Traza de error"),
+    field: t("Pega la traza (Python, JavaScript o Java/Kotlin)"),
+    placeholder: 'Traceback (most recent call last):\n  File "/srv/app/src/pagos.py", line 12, in comision',
+    rows: 10,
+    max: 20000,
+  },
   diff: {
     label: t("Diff de Git"),
     field: t("Pega la salida de git diff"),
@@ -38,8 +46,10 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
   const navigate = useNavigate()
   // The tab lives in the URL, so going back from a result returns to the same one.
   const [params, setParams] = useSearchParams()
-  const mode: Mode = params.get("modo") === "bug" ? "bug" : "diff"
-  const setMode = (value: Mode) => setParams(value === "diff" ? {} : { modo: value }, { replace: true })
+  const asked = params.get("modo")
+  const mode: Mode = asked === "bug" || asked === "diff" ? asked : "trace"
+  const setMode = (value: Mode) => setParams(value === "trace" ? {} : { modo: value }, { replace: true })
+  const [traced, setTraced] = useState<Triage | null>(null)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   const { error, setError, fail } = useErrors(onSessionLost)
@@ -49,6 +59,13 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
     event.preventDefault()
     setError(null)
     setBusy(true)
+    if (mode === "trace") {
+      triageTrace(project.id, text)
+        .then(setTraced)
+        .catch(fail)
+        .finally(() => setBusy(false))
+      return
+    }
     const started = mode === "diff" ? analyzeDiff(project.id, text) : investigateBug(project.id, text.trim())
     started
       .then((analysis) => navigate(`/impacto/${analysis.id}`))
@@ -61,6 +78,10 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
       <form className="grid gap-4" onSubmit={submit}>
         <Tabs value={mode} onValueChange={(value) => setMode(value as Mode)}>
           <TabsList>
+            <TabsTrigger value="trace">
+              <ListTree />
+              {t("Traza de error")}
+            </TabsTrigger>
             <TabsTrigger value="diff">
               <FileDiff />
               {t("Diff de Git")}
@@ -87,7 +108,7 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={busy || !text.trim()}>
             <ScanSearch data-icon="inline-start" />
-            {busy ? t("Enviando…") : t("Analizar impacto")}
+            {busy ? t("Enviando…") : mode === "trace" ? t("Seguir la traza") : t("Analizar impacto")}
           </Button>
           <p className="text-xs text-muted-foreground">
             {t("Nada de lo que pegas se ejecuta ni se guarda entero.")}
@@ -95,6 +116,7 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
         </div>
         <ErrorText>{error}</ErrorText>
       </form>
+      {mode === "trace" && traced && <TraceResult result={traced} />}
     </Section>
   )
 }
@@ -106,8 +128,8 @@ export function ImpactScreen(props: ScreenProps) {
   return (
     <>
       <PageHeader
-        title={t("Impacto")}
-        description={t("Antes de tocar nada: qué reglas, archivos y tests afecta un cambio o un bug. Los hallazgos son hipótesis hasta que los revisas.")}
+        title={t("Triaje")}
+        description={t("Antes de tocar nada: a qué funciones, reglas y cambios recientes lleva una traza de error, y qué reglas y tests afecta un cambio o un bug. Los hallazgos son hipótesis hasta que los revisas.")}
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <div className="grid min-w-0 content-start gap-4">

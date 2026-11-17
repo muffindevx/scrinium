@@ -144,6 +144,12 @@ Answers are JSON in tiers of trust: `verified` (a person confirmed them), `unver
 
 In the console, ⌘K (Ctrl+K) searches rules, functions, files and tickets by name.
 
+### Changes, history and triage
+
+- **Changes** compares any two refs of a Git source (branch, tag, commit, or your local changes) with the engine of `scrinium check` and the project's rules: which rules change values, were edited, retired or moved, and which new decisions have no rule yet. It exports business release notes in Markdown.
+- **History** (in each rule) says since when its decision has its current values, and before that which ones, by bisection over the Git log of its file: no model, under 2 s for 300 commits.
+- **Triage** follows a pasted stack trace (Python, JavaScript or Java/Kotlin) to the project's functions, the rules cited in them, the file's recent commits and its earlier fixes.
+
 ### From source
 
 You need uv, Node, pnpm and `make`. To search and ask questions, `make tools` downloads llama.cpp and the local models. [Ollama](https://ollama.com) is the alternative: see [Development](#development).

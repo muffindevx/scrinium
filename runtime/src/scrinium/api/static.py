@@ -16,6 +16,7 @@ from starlette.types import Scope
 UI_ROUTES: Final = frozenset(
     {
         "bandeja",
+        "cambios",
         "reglas",
         "impacto",
         "versiones",

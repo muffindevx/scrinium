@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from scrinium.application.check.changes import KnownRule
 from scrinium.application.check.rule_files import REJECTED, VERIFIED, FileAnchor, RuleFile
 from scrinium.application.knowledge.anchoring import OldAnchor, reanchor
 from scrinium.application.knowledge.common import KnowledgeError
@@ -32,6 +33,7 @@ from scrinium.application.knowledge.entities import (
     Provenance,
     add_rule_version,
     create_business_rule,
+    latest_version,
     set_verification,
 )
 from scrinium.application.knowledge.evidence import anchored_locator, cite_source, decisions_of
@@ -352,3 +354,32 @@ def import_rules(
         (result.created if entity is None else result.updated).append(rule.id)
     session.flush()
     return result
+
+
+def known_rules(session: Session, project: Project, source: SourceConnection) -> list[KnownRule]:
+    """Every rule of the project with its anchors in this source, at its latest version that
+    is not rejected: what the Cambios screen follows between two refs (phase 7.1)."""
+    rules = []
+    for entity in session.scalars(
+        select(KnowledgeEntity).where(
+            KnowledgeEntity.project_id == project.id,
+            KnowledgeEntity.entity_type == EntityType.BUSINESS_RULE,
+            KnowledgeEntity.lifecycle_status.not_in(
+                (EntityLifecycle.DEPRECATED, EntityLifecycle.RETIRED)
+            ),
+        )
+    ):
+        version = latest_version(session, entity.id)
+        if version is None or version.verification_status is VerificationStatus.REJECTED:
+            continue
+        cited, anchors = _anchors(session, version.id, source.id)
+        if cited and anchors:
+            rules.append(
+                KnownRule(
+                    str(entity.id),
+                    entity.name,
+                    version.verification_status.value,
+                    tuple(anchors),
+                )
+            )
+    return rules

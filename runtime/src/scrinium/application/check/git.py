@@ -91,13 +91,15 @@ class Repository:
 
     def changes(self, since: str, head: str = COMMITTED) -> Changes:
         """Files changed from `since` to HEAD, to the working folder (untracked files included,
-        ignored ones not) or to the index."""
+        ignored ones not), to the index, or to any other commit, branch or tag."""
         args = ["diff", "--name-status", "-M", "-z", "--no-ext-diff"]
         if head == STAGED:
             args.append("--cached")
         args.append(since)
         if head == COMMITTED:
             args.append("HEAD")
+        elif head not in (LOCAL, STAGED):
+            args.append(self.resolve(head))  # any commit, branch or tag (phase 7.1)
         fields = git(self.top, *args).split("\0")
         changes = Changes()
         index = 0
@@ -123,7 +125,8 @@ class Repository:
         return changes
 
     def reader(self, head: str = COMMITTED) -> "Reader":
-        return Reader(self, {COMMITTED: "HEAD", LOCAL: None, STAGED: INDEX}[head])
+        named = {COMMITTED: "HEAD", LOCAL: None, STAGED: INDEX}
+        return Reader(self, named[head] if head in named else self.resolve(head))
 
 
 class Reader:

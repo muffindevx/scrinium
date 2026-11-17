@@ -833,6 +833,95 @@ export const getEngine = () => getJson<EngineInfo>("/api/v1/system/engine")
 
 export const getAiSetup = () => getJson<AiSetup>("/api/v1/ai-setup")
 
+/** Cambios (phase 7.1). */
+export interface ChangeRefs {
+  source_id: string
+  sources: { id: string; name: string }[]
+  branches: string[]
+  tags: string[]
+  commits: { sha: string; date: string; subject: string }[]
+}
+export interface ChangeSide {
+  path: string
+  start_line: number
+  end_line: number
+  symbol: string | null
+  values: string[]
+}
+export interface Changes {
+  base: string
+  head: string
+  changed_files: string[]
+  rules: { rule_id: string; title: string; status: string; level: string; before: ChangeSide; after: ChangeSide | null }[]
+  new_decisions: (ChangeSide & { kind: string })[]
+  unanchored: number
+  seconds: number
+}
+export const getChangeRefs = (projectId: string, sourceId?: string) =>
+  getJson<ChangeRefs>(
+    `/api/v1/projects/${projectId}/changes/refs${sourceId ? `?${new URLSearchParams({ source_id: sourceId })}` : ""}`,
+  )
+export const compareChanges = (projectId: string, base: string, head: string, sourceId?: string) =>
+  getJson<Changes>(
+    `/api/v1/projects/${projectId}/changes?${new URLSearchParams({ base, head, ...(sourceId ? { source_id: sourceId } : {}) })}`,
+  )
+
+/** A rule's values over its Git history (phase 7.2). */
+export interface HistoryCommit {
+  sha: string
+  date: string
+  author: string
+  subject: string
+  path: string
+}
+export interface RuleHistory {
+  rule_id: string
+  title: string
+  anchors: {
+    path: string
+    symbol: string | null
+    commits: number
+    parsed: number
+    seconds: number
+    periods: { values: string[] | null; since: HistoryCommit; until: HistoryCommit | null }[]
+  }[]
+}
+export const getRuleHistory = (projectId: string, entityId: string) =>
+  getJson<RuleHistory>(`/api/v1/projects/${projectId}/rules/${entityId}/history`)
+
+/** Business release notes between two refs, in Markdown (phase 7.2). */
+export async function releaseNotes(projectId: string, base: string, head: string, sourceId?: string) {
+  const query = new URLSearchParams({ base, head, format: "markdown", ...(sourceId ? { source_id: sourceId } : {}) })
+  return (await request(`/api/v1/projects/${projectId}/changes?${query}`)).text()
+}
+
+/** A stack trace to functions, rules and history (phase 7.3). */
+export interface TriageCommit {
+  sha: string
+  date: string
+  author: string
+  subject: string
+}
+export interface Triage {
+  parsed: number
+  in_project: number
+  resolved: number
+  frames: {
+    raw: string
+    language: string
+    trace_path: string
+    line: number
+    trace_function: string | null
+    path: string | null
+    function: { name: string; start_line: number; end_line: number } | null
+    rules: { id: string; title: string; start_line: number; end_line: number }[]
+    recent: TriageCommit[]
+    fixes: TriageCommit[]
+  }[]
+}
+export const triageTrace = async (projectId: string, trace: string) =>
+  (await mutate(`/api/v1/projects/${projectId}/triage`, { trace })).json() as Promise<Triage>
+
 /** ⌘K (phase 6.2): rules, functions, files and tickets by name. */
 export interface Palette {
   rules: { id: string; title: string }[]

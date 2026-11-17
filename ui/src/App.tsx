@@ -3,6 +3,7 @@ import {
   BookOpen,
   Cloud,
   FolderGit2,
+  GitCompare,
   House,
   Inbox,
   LockKeyhole,
@@ -13,7 +14,6 @@ import {
   Settings,
   ShieldOff,
   Sparkles,
-  Tags,
   TriangleAlert,
 } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
@@ -42,6 +42,7 @@ import {
   logout,
 } from "@/lib/api"
 import { useFolderDrop } from "@/lib/folder-drop"
+import { ChangesScreen } from "@/screens/ChangesScreen"
 import { CommandPalette } from "@/screens/CommandPalette"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
@@ -100,8 +101,8 @@ const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
   {
     group: t("Cambios"),
     items: [
-      { path: "/impacto", label: t("Impacto"), icon: ScanSearch },
-      { path: "/versiones", label: t("Versiones"), icon: Tags },
+      { path: "/cambios", label: t("Cambios"), icon: GitCompare },
+      { path: "/impacto", label: t("Triaje"), icon: ScanSearch },
     ],
   },
 ]
@@ -357,6 +358,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                   />
                 }
               />
+              <Route path="/cambios" element={needsProject((c) => <ChangesScreen key={c.id} {...props(c)} />)} />
               <Route path="/bandeja" element={needsProject((c) => <InboxScreen key={c.id} {...props(c)} />)} />
               <Route
                 path="/reglas/:entityId?"
