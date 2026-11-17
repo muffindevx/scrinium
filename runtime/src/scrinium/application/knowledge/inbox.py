@@ -1,0 +1,458 @@
+"""The review inbox: what a person should look at next, and in what order (phase 4, Annex B.8).
+
+Every rule not yet reviewed, and every rule the watch or the consistency review flagged, is an
+item. The order is the value of the information a review gives:
+
+    score = impact * uncertainty / cost
+
+- **impact:** how many rules depend on it (N7), how often its file changed in the last 90 days
+  and its criticality;
+- **uncertainty:** 1 if nobody reviewed it; higher when a verified rule drifted (its values
+  changed); lower when it is in a group of near-identical rules one of which a person
+  confirmed;
+- **cost:** how much code a person must read (the cited lines).
+
+**Groups** (Annex B.9): rules anchored to the same decision shape, or whose statements are
+near-identical (MinHash with banded LSH, Jaccard ≥ 0.75), joined with union-find. A group can
+be confirmed, rejected or merged in one action.
+
+**F2** (phase 4.3): a proposal written by a model whose statement says a number or a `name`
+its anchored code does not hold never reaches the inbox; it is counted apart, to be redone.
+
+All reads are a handful of queries for the whole project, never one per rule: the order is
+computed per request (O(n log n)), which the plan's incremental heap would only beat with far
+more rules than a project has.
+"""
+
+import math
+import uuid
+from collections import defaultdict
+from dataclasses import dataclass
+from datetime import timedelta
+from typing import Any, Final
+
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+
+from scrinium.application.analysis.rule_checks import unanchored_terms
+from scrinium.application.knowledge.evidence import decisions_of
+from scrinium.domain.enums import (
+    Criticality,
+    EntityLifecycle,
+    EntityType,
+    RelationType,
+    VerificationStatus,
+    VersionOrigin,
+)
+from scrinium.infrastructure.decisions import DECISIONS_VERSION, anchor_for, similarity, sketch_of
+from scrinium.infrastructure.sqlite.models import (
+    BusinessRule,
+    BusinessRuleVersion,
+    EntityRelationship,
+    EvidenceRecord,
+    KnowledgeEntity,
+    KnowledgeEntityVersion,
+    Project,
+    SourceRevision,
+    utc_now,
+)
+
+_REVIEWED: Final = frozenset({VerificationStatus.HUMAN_VERIFIED, VerificationStatus.REJECTED})
+_GENERATED: Final = frozenset({VersionOrigin.SOURCE_EXTRACTION, VersionOrigin.DERIVED_ANALYSIS})
+_CRITICALITY: Final = {
+    Criticality.LOW: 1.0,
+    Criticality.MEDIUM: 2.0,
+    Criticality.HIGH: 3.0,
+    Criticality.CRITICAL: 4.0,
+}
+_UNCERTAINTY: Final = {
+    "rule_changed": 1.5,
+    "code_changed": 1.2,
+    "code_removed": 1.1,
+    "code_contradicts": 1.4,
+    "contradiction": 1.3,
+}
+_GROUP_CONFIRMED: Final = 0.3
+_DEPENDENCY_TYPES: Final = (RelationType.DEPENDS_ON, RelationType.IMPACTS)
+_CHURN_DAYS: Final = 90
+_PENDING_PREFIX: Final = "Pendiente de redactar."
+_NOW_REASONS: Final = frozenset({"rule_changed", "code_changed", "code_contradicts"})
+_SIMILAR: Final = 0.75
+_BANDS: Final = 8
+
+
+@dataclass
+class _Rule:
+    """The columns the inbox reads, not whole rows: thousands of rules load in milliseconds."""
+
+    entity_id: uuid.UUID
+    review_reason: str | None
+    version_id: uuid.UUID
+    status: VerificationStatus
+    origin: VersionOrigin
+    title: str
+    statement: str
+    criticality: Criticality
+    citation: EvidenceRecord | None = None
+    shape: str | None = None
+
+
+# MinHash of a version's statement, by version id: a version never changes, so it is computed
+# once per process. Bounded, like the decisions cache.
+_SKETCHES: dict[uuid.UUID, str] = {}
+_SKETCHES_SIZE: Final = 100_000
+
+
+class _UnionFind:
+    def __init__(self) -> None:
+        self.parent: dict[uuid.UUID, uuid.UUID] = {}
+
+    def find(self, item: uuid.UUID) -> uuid.UUID:
+        self.parent.setdefault(item, item)
+        root = item
+        while self.parent[root] != root:
+            root = self.parent[root]
+        while self.parent[item] != root:
+            self.parent[item], item = root, self.parent[item]
+        return root
+
+    def union(self, first: uuid.UUID, second: uuid.UUID) -> None:
+        a, b = self.find(first), self.find(second)
+        if a != b:
+            self.parent[max(a, b)] = min(a, b)
+
+
+def _rules(session: Session, project: Project) -> list[_Rule]:
+    latest = (
+        select(
+            KnowledgeEntityVersion.knowledge_entity_id,
+            func.max(KnowledgeEntityVersion.version_number).label("number"),
+        )
+        .where(KnowledgeEntityVersion.project_id == project.id)
+        .group_by(KnowledgeEntityVersion.knowledge_entity_id)
+        .subquery()
+    )
+    rows = session.execute(
+        select(
+            KnowledgeEntity.id,
+            KnowledgeEntity.review_reason,
+            KnowledgeEntityVersion.id,
+            KnowledgeEntityVersion.verification_status,
+            KnowledgeEntityVersion.origin,
+            BusinessRuleVersion.title,
+            BusinessRuleVersion.statement,
+            BusinessRule.criticality,
+        )
+        .join(latest, latest.c.knowledge_entity_id == KnowledgeEntity.id)
+        .join(
+            KnowledgeEntityVersion,
+            (KnowledgeEntityVersion.knowledge_entity_id == KnowledgeEntity.id)
+            & (KnowledgeEntityVersion.version_number == latest.c.number),
+        )
+        .join(
+            BusinessRuleVersion,
+            BusinessRuleVersion.knowledge_entity_version_id == KnowledgeEntityVersion.id,
+        )
+        .join(BusinessRule, BusinessRule.knowledge_entity_id == KnowledgeEntity.id)
+        .where(
+            KnowledgeEntity.project_id == project.id,
+            KnowledgeEntity.entity_type == EntityType.BUSINESS_RULE,
+            KnowledgeEntity.lifecycle_status.not_in(
+                [EntityLifecycle.RETIRED, EntityLifecycle.DEPRECATED]
+            ),
+        )
+    ).all()
+    rules = [_Rule(*row) for row in rows]
+    # The first code citation of each latest version, in one query.
+    by_version = {rule.version_id: rule for rule in rules}
+    citations = session.scalars(
+        select(EvidenceRecord)
+        .where(
+            EvidenceRecord.target_version_id.in_(list(by_version)),
+            EvidenceRecord.source_revision_id.is_not(None),
+        )
+        .order_by(EvidenceRecord.created_at)
+    )
+    for record in citations:
+        rule = by_version[record.target_version_id]  # type: ignore[index]
+        if rule.citation is None:
+            rule.citation = record
+            anchor = (record.locator or {}).get("anchor")
+            if isinstance(anchor, dict) and str(anchor.get("version")) == DECISIONS_VERSION:
+                rule.shape = str(anchor.get("shape") or "") or None
+    return rules
+
+
+def _dependents(session: Session, project: Project) -> dict[uuid.UUID, int]:
+    rows = session.execute(
+        select(EntityRelationship.to_entity_id, func.count())
+        .where(
+            EntityRelationship.project_id == project.id,
+            EntityRelationship.relation_type.in_(_DEPENDENCY_TYPES),
+        )
+        .group_by(EntityRelationship.to_entity_id)
+    )
+    return {row[0]: row[1] for row in rows}
+
+
+def _churn(session: Session, revision_ids: set[uuid.UUID]) -> dict[uuid.UUID, int]:
+    """Revisions in the last 90 days of each cited revision's file."""
+    if not revision_ids:
+        return {}
+    items = dict(
+        session.execute(
+            select(SourceRevision.id, SourceRevision.source_item_id).where(
+                SourceRevision.id.in_(list(revision_ids))
+            )
+        ).all()
+    )
+    since = utc_now() - timedelta(days=_CHURN_DAYS)
+    counts = dict(
+        session.execute(
+            select(SourceRevision.source_item_id, func.count())
+            .where(
+                SourceRevision.source_item_id.in_(set(items.values())),
+                SourceRevision.captured_at >= since,
+            )
+            .group_by(SourceRevision.source_item_id)
+        ).all()
+    )
+    return {revision: counts.get(item, 0) for revision, item in items.items()}
+
+
+def _statement_sketch(rule: _Rule) -> str:
+    found = _SKETCHES.get(rule.version_id)
+    if found is None:
+        words = "".join(c if c.isalnum() else " " for c in rule.statement.lower()).split()
+        found = sketch_of(" ".join(words))
+        if len(_SKETCHES) >= _SKETCHES_SIZE:
+            _SKETCHES.pop(next(iter(_SKETCHES)))
+        _SKETCHES[rule.version_id] = found
+    return found
+
+
+def _groups(rules: list[_Rule]) -> _UnionFind:
+    groups = _UnionFind()
+    by_shape: dict[str, uuid.UUID] = {}
+    for rule in rules:
+        if rule.shape:
+            first = by_shape.setdefault(rule.shape, rule.entity_id)
+            groups.union(first, rule.entity_id)
+    sketches = {rule.entity_id: _statement_sketch(rule) for rule in rules}
+    width = 32 // _BANDS * 8  # Hex characters per band.
+    buckets: dict[tuple[int, str], list[uuid.UUID]] = defaultdict(list)
+    for entity_id, sketch in sketches.items():
+        for band in range(_BANDS):
+            buckets[(band, sketch[band * width : (band + 1) * width])].append(entity_id)
+    for members in buckets.values():
+        for other in members[1:]:
+            if groups.find(members[0]) != groups.find(other) and (
+                similarity(sketches[members[0]], sketches[other]) >= _SIMILAR
+            ):
+                groups.union(members[0], other)
+    return groups
+
+
+def _unanchored(session: Session, rule: _Rule) -> list[str]:
+    """F2 for a model's proposal: its numbers and names that its code does not hold."""
+    statement = rule.statement
+    if rule.origin not in _GENERATED or statement.startswith(_PENDING_PREFIX):
+        return []
+    citation = rule.citation
+    if citation is None or citation.source_revision_id is None:
+        return []
+    revision = session.get(SourceRevision, citation.source_revision_id)
+    if revision is None or revision.text_content is None:
+        return []
+    locator = citation.locator or {}
+    start = int(locator.get("start_line", 1))
+    end = int(locator.get("end_line", start))
+    path = str(locator.get("path", ""))
+    decision = anchor_for(decisions_of(path, revision), start, end)
+    code = "\n".join(revision.text_content.splitlines()[start - 1 : end])
+    return unanchored_terms(statement, decision.literals if decision else (), code)
+
+
+def inbox(session: Session, project: Project, offset: int = 0, limit: int = 100) -> dict[str, Any]:
+    rules = _rules(session, project)
+    dependents = _dependents(session, project)
+    cited_revisions = {
+        rule.citation.source_revision_id
+        for rule in rules
+        if rule.citation is not None and rule.citation.source_revision_id is not None
+    }
+    churn = _churn(session, cited_revisions)
+    groups = _groups(rules)
+    members: dict[uuid.UUID, list[_Rule]] = defaultdict(list)
+    for rule in rules:
+        members[groups.find(rule.entity_id)].append(rule)
+
+    items: list[dict[str, Any]] = []
+    unanchored: list[dict[str, Any]] = []
+    for rule in rules:
+        status = rule.status
+        reason = rule.review_reason
+        if status in _REVIEWED and reason is None:
+            continue
+        missing = _unanchored(session, rule)
+        if missing:
+            unanchored.append(
+                {"entity_id": str(rule.entity_id), "title": rule.title, "missing": missing}
+            )
+            continue
+        group = members[groups.find(rule.entity_id)]
+        confirmed = any(
+            other.status is VerificationStatus.HUMAN_VERIFIED
+            for other in group
+            if other is not rule
+        )
+        cited = rule.citation
+        revision_id = cited.source_revision_id if cited else None
+        impact = (
+            1.0
+            + dependents.get(rule.entity_id, 0)
+            + math.log1p(churn.get(revision_id, 0) if revision_id else 0)
+            + _CRITICALITY.get(rule.criticality, 2.0)
+        )
+        uncertainty = _UNCERTAINTY.get(reason or "", 1.0)
+        if confirmed and reason is None:
+            uncertainty = _GROUP_CONFIRMED
+        locator = (cited.locator or {}) if cited else {}
+        lines = (
+            int(locator.get("end_line", 0)) - int(locator.get("start_line", 0)) + 1 if cited else 0
+        )
+        cost = 1.0 + max(lines, 0) / 20
+        items.append(
+            {
+                "entity_id": str(rule.entity_id), "version_id": str(rule.version_id),
+                "title": rule.title, "statement": rule.statement,
+                "verification_status": status.value, "origin": rule.origin.value,
+                "review_reason": reason, "criticality": rule.criticality.value,
+                "score": round(impact * uncertainty / cost, 3),
+                "parts": {
+                    "impact": round(impact, 2), "uncertainty": uncertainty,
+                    "cost": round(cost, 2),
+                },
+                "citation": None if cited is None else {
+                    "revision_id": str(cited.source_revision_id),
+                    "path": locator.get("path"), "start_line": locator.get("start_line"),
+                    "end_line": locator.get("end_line"),
+                },
+                # Where its decision is now, when the code drifted from what was verified.
+                "now": None,
+                "group": None if len(group) < 2 else {
+                    "key": str(groups.find(rule.entity_id)), "size": len(group),
+                    "confirmed": confirmed,
+                    "members": [str(other.entity_id) for other in group],
+                },
+            }
+        )  # fmt: skip
+    items.sort(key=lambda item: (-item["score"], item["title"], item["entity_id"]))
+    page = items[offset : offset + limit]
+    for item in page:
+        if item["review_reason"] in _NOW_REASONS:
+            from scrinium.application.knowledge.watch import current_places
+
+            places = current_places(session, project.id, uuid.UUID(item["version_id"]))
+            item["now"] = places[0] if places else None
+    return {
+        "total": len(items),
+        "items": page,
+        "unanchored": unanchored[:50],
+        "unanchored_total": len(unanchored),
+    }
+
+
+_DRIFT: Final = frozenset({"rule_changed", "code_changed", "code_contradicts"})
+_CONSISTENCY: Final = frozenset({"possible_duplicate", "contradiction", "ambiguous"})
+
+
+def health(session: Session, project: Project) -> dict[str, Any]:
+    """The rulebook's health and freshness for the Home screen (phase 4.4), in aggregate
+    queries: no work per rule, so it stays fast with thousands of rules."""
+    from scrinium.infrastructure.sqlite.models import SourceConnection
+
+    latest = (
+        select(
+            KnowledgeEntityVersion.knowledge_entity_id.label("entity_id"),
+            func.max(KnowledgeEntityVersion.version_number).label("number"),
+        )
+        .where(KnowledgeEntityVersion.project_id == project.id)
+        .group_by(KnowledgeEntityVersion.knowledge_entity_id)
+        .subquery()
+    )
+    live = (
+        KnowledgeEntity.project_id == project.id,
+        KnowledgeEntity.entity_type == EntityType.BUSINESS_RULE,
+        KnowledgeEntity.lifecycle_status.not_in(
+            [EntityLifecycle.RETIRED, EntityLifecycle.DEPRECATED]
+        ),
+    )
+    rows = session.execute(
+        select(
+            KnowledgeEntityVersion.verification_status,
+            KnowledgeEntity.review_reason,
+            func.count(),
+            func.min(KnowledgeEntityVersion.created_at),
+        )
+        .join(latest, latest.c.entity_id == KnowledgeEntity.id)
+        .join(
+            KnowledgeEntityVersion,
+            (KnowledgeEntityVersion.knowledge_entity_id == KnowledgeEntity.id)
+            & (KnowledgeEntityVersion.version_number == latest.c.number),
+        )
+        .where(*live)
+        .group_by(KnowledgeEntityVersion.verification_status, KnowledgeEntity.review_reason)
+    ).all()
+    counts: dict[str, int] = defaultdict(int)
+    oldest_unreviewed = None
+    for status, reason, count, oldest in rows:
+        counts["rules"] += count
+        reviewed = status in _REVIEWED
+        counts["verified" if status is VerificationStatus.HUMAN_VERIFIED else (
+            "rejected" if status is VerificationStatus.REJECTED else "unreviewed"
+        )] += count  # fmt: skip
+        if reason in _DRIFT:
+            counts["drifted"] += count
+        elif reason == "code_removed":
+            counts["removed"] += count
+        elif reason in _CONSISTENCY:
+            counts["consistency"] += count
+        if not reviewed or reason is not None:
+            counts["inbox"] += count
+        if not reviewed and oldest is not None:
+            oldest_unreviewed = (
+                oldest if oldest_unreviewed is None else min(oldest_unreviewed, oldest)
+            )
+    last_review = session.scalar(
+        select(func.max(KnowledgeEntityVersion.reviewed_at)).where(
+            KnowledgeEntityVersion.project_id == project.id
+        )
+    )
+    last_sync = session.scalar(
+        select(func.max(SourceConnection.last_successful_sync_at)).where(
+            SourceConnection.project_id == project.id
+        )
+    )
+
+    def iso(moment: Any) -> str | None:
+        return moment.isoformat() if moment is not None else None
+
+    return {
+        **{
+            key: counts.get(key, 0)
+            for key in (
+                "rules",
+                "verified",
+                "rejected",
+                "unreviewed",
+                "drifted",
+                "removed",
+                "consistency",
+                "inbox",
+            )
+        },
+        "last_review_at": iso(last_review),
+        "oldest_unreviewed_at": iso(oldest_unreviewed),
+        "last_sync_at": iso(last_sync),
+    }

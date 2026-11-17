@@ -434,3 +434,45 @@ def _latest_version(session: Session, entity_id: uuid.UUID) -> uuid.UUID | None:
         .order_by(KnowledgeEntityVersion.version_number.desc())
         .limit(1)
     )
+
+
+CONSISTENCY_DESCRIPTION: Final = "Revisar la consistencia de las reglas"
+
+
+def submit_consistency(
+    database: Database, llm: LlmService, runner: Any, project_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Queues the consistency review on its own after an extraction (phase 4.6): its flags
+    (duplicates, contradictions, ambiguous rules) land in the inbox with no button to press.
+    Nothing if the project has fewer than two rules or a review is already waiting."""
+    from scrinium.application.analysis.runs import create_run
+    from scrinium.domain.enums import AnalysisType
+    from scrinium.infrastructure.sqlite.models import AnalysisRun
+
+    with database.session() as session:
+        project = session.get_one(Project, project_id)
+        if len(_rules(session, project.id)) < 2:
+            return None
+        waiting = session.scalar(
+            select(AnalysisRun.id).where(
+                AnalysisRun.project_id == project.id,
+                AnalysisRun.question == CONSISTENCY_DESCRIPTION,
+                AnalysisRun.status.in_([AnalysisStatus.QUEUED, AnalysisStatus.RUNNING]),
+            )
+        )
+        if waiting is not None:
+            return None
+        run = create_run(
+            session, project, AnalysisType.KNOWLEDGE_EXTRACTION, CONSISTENCY_DESCRIPTION,
+            "consistency", llm=llm, task=AiTask.CONSISTENCY, prompt_version=CONSISTENCY_VERSION,
+        )  # fmt: skip
+        run_id = run.id
+    indexer = getattr(runner, "indexer", None)
+
+    def task(current: uuid.UUID) -> None:
+        review_consistency(
+            database, llm, indexer, current, should_stop=lambda: runner.should_stop(current)
+        )
+
+    runner.submit(task, run_id)
+    return run_id

@@ -127,6 +127,9 @@ class AnalysisRunner:
     def __init__(
         self, database: Database, llm: LlmService, executor: Executor | None = None
     ) -> None:
+        # The search index, when there is one: the consistency review uses it to find similar
+        # rules (main.py sets it).
+        self.indexer: Any = None
         self.database = database
         self.llm = llm
         self._executor = executor or ThreadPoolExecutor(

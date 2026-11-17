@@ -28,6 +28,8 @@ from scrinium.application.knowledge.entities import (
     set_verification,
     title_slug,
 )
+from scrinium.application.knowledge.evidence import record_human_review
+from scrinium.application.knowledge.inbox import health, inbox
 from scrinium.application.knowledge.rulebook import export_status
 from scrinium.application.retrieval import edges
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
@@ -35,6 +37,7 @@ from scrinium.domain.enums import (
     AuditResult,
     Criticality,
     EntityLifecycle,
+    EvidenceRole,
     RuleCategory,
     VerificationStatus,
     VersionOrigin,
@@ -79,10 +82,20 @@ class MergeBody(BaseModel):
     duplicate_id: uuid.UUID
 
 
+class BatchReviewBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
+    status: VerificationStatus
+    note: str | None = Field(default=None, max_length=2000)
+
+
 class VerificationBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: VerificationStatus
+    # Why, in the reviewer's words (a rejection's reason travels in its tombstone, ADR-012).
+    note: str | None = Field(default=None, max_length=2000)
 
 
 def _project(session: DbSession, project_id: uuid.UUID) -> Project:
@@ -110,6 +123,58 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
                 AuditResult.SUCCESS, getattr(request.state, "request_id", None),
             )  # fmt: skip
             return ProfileResponse(display_name=profile.display_name)
+
+    @router.get("/api/v1/projects/{project_id}/inbox")
+    def review_inbox(
+        project_id: uuid.UUID,
+        offset: Annotated[int, Query(ge=0)] = 0,
+        limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    ) -> dict[str, Any]:
+        """What to review next, by the value of the information (phase 4.1)."""
+        with database.session() as session:
+            return inbox(session, _project(session, project_id), offset, limit)
+
+    @router.get("/api/v1/projects/{project_id}/health")
+    def rulebook_health(project_id: uuid.UUID) -> dict[str, Any]:
+        """Counts and dates for the Home screen (phase 4.4)."""
+        with database.session() as session:
+            return health(session, _project(session, project_id))
+
+    @router.post("/api/v1/projects/{project_id}/inbox/review")
+    def review_batch(
+        project_id: uuid.UUID, body: BatchReviewBody, request: Request
+    ) -> dict[str, Any]:
+        """One decision for several versions at once: a group of near-identical rules (4.2)."""
+        if body.status not in {*_HUMAN_REVIEW, VerificationStatus.UNVERIFIED}:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "status_not_allowed")
+        with database.session() as session:
+            project = _project(session, project_id)
+            reviewer = reviewer_name(session)
+            if body.status in _HUMAN_REVIEW and reviewer is None:
+                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "profile_name_required")
+            done = []
+            for version_id in body.version_ids:
+                version = session.get(KnowledgeEntityVersion, version_id)
+                if version is None or version.project_id != project.id:
+                    raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+                try:
+                    set_verification(
+                        session, project, version.id, body.status,
+                        reviewer=reviewer if body.status in _HUMAN_REVIEW else None,
+                        request_id=getattr(request.state, "request_id", None),
+                    )  # fmt: skip
+                except KnowledgeError as error:
+                    raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
+                if body.note and body.note.strip() and reviewer is not None:
+                    record_human_review(
+                        session, project, entity_id=version.knowledge_entity_id,
+                        version_id=version.id, reviewer=reviewer, note=body.note,
+                        role=EvidenceRole.CONTRADICTS
+                        if body.status is VerificationStatus.REJECTED
+                        else EvidenceRole.SUPPORTS,
+                    )  # fmt: skip
+                done.append(str(version.id))
+            return {"reviewed": done, "verification_status": body.status.value}
 
     @router.get("/api/v1/projects/{project_id}/rulebook")
     def rulebook(project_id: uuid.UUID) -> dict[str, Any]:
@@ -255,6 +320,14 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
                 )  # fmt: skip
             except KnowledgeError as error:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
+            if body.note and body.note.strip() and reviewer is not None:
+                record_human_review(
+                    session, project, entity_id=version.knowledge_entity_id, version_id=version.id,
+                    reviewer=reviewer, note=body.note,
+                    role=EvidenceRole.CONTRADICTS
+                    if body.status is VerificationStatus.REJECTED
+                    else EvidenceRole.SUPPORTS,
+                )  # fmt: skip
             return {
                 "id": str(updated.id),
                 "verification_status": updated.verification_status.value,

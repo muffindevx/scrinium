@@ -3,6 +3,7 @@ import {
   Cloud,
   FolderGit2,
   House,
+  Inbox,
   LockKeyhole,
   LogOut,
   type LucideIcon,
@@ -38,6 +39,7 @@ import {
 import { useFolderDrop } from "@/lib/folder-drop"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
+import { InboxScreen } from "@/screens/InboxScreen"
 import { ProjectAiScreen } from "@/screens/ProjectAiScreen"
 import { RulesScreen } from "@/screens/RulesScreen"
 import { SettingsScreen } from "@/screens/SettingsScreen"
@@ -85,6 +87,7 @@ const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
     group: "Proyecto",
     items: [
       { path: "/", label: "Inicio", icon: House },
+      { path: "/bandeja", label: "Bandeja", icon: Inbox },
       { path: "/reglas", label: "Reglas", icon: BookOpen },
     ],
   },
@@ -313,6 +316,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                   />
                 }
               />
+              <Route path="/bandeja" element={needsProject((c) => <InboxScreen key={c.id} {...props(c)} />)} />
               <Route
                 path="/reglas/:entityId?"
                 element={needsProject((c) => <RulesScreen key={c.id} {...props(c)} />)}

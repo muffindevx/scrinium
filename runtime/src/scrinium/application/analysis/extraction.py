@@ -1048,6 +1048,14 @@ def submit_statements(
     return run_id
 
 
+def _consistency_after(
+    database: Database, llm: LlmService, runner: "AnalysisRunner", project_id: uuid.UUID
+) -> None:
+    from scrinium.application.analysis.consistency import submit_consistency
+
+    submit_consistency(database, llm, runner, project_id)
+
+
 def statements_task(
     database: Database, llm: LlmService, runner: "AnalysisRunner"
 ) -> Callable[[uuid.UUID], None]:
@@ -1076,11 +1084,13 @@ def statements_task(
             else "model_error" if failed else None
         )  # fmt: skip
         finish_run(database, run_id, status, result, code)
+        with database.session() as session:
+            project_id = session.get_one(AnalysisRun, run_id).project_id
         if yielded:
             # Another analysis was waiting: it goes first and the statements follow.
-            with database.session() as session:
-                project_id = session.get_one(AnalysisRun, run_id).project_id
             submit_statements(database, llm, runner, project_id)
+        elif status in (AnalysisStatus.COMPLETED, AnalysisStatus.PARTIAL) and result["detailed"]:
+            _consistency_after(database, llm, runner, project_id)
 
     return task
 
@@ -1160,11 +1170,13 @@ def extraction_task(
             database, llm, run_id, path_prefix, min_score,
             should_stop=lambda: runner.should_stop(run_id),
         )  # fmt: skip
-        # S3: the map is done; the statements go separately, with low priority.
+        # S3: the map is done; the statements go separately, with low priority. Then, with
+        # nothing left to write, the consistency review runs on its own (phase 4.6).
         if not runner.should_stop(run_id):
             with database.session() as session:
                 project_id = session.get_one(AnalysisRun, run_id).project_id
-            submit_statements(database, llm, runner, project_id)
+            if submit_statements(database, llm, runner, project_id) is None:
+                _consistency_after(database, llm, runner, project_id)
 
     return task
 

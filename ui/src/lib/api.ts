@@ -597,6 +597,56 @@ export const listRules = async (
   )
   return (await getJson<{ rules: RuleSummary[] }>(`/api/v1/projects/${projectId}/rules?${params}`)).rules
 }
+export type RulebookHealth = {
+  rules: number
+  verified: number
+  rejected: number
+  unreviewed: number
+  drifted: number
+  removed: number
+  consistency: number
+  inbox: number
+  last_review_at: string | null
+  oldest_unreviewed_at: string | null
+  last_sync_at: string | null
+}
+export const getHealth = (projectId: string) => getJson<RulebookHealth>(`/api/v1/projects/${projectId}/health`)
+export type InboxItem = {
+  entity_id: string
+  version_id: string
+  title: string
+  statement: string
+  verification_status: VerificationStatus
+  origin: string
+  review_reason: string | null
+  criticality: string
+  score: number
+  parts: { impact: number; uncertainty: number; cost: number }
+  citation: { revision_id: string; path: string; start_line: number; end_line: number } | null
+  now: { revision_id: string; path: string; start_line: number; end_line: number } | null
+  group: { key: string; size: number; confirmed: boolean; members: string[] } | null
+}
+export type Inbox = {
+  total: number
+  items: InboxItem[]
+  unanchored: { entity_id: string; title: string; missing: string[] }[]
+  unanchored_total: number
+}
+export const getInbox = (projectId: string, offset = 0, limit = 100) =>
+  getJson<Inbox>(`/api/v1/projects/${projectId}/inbox?offset=${offset}&limit=${limit}`)
+export const reviewBatch = async (
+  projectId: string,
+  versionIds: string[],
+  status: VerificationStatus,
+  note?: string,
+) =>
+  (
+    await mutate(`/api/v1/projects/${projectId}/inbox/review`, {
+      version_ids: versionIds,
+      status,
+      ...(note?.trim() ? { note } : {}),
+    })
+  ).json() as Promise<{ reviewed: string[]; verification_status: VerificationStatus }>
 export type RulebookSource = {
   source_id: string
   name: string
@@ -614,8 +664,10 @@ export const getRule = (projectId: string, entityId: string) =>
 export const PENDING_STATEMENT_PREFIX = "Pendiente de redactar."
 export const writeStatement = async (projectId: string, entityId: string) =>
   (await mutate(`/api/v1/projects/${projectId}/rules/${entityId}/statement`)).json() as Promise<RuleDetail>
-export const setVerification = async (versionId: string, status: VerificationStatus) =>
-  (await mutate(`/api/v1/knowledge-versions/${versionId}/verification`, { status })).json() as Promise<{
+export const setVerification = async (versionId: string, status: VerificationStatus, note?: string) =>
+  (
+    await mutate(`/api/v1/knowledge-versions/${versionId}/verification`, note?.trim() ? { status, note } : { status })
+  ).json() as Promise<{
     id: string
     verification_status: VerificationStatus
     reviewed_by: string | null

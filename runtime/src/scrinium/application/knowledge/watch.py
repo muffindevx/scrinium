@@ -25,7 +25,7 @@ by function, and its cited lines still being in the function, word for word, mar
 
 import uuid
 from dataclasses import dataclass, field, replace
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -252,6 +252,26 @@ def _recite(session: Session, project_id: uuid.UUID, followed: _Followed) -> Non
             )  # fmt: skip
         except KnowledgeError:
             continue
+
+
+def current_places(
+    session: Session, project_id: uuid.UUID, version_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """Where a version's anchored decisions are in the code now (for a drifted rule, the code
+    a person should read next to what was verified)."""
+    followed = _follow(session, project_id, latest_citations(session, version_id))
+    places = []
+    for match in followed.matches.values():
+        revision = followed.revisions.get(match.path)
+        if revision is None:
+            continue
+        places.append(
+            {
+                "revision_id": str(revision.id), "path": _path(revision),
+                "start_line": match.decision.start_line, "end_line": match.decision.end_line,
+            }
+        )  # fmt: skip
+    return places
 
 
 def cite_current(session: Session, project_id: uuid.UUID, version_id: uuid.UUID) -> int:

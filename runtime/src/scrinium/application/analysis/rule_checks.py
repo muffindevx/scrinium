@@ -65,3 +65,46 @@ def cited_text(text: str, first_line: int, start: int, end: int) -> str:
     """Lines [start, end] of a chunk that starts at line `first_line` of the file."""
     lines = text.split("\n")
     return "\n".join(lines[max(0, start - first_line) : max(0, end - first_line + 1)])
+
+
+# --- F2: a statement's numbers and names are in its code (phase 4.3) --------------------------
+
+_STATEMENT_NUMBER: Final = re.compile(r"(?<![\w.,])(\d+(?:[.,]\d+)?)(\s?%)?(?![\w])")
+_STATEMENT_NAME: Final = re.compile(r"`([A-Za-z_][\w.]*)`")
+_CODE_NUMBER: Final = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w])")
+
+
+def _number(text: str) -> float | None:
+    try:
+        return float(text.replace(",", "."))
+    except ValueError:
+        return None
+
+
+def unanchored_terms(statement: str, literals: tuple[str, ...], code: str) -> list[str]:
+    """The numbers and `names` of a statement that its code does not hold: [] when anchored.
+
+    A number counts if the decision decides with it (its literals, constants resolved) or the
+    cited code writes it; a percentage also as a fraction (`2 %` is `0.02`) or as the factor
+    that adds or takes it (`10 %` more is `* 1.1`, 25 % off is `* 0.75`). A name in
+    backquotes must be written in the cited code. Words are not checked: they are the
+    statement's own language.
+    """
+    known: set[float] = set()
+    for value in (*literals, *_CODE_NUMBER.findall(code)):
+        number = _number(value)
+        if number is not None:
+            known.add(round(number, 9))
+    missing = []
+    for match in _STATEMENT_NUMBER.finditer(statement):
+        number = _number(match[1])
+        if number is None:
+            continue
+        options = {round(number, 9)}
+        if match[2]:
+            fraction = number / 100
+            options |= {round(fraction, 9), round(1 + fraction, 9), round(1 - fraction, 9)}
+        if not options & known:
+            missing.append(match[0].strip())
+    missing += [name for name in _STATEMENT_NAME.findall(statement) if name not in code]
+    return missing

@@ -157,6 +157,7 @@ def create_app(
     app.state.questions = QuestionRunner(database, runner.indexer, llm_service, question_executor)
     app.state.analyses = AnalysisRunner(database, llm_service, question_executor)
     analyses = app.state.analyses
+    analyses.indexer = runner.indexer
     runner.after_sync = lambda sync_run_id: extraction.refresh_after_sync(
         database, llm_service, analyses, sync_run_id
     )

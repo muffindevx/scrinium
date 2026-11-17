@@ -113,3 +113,17 @@ def test_the_console_knows_what_is_not_exported(api: Api) -> None:
     assert status()["unexported"] == 0 and status()["extra"] == 0
     (api.repo / RULES_DIR / f"{uuid.uuid4()}.md").write_text("---\n")
     assert status()["extra"] == 1
+
+
+def test_the_reason_given_when_rejecting_travels_in_the_tombstone(api: Api) -> None:
+    client = api.runtime.client
+    client.put("/api/v1/profile", json={"display_name": "Ana"}, headers=api.headers)
+    version_id = _rule(api)["detail"]["versions"][0]["id"]
+    response = client.post(
+        f"/api/v1/knowledge-versions/{version_id}/verification",
+        json={"status": "rejected", "note": "Es un detalle técnico, no una regla"},
+        headers=api.headers,
+    )
+    assert response.status_code == 200, response.text
+    [tombstone] = _reviewed(api)
+    assert tombstone.is_tombstone and tombstone.reason == "Es un detalle técnico, no una regla"

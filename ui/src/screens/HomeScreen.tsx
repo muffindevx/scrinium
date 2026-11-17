@@ -10,14 +10,14 @@ import { type ReactNode, useCallback, useEffect, useState } from "react"
 import { Link } from "react-router"
 import { cn } from "cn"
 import { ModelStatusBadge, StatusBadge } from "@/components/status"
-import { VERIFIED_STATUSES, sourceTone } from "@/lib/status"
+import { sourceTone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
 import {
   type Project,
-  type RuleSummary,
+  type RulebookHealth,
   type SecurityStatus,
   type Source,
-  listRules,
+  getHealth,
   listSources,
 } from "@/lib/api"
 import { relativeTime } from "@/lib/time"
@@ -88,12 +88,12 @@ export function HomeScreen({
   onSessionLost: (error: unknown) => void
 }) {
   const [sources, setSources] = useState<Source[] | null>(null)
-  const [rules, setRules] = useState<RuleSummary[] | null>(null)
+  const [rules, setRules] = useState<RulebookHealth | null>(null)
   const { error, fail } = useErrors(onSessionLost)
 
   const load = useCallback(() => {
     if (!project) return
-    Promise.all([listSources(project.id), listRules(project.id)])
+    Promise.all([listSources(project.id), getHealth(project.id)])
       .then(([loadedSources, loadedRules]) => {
         setSources(loadedSources)
         setRules(loadedRules)
@@ -131,15 +131,11 @@ export function HomeScreen({
   }
 
   const synced = lastSync(sources ?? [])
-  const verified = rules?.filter((rule) =>
-    VERIFIED_STATUSES.includes(rule.latest_version?.verification_status ?? "unverified"),
-  ).length
-  const proposed = rules?.filter((rule) => rule.latest_version?.verification_status === "unverified").length
   const hasSources = (sources?.length ?? 0) > 0
   const steps = [
     { done: hasSources, label: <Link to="/fuentes" className="hover:underline">Añade el repositorio o la carpeta del proyecto</Link> },
     { done: synced !== null, label: <Link to="/fuentes" className="hover:underline">Sincronízalo para preparar el conocimiento</Link> },
-    { done: (rules?.length ?? 0) > 0, label: <Link to="/reglas" className="hover:underline">Extrae las reglas del código</Link> },
+    { done: (rules?.rules ?? 0) > 0, label: <Link to="/reglas" className="hover:underline">Extrae las reglas del código</Link> },
   ]
   const pendingSetup = sources !== null && rules !== null && steps.some((step) => !step.done)
 
@@ -201,11 +197,22 @@ export function HomeScreen({
             <p className="text-sm text-muted-foreground">Cargando…</p>
           ) : (
             <div className="grid gap-2">
-              <p className="font-heading text-3xl font-semibold">{rules.length}</p>
+              <p className="font-heading text-3xl font-semibold">{rules.rules}</p>
               <div className="flex flex-wrap gap-1.5">
-                <StatusBadge tone="verified">{verified} verificadas</StatusBadge>
-                <StatusBadge tone="proposed">{proposed} sin verificar</StatusBadge>
+                <StatusBadge tone="verified">{rules.verified} verificadas</StatusBadge>
+                <StatusBadge tone="proposed">{rules.unreviewed} sin revisar</StatusBadge>
+                {rules.drifted > 0 && <StatusBadge tone="attention">{rules.drifted} cambiaron</StatusBadge>}
               </div>
+              {rules.inbox > 0 && (
+                <Link to="/bandeja" className="text-sm hover:underline">
+                  {rules.inbox === 1 ? "1 regla en la bandeja" : `${rules.inbox} reglas en la bandeja`}
+                </Link>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {rules.last_review_at ? `Última revisión ${relativeTime(rules.last_review_at)}` : "Nada revisado aún"}
+                {rules.oldest_unreviewed_at &&
+                  ` · la propuesta más antigua sin revisar es de ${relativeTime(rules.oldest_unreviewed_at)}`}
+              </p>
             </div>
           )}
         </HealthCard>

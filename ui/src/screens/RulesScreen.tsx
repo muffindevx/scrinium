@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, Check, ChevronRight, ListChecks, Pause, PenLine, Sparkles, X } from "lucide-react"
+import { ArrowLeft, BookOpen, Check, ChevronRight, Pause, PenLine, Sparkles, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
 import { cn } from "cn"
@@ -36,7 +36,6 @@ import {
   writeStatement,
   listRules,
   setVerification,
-  startConsistencyReview,
   type ModelChoice,
   startExtraction,
   type ExtractionEstimate,
@@ -345,35 +344,6 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
           </Button>
           <ErrorText>{error}</ErrorText>
         </form>
-      )}
-    </Section>
-  )
-}
-
-function ConsistencyPanel({ project, onSessionLost, onFinished }: ScreenProps & { onFinished: () => void }) {
-  const [analysisId, setAnalysisId] = useState<string | null>(null)
-  const { error, setError, fail } = useErrors(onSessionLost)
-  const start = () => {
-    setError(null)
-    startConsistencyReview(project.id)
-      .then((analysis) => setAnalysisId(analysis.id))
-      .catch(fail)
-  }
-  return (
-    <Section
-      title="Revisar consistencia"
-      description="Busca reglas duplicadas, reglas que se contradicen y reglas ambiguas. Todo queda como hallazgo para que decidas."
-    >
-      {analysisId ? (
-        <AnalysisDetail analysisId={analysisId} onSessionLost={onSessionLost} onFinished={onFinished} />
-      ) : (
-        <div className="grid gap-2">
-          <Button className="justify-self-start" onClick={start}>
-            <ListChecks data-icon="inline-start" />
-            Empezar la revisión
-          </Button>
-          <ErrorText>{error}</ErrorText>
-        </div>
       )}
     </Section>
   )
@@ -833,7 +803,7 @@ function RuleList(props: ScreenProps) {
   const setFilter = (value: Filter) => setListParam("filtro", value, "all")
   const setQuery = (value: string) => setListParam("q", value, "")
   const [grouping, setGrouping] = useState<Grouping>(readGrouping)
-  const [panel, setPanel] = useState<"extract" | "manual" | "consistency" | null>(null)
+  const [panel, setPanel] = useState<"extract" | "manual" | null>(null)
   const { error, fail } = useErrors(onSessionLost)
   const load = useCallback(() => {
     listRules(project.id, { q: query.trim() || undefined })
@@ -844,7 +814,7 @@ function RuleList(props: ScreenProps) {
 
   const shown = rules?.filter((rule) => matches(rule, filter)) ?? []
   const count = (value: Filter) => rules?.filter((rule) => matches(rule, value)).length ?? 0
-  const toggle = (next: "extract" | "manual" | "consistency") => setPanel(panel === next ? null : next)
+  const toggle = (next: "extract" | "manual") => setPanel(panel === next ? null : next)
   const group = (value: string) => {
     setGrouping(value as Grouping)
     try {
@@ -862,13 +832,6 @@ function RuleList(props: ScreenProps) {
         description="El libro de reglas del proyecto: lo que el sistema debe hacer, con citas al código. La IA propone y tú decides."
         actions={
           <>
-            <Button
-              variant={panel === "consistency" ? "secondary" : "outline"}
-              onClick={() => toggle("consistency")}
-            >
-              <ListChecks data-icon="inline-start" />
-              Revisar consistencia
-            </Button>
             <Button variant={panel === "manual" ? "secondary" : "outline"} onClick={() => toggle("manual")}>
               <PenLine data-icon="inline-start" />
               Crear regla manual
@@ -881,7 +844,6 @@ function RuleList(props: ScreenProps) {
         }
       />
       {panel === "extract" && <ExtractionPanel {...props} onFinished={load} />}
-      {panel === "consistency" && <ConsistencyPanel {...props} onFinished={load} />}
       {panel === "manual" && (
         <ManualRuleForm
           {...props}
@@ -960,12 +922,13 @@ function RuleList(props: ScreenProps) {
   )
 }
 
+/** Two decisions (phase 4.5): a person confirms or rejects. "Backed by the code" is not a
+ * decision: it is what the checked citations already say (the evidence profile). */
 const REVIEW_ACTIONS: { status: VerificationStatus; label: string }[] = [
   { status: "human_verified", label: "Confirmar" },
-  { status: "source_supported", label: "Respaldada por el código" },
-  { status: "rejected", label: "Falso positivo" },
-  { status: "unverified", label: "Volver a sin verificar" },
+  { status: "rejected", label: "Rechazar" },
 ]
+const REVIEWED: VerificationStatus[] = ["human_verified", "rejected"]
 
 /** A list of functions; each one opens its code below. */
 function FunctionList({ label, items }: { label: string; items: FunctionRef[] }) {
@@ -1086,9 +1049,15 @@ function VersionBlock({
   onSessionLost: (error: unknown) => void
 }) {
   const { error, setError, fail } = useErrors(onSessionLost)
+  const [note, setNote] = useState("")
   const review = (status: VerificationStatus) => {
     setError(null)
-    setVerification(version.id, status).then(onChanged).catch(fail)
+    setVerification(version.id, status, note)
+      .then(() => {
+        setNote("")
+        onChanged()
+      })
+      .catch(fail)
   }
   const content = version.content
   return (
@@ -1198,9 +1167,21 @@ function VersionBlock({
               </Button>
             ))}
           </div>
+          <Input
+            aria-label="Motivo de la revisión"
+            maxLength={2000}
+            placeholder="Motivo (opcional; al rechazar, viaja con la regla al repositorio)"
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+          />
+          {REVIEWED.includes(version.verification_status) && (
+            <Button size="xs" variant="ghost" className="justify-self-start" onClick={() => review("unverified")}>
+              Deshacer la revisión
+            </Button>
+          )}
           <p className="text-xs text-muted-foreground">
-            "Respaldada" exige una cita comprobada; una propuesta de la IA no basta. Confirmar y descartar
-            registran tu nombre del perfil.
+            Confirmar y rechazar registran tu nombre del perfil. Que el código la respalde lo dicen sus citas
+            comprobadas (arriba), no un botón.
           </p>
           <ReviewError error={error} />
         </div>
