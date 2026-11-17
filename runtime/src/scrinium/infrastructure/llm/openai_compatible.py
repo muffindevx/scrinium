@@ -126,6 +126,7 @@ class OpenAICompatibleChat:
         temperature: float = DEFAULT_TEMPERATURE,
         seed: int | None = DEFAULT_SEED,
         slot: int = _SLOT,
+        llama_extras: bool = True,
     ) -> None:
         """Without `base_url` (llama-server could not start), the model shows as unavailable.
 
@@ -141,6 +142,8 @@ class OpenAICompatibleChat:
         # (S1, parallel batches).
         self._slot = slot
         self._seed = seed
+        # `cache_prompt` and `id_slot` are llama-server's; another server may reject them.
+        self._llama_extras = llama_extras
         # One generation at a time: the GPU is shared, and two at once are just slower.
         self._lock = threading.Lock()
 
@@ -170,9 +173,10 @@ class OpenAICompatibleChat:
             "stream": False,
             "max_tokens": max_tokens,
             "temperature": self._temperature,
-            "cache_prompt": True,
-            "id_slot": self._slot,
         }
+        if self._llama_extras:
+            body["cache_prompt"] = True
+            body["id_slot"] = self._slot
         if self._seed is not None:
             body["seed"] = self._seed
         if json_schema is not None:

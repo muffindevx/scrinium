@@ -2,6 +2,8 @@
 
 **Status:** accepted, 2026-11-06. Updated on later dates:
 
+- amended on 2026-11-17 by [ADR-013](ADR-013-own-provider-by-default.md): the default install has no chat model; the first run asks where the writing model lives, and isolated mode blocks every egress;
+
 - embeddings implemented on 2026-11-07;
 - LLM answers implemented later;
 - managed llama.cpp on 2026-11-09;

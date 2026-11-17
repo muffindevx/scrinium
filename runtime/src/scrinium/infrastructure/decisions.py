@@ -41,7 +41,7 @@ from scrinium.infrastructure.code_structure import _parser, language_for, parse_
 # Raising it re-fingerprints every node. Anchors computed with another version are computed again
 # from the code they cite (the cited revision, or the base commit in `scrinium check`), never
 # compared as they are. Version 2: a collection of values has the same shape whatever its size.
-DECISIONS_VERSION: Final = "2"
+DECISIONS_VERSION: Final = "3"
 
 
 class Kind:
@@ -650,9 +650,26 @@ def _constants(root: Node) -> dict[str, str]:
     for key, value in found.items():
         if value.type == "identifier" and _text(value) in found:
             value = found[_text(value)]
+        value = _unwrapped(value)
         if value.type in _LITERALS:
             resolved[key] = _literal(value, keep_values=True)
     return resolved
+
+
+# Constructors that only carry a number: `Decimal("40")`, `new Decimal(0.1)`, `BigInt(5)`.
+# Money and thresholds are written this way, and the value is the literal inside (v3).
+_NUMBER_WRAPPERS: Final = frozenset(
+    {"Decimal", "float", "int", "Number", "BigInt", "Big", "BigNumber", "Fraction"}
+)
+
+
+def _unwrapped(value: Node) -> Node:
+    """The literal inside a number constructor with a single literal argument, or `value`."""
+    if value.type not in _CALLS or _callee_name(value) not in _NUMBER_WRAPPERS:
+        return value
+    arguments = value.child_by_field_name("arguments")
+    inside = _children(arguments) if arguments is not None else []
+    return inside[0] if len(inside) == 1 and inside[0].type in _LITERALS else value
 
 
 def _walk(node: Node) -> Iterator[Node]:

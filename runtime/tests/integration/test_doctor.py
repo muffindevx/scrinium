@@ -49,7 +49,11 @@ def test_an_empty_install_says_what_to_run(tmp_path: Path) -> None:
     assert result.returncode == 1
     assert "[ok] Directorio de datos privado" in result.stdout
     assert "[falla] Falta llama-server" in result.stdout
-    assert "[falla] Falta el modelo qwen3-4b-instruct-2507." in result.stdout
+    assert "[falla] Falta el modelo qwen3-embedding-0.6b." in result.stdout
+    # ADR-013: the local chat model is an add-on, never a failure.
+    assert "[falla] Falta el modelo qwen3-4b-instruct-2507." not in result.stdout
+    assert "scrinium tools install local" in result.stdout
+    assert "Primera ejecucion: la consola pregunta" in result.stdout
     assert "scrinium tools install" in result.stdout
     assert "Traceback" not in result.stderr
 

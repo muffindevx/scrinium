@@ -1,8 +1,16 @@
 Scrinium: instalacion
 ==================
 
-Necesitas unos 4 GB libres y, mejor, 8 GB de memoria o mas. No hace falta ser
-administrador. La primera vez descarga unos 3,2 GB (herramientas y modelos locales).
+Necesitas unos 2 GB libres y 4 GB de memoria. No hace falta ser administrador.
+La primera vez descarga unos 0,7 GB: herramientas y el modelo de busqueda. Al abrir
+Scrinium eliges que modelo escribe las reglas: tu proveedor (recomendado), un servidor
+local o el modo aislado. El modelo local propio es opcional (2,5 GB mas, mejor con GPU):
+
+    scrinium tools install local
+
+Para probarlo en 5 minutos, sin modelo ni GPU:
+
+    scrinium demo
 
 Linux y macOS, en una terminal dentro de esta carpeta:
 

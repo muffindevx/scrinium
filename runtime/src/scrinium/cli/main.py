@@ -57,9 +57,11 @@ from scrinium.infrastructure.tools.installer import (
     locate_model,
 )
 from scrinium.infrastructure.tools.manifest import (
+    ADDONS,
     CHAT_MODEL,
     EMBEDDING_MODEL,
     LLAMA_SERVER,
+    LOCAL_ADDON,
     MAP_MODEL,
     MODELS,
     TOOLS,
@@ -162,8 +164,8 @@ def serve_with_window(server: uvicorn.Server, sock: socket.socket, launch_url: s
 
 
 _MODELS_MISSING = (
-    "Faltan llama.cpp o los modelos locales: sin ellos, Scrinium no puede buscar por significado "
-    "ni responder preguntas. Descargalos con: scrinium tools install"
+    "Faltan llama.cpp o el modelo de busqueda: sin ellos, Scrinium no puede buscar por "
+    "significado. Descargalos con: scrinium tools install"
 )
 _LLAMA_FAILED = (
     "llama-server no arranco: Scrinium sigue sin modelos locales. Para ver por que, arranca con "
@@ -185,12 +187,13 @@ def start_llama_server(data_dir: Path) -> LlamaServer | None:
         for model in (CHAT_MODEL, EMBEDDING_MODEL)
         if (path := locate_model(model, models_dir)) is not None
     ]
-    required = len(served)
+    # ADR-013: the embedding model is required; the chat model is the optional local add-on.
+    has_embeddings = any(entry.embeddings for entry in served)
     # The map model, under evaluation: served only if installed, and not loaded until
     # someone asks for it.
     if (map_path := locate_model(MAP_MODEL, models_dir)) is not None:
         served.append(ServedModel(MAP_MODEL, map_path, no_thinking=True))
-    if executable is None or required < 2:
+    if executable is None or not has_embeddings:
         print(_MODELS_MISSING, file=sys.stderr, flush=True)
     if executable is None or not served:
         return None
@@ -383,14 +386,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     tools_parser = commands.add_parser(
-        "tools", help="Lo que Scrinium descarga: gitleaks, llama.cpp y los modelos locales."
+        "tools", help="Lo que Scrinium descarga: gitleaks, llama.cpp y el modelo de busqueda."
     )
     tools_commands = tools_parser.add_subparsers(dest="tools_command", required=True)
     install_parser = tools_commands.add_parser(
         "install", help="Descarga lo que falte, con version y SHA256 fijos."
     )
     install_parser.add_argument(
-        "names", nargs="*", choices=sorted([*TOOLS, *MODELS]), metavar="nombre"
+        "names",
+        nargs="*",
+        choices=sorted([*TOOLS, *MODELS, *ADDONS]),
+        metavar="nombre",
+        help=(
+            "Sin nombres: gitleaks, llama.cpp y el modelo de búsqueda. "
+            f"«{LOCAL_ADDON}» añade el modelo de chat local (2,5 GB)."
+        ),
     )
     install_parser.add_argument(
         "--cpu", action="store_true", help="llama.cpp solo con CPU, aunque haya Vulkan."
@@ -398,6 +408,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     tools_commands.add_parser("status", help="Muestra que esta instalado y donde.")
 
     commands.add_parser("doctor", help="Comprueba el equipo y dice como arreglar lo que falte.")
+    demo_parser = commands.add_parser(
+        "demo",
+        help="Demo de 5 minutos: reglas verificadas, un cambio que rompe una y el aviso del check.",
+    )
+    demo_parser.add_argument(
+        "--dir", type=Path, default=Path("scrinium-demo"),
+        help="Carpeta nueva para el ejemplo (por defecto, ./scrinium-demo).",
+    )  # fmt: skip
     commands.add_parser("stop", help="Detiene todos los Scrinium en marcha y su llama-server.")
     attach_parser = commands.add_parser(
         "attach", help="Muestra en vivo todo lo que hace el Scrinium en marcha (modo dios)."
@@ -435,6 +453,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1 if _is_root() else run_rule_command(args)
     if args.command == "tools":
         return tools(args)
+    if args.command == "demo":
+        from scrinium.cli.demo import demo
+
+        return demo(args.dir)
     if args.command in {"doctor", "stop", "attach", "link", "clean", "uninstall"}:
         configure_logging(verbose=False)
         if _is_root():

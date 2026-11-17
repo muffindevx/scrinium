@@ -1,3 +1,4 @@
+import { adoptLanguage, t } from "@/lib/i18n"
 import {
   BookOpen,
   Cloud,
@@ -10,6 +11,7 @@ import {
   ScanSearch,
   ScrollText,
   Settings,
+  ShieldOff,
   Sparkles,
   Tags,
   TriangleAlert,
@@ -22,13 +24,16 @@ import { Button } from "@/components/ui/button"
 import { Select } from "@/components/ui/select"
 import { EmptyState } from "@/components/page"
 import {
+  type AiSetup,
   type DataFlow,
   type Project,
   type ProjectAi,
   type SecurityStatus,
   SessionRequiredError,
   type Workspace,
+  getAiSetup,
   getDataFlow,
+  getLanguage,
   getProfile,
   getProjectAi,
   getProjects,
@@ -84,25 +89,25 @@ interface NavItem {
 // The same routes the runtime accepts in api/static.py (UI_ROUTES).
 const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
   {
-    group: "Proyecto",
+    group: t("Proyecto"),
     items: [
-      { path: "/", label: "Inicio", icon: House },
-      { path: "/bandeja", label: "Bandeja", icon: Inbox },
-      { path: "/reglas", label: "Reglas", icon: BookOpen },
+      { path: "/", label: t("Inicio"), icon: House },
+      { path: "/bandeja", label: t("Bandeja"), icon: Inbox },
+      { path: "/reglas", label: t("Reglas"), icon: BookOpen },
     ],
   },
   {
-    group: "Cambios",
+    group: t("Cambios"),
     items: [
-      { path: "/impacto", label: "Impacto", icon: ScanSearch },
-      { path: "/versiones", label: "Versiones", icon: Tags },
+      { path: "/impacto", label: t("Impacto"), icon: ScanSearch },
+      { path: "/versiones", label: t("Versiones"), icon: Tags },
     ],
   },
 ]
 const FOOTER_NAVIGATION: NavItem[] = [
-  { path: "/fuentes", label: "Fuentes", icon: FolderGit2 },
-  { path: "/ia", label: "IA del proyecto", icon: Sparkles },
-  { path: "/ajustes", label: "Ajustes", icon: Settings },
+  { path: "/fuentes", label: t("Fuentes"), icon: FolderGit2 },
+  { path: "/ia", label: t("IA del proyecto"), icon: Sparkles },
+  { path: "/ajustes", label: t("Ajustes"), icon: Settings },
 ]
 
 const PROJECT_KEY = "scrinium.project"
@@ -156,7 +161,7 @@ function SidebarLink({ item }: { item: NavItem }) {
 function Sidebar() {
   return (
     <nav
-      aria-label="Secciones"
+      aria-label={t("Secciones")}
       className="flex w-56 shrink-0 flex-col justify-between border-r bg-sidebar p-3 text-sidebar-foreground max-lg:w-14 max-lg:p-2"
     >
       <div className="grid gap-4">
@@ -181,7 +186,19 @@ function Sidebar() {
 }
 
 /** Says what really leaves: local unless the current project consented to a remote model. */
-export function PrivacyPill({ ai }: { ai: ProjectAi | null }) {
+export function PrivacyPill({ ai, isolated = false }: { ai: ProjectAi | null; isolated?: boolean }) {
+  if (isolated) {
+    return (
+      <NavLink
+        to="/ajustes/modelos"
+        title={t("Modo aislado: no se puede registrar ni usar ningún proveedor externo.")}
+        className="inline-flex h-7 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium whitespace-nowrap text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+      >
+        <ShieldOff className="size-3.5" aria-hidden="true" />
+        <span className="max-sm:sr-only">{t("Modo aislado")}</span>
+      </NavLink>
+    )
+  }
   // What leaves by default: the tasks whose default model is external. A model only allowed
   // leaves when someone chooses it for a run, and that screen says so.
   const defaults = Object.values(ai?.task_models ?? {})
@@ -192,7 +209,7 @@ export function PrivacyPill({ ai }: { ai: ProjectAi | null }) {
     return (
       <span className="inline-flex h-7 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium whitespace-nowrap text-emerald-600 dark:text-emerald-400">
         <LockKeyhole className="size-3.5" aria-hidden="true" />
-        <span className="max-sm:sr-only">100% local y privado</span>
+        <span className="max-sm:sr-only">{t("100% local y privado")}</span>
       </span>
     )
   }
@@ -200,11 +217,11 @@ export function PrivacyPill({ ai }: { ai: ProjectAi | null }) {
   return (
     <NavLink
       to="/ia"
-      title={`Este proyecto envía tareas a ${names}. Ver o cambiar en IA del proyecto.`}
+      title={t("Este proyecto envía tareas a {0}. Ver o cambiar en IA del proyecto.", names)}
       className="inline-flex h-7 items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium whitespace-nowrap text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
     >
       <Cloud className="size-3.5" aria-hidden="true" />
-      <span className="max-sm:sr-only">IA externa: {names}</span>
+      <span className="max-sm:sr-only">{t("IA externa:")} {names}</span>
     </NavLink>
   )
 }
@@ -225,6 +242,17 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
       .catch(() => setLoadedAi(null))
   }, [projectKey])
   useEffect(loadAi, [loadAi])
+  // Where the writing model lives (ADR-013); Home asks until someone chooses.
+  const [setup, setSetup] = useState<AiSetup | null>(null)
+  useEffect(() => {
+    getAiSetup()
+      .then(setSetup)
+      .catch(() => setSetup(null))
+  }, [])
+  const setupChosen = (chosen: AiSetup) => {
+    setSetup(chosen)
+    loadAi()
+  }
   const [drop, clearDrop] = useFolderDrop()
   const navigate = useNavigate()
   // A folder dropped anywhere opens the Home screen with its path ready to read, once per drop:
@@ -255,14 +283,14 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
     ) : (
       <EmptyState
         icon={FolderGit2}
-        title="Primero, un proyecto"
+        title={t("Primero, un proyecto")}
         action={
           <Button render={<NavLink to="/" />} nativeButton={false}>
-            Empezar
+            {t("Empezar")}
           </Button>
         }
       >
-        Empieza en el Inicio: basta con la ruta de tu repositorio o de su carpeta de documentos.
+        {t("Empieza en el Inicio: basta con la ruta de tu repositorio o de su carpeta de documentos.")}
       </EmptyState>
     )
   const props = (current: Project) => ({ project: current, onSessionLost: sessionLost })
@@ -276,12 +304,12 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
               <ScrollText className="size-4" aria-hidden="true" />
             </span>
             <span className="font-heading text-base font-semibold tracking-tight max-sm:sr-only">
-              Scrinium
+              {t("Scrinium")}
             </span>
           </span>
           {data.projects.length > 0 && (
             <Select
-              aria-label="Proyecto"
+              aria-label={t("Proyecto")}
               value={project?.id ?? ""}
               options={data.projects.map((candidate) => ({ value: candidate.id, label: candidate.name }))}
               onValueChange={choose}
@@ -290,8 +318,8 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
           )}
         </div>
         <div className="flex items-center gap-2">
-          <PrivacyPill ai={projectAi} />
-          <Button variant="ghost" size="icon-sm" aria-label="Cerrar sesión" title="Cerrar sesión" onClick={endSession}>
+          <PrivacyPill ai={projectAi} isolated={setup?.isolated ?? data.status.profile === "isolated"} />
+          <Button variant="ghost" size="icon-sm" aria-label={t("Cerrar sesión")} title={t("Cerrar sesión")} onClick={endSession}>
             <LogOut />
           </Button>
         </div>
@@ -309,6 +337,8 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                     project={project}
                     status={data.status}
                     localOnly={(projectAi?.consents.length ?? 0) === 0}
+                    setup={setup}
+                    onSetupChosen={setupChosen}
                     onProjectCreated={addProject}
                     drop={drop}
                     onDropUsed={clearDrop}
@@ -355,6 +385,8 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                     status={data.status}
                     dataFlow={data.dataFlow}
                     profileName={data.profileName}
+                    setup={setup}
+                    onSetupChosen={setupChosen}
                     onProfileSaved={(profileName) => setView({ kind: "ready", ...data, profileName })}
                     onProjectDeleted={(deleted) =>
                       setView({
@@ -386,8 +418,13 @@ export default function App() {
   const [view, setView] = useState<ViewState>({ kind: "loading" })
 
   useEffect(() => {
-    Promise.all([getSecurityStatus(), getDataFlow(), getWorkspace(), getProjects(), getProfile()])
-      .then(([status, dataFlow, workspace, projects, profile]) =>
+    Promise.all([getSecurityStatus(), getDataFlow(), getWorkspace(), getProjects(), getProfile(), getLanguage()])
+      .then(([status, dataFlow, workspace, projects, profile, chosen]) => {
+        // The workspace's language wins over this browser's copy: reload once if they differ.
+        if (adoptLanguage(chosen.language)) {
+          window.location.reload()
+          return
+        }
         setView({
           kind: "ready",
           status,
@@ -395,8 +432,8 @@ export default function App() {
           workspace,
           projects,
           profileName: profile.display_name,
-        }),
-      )
+        })
+      })
       .catch((error: unknown) => setView(errorState(error)))
   }, [])
 
@@ -413,23 +450,22 @@ export default function App() {
         <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
           <ScrollText className="size-4" aria-hidden="true" />
         </span>
-        <span className="font-heading text-xl font-semibold tracking-tight">Scrinium</span>
+        <span className="font-heading text-xl font-semibold tracking-tight">{t("Scrinium")}</span>
       </span>
-      {view.kind === "loading" && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {view.kind === "loading" && <p className="text-sm text-muted-foreground">{t("Cargando…")}</p>}
       {view.kind === "signed_out" && (
-        <Notice title="Sesión cerrada">
-          Para volver a entrar, reinicia Scrinium con <code>scrinium start</code>.
+        <Notice title={t("Sesión cerrada")}>
+          {t("Para volver a entrar, reinicia Scrinium con")} <code>scrinium start</code>.
         </Notice>
       )}
       {view.kind === "no_session" && (
-        <Notice title="Se necesita una sesión">
-          Abre el enlace de un solo uso que aparece en la terminal. Si ya no sirve, reinicia Scrinium
-          con <code>scrinium start</code>.
+        <Notice title={t("Se necesita una sesión")}>
+          {t("Abre el enlace de un solo uso que aparece en la terminal. Si ya no sirve, reinicia Scrinium con")} <code>scrinium start</code>.
         </Notice>
       )}
       {view.kind === "error" && (
-        <Notice title="No se pudo leer el estado">
-          Comprueba que Scrinium sigue en marcha en la terminal y recarga la página.
+        <Notice title={t("No se pudo leer el estado")}>
+          {t("Comprueba que Scrinium sigue en marcha en la terminal y recarga la página.")}
         </Notice>
       )}
     </main>

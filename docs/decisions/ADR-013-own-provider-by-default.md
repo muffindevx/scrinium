@@ -1,6 +1,6 @@
 # ADR-013: Your own model provider is the recommended start; local is one endpoint among others
 
-**Status:** proposed, 2026-11-15. Needs the owner's acceptance before phase 5 (package and pilot) starts. Amends [ADR-001](ADR-001-local-first.md), [ADR-004](ADR-004-ai-data-egress.md) and [ADR-010](ADR-010-remote-model-providers.md).
+**Status:** accepted by the owner, 2026-11-17 (proposed 2026-11-15). Amends [ADR-001](ADR-001-local-first.md), [ADR-004](ADR-004-ai-data-egress.md) and [ADR-010](ADR-010-remote-model-providers.md).
 
 ## The question
 
@@ -74,6 +74,24 @@ What does **not** change: the per-project consent and its retention notice, keys
 - The installer and `make release` stop bundling models; `scrinium doctor` checks the chosen endpoint instead of llama-server.
 - README hardware tiers apply only to the local path.
 - Tests: first run in each of the three modes; isolated mode refusing a provider; the package without models still searching by meaning.
+
+## As built (phase 5, 2026-11-17)
+
+**First run.** `GET/PUT /api/v1/ai-setup` keeps the choice in `Workspace.settings["ai_setup"]` (no schema change; it travels with the backup). Home asks until someone chooses; Settings › AI models shows it and changes it. Every choice is recorded in the audit log (`ai_setup.choose`).
+
+**Isolated mode** (`application/ai/setup.py`):
+
+- Registering, editing, testing or consenting to a provider answers `403 isolated_mode`, and choosing a remote model for a task is refused (`refuse_if_isolated`).
+- The router never routes a task outside: the local model, or `ModelNotPermittedError` when a run named a remote one.
+- Choosing it revokes every consent in force, each recorded with the reason `isolated_mode`.
+- `security-status` reports `profile: "isolated"`, `ai_mode: "isolated"`; the privacy pill says «Modo aislado».
+- `SCRINIUM_PROFILE=isolated` forces it from the environment: the console cannot change it (`isolated_managed`), and `security-status` says `profile_managed: true`. `scrinium doctor` reports it.
+
+**Local server.** Any OpenAI-compatible server at a loopback address (`check_loopback_url`: `http`, `127.0.0.1`/`localhost`, no path). It replaces the local chat model at once, without a restart (`SwitchableChat`); requests to it omit llama-server's `cache_prompt` and `id_slot`. `POST /api/v1/ai-setup/check-local` tests it; nothing leaves the machine.
+
+**Default install** (`scrinium tools install`): gitleaks, llama-server and the embedding model, about 0.7 GB instead of 3.2 GB. One deviation from decision 3: **llama-server stays in the default install**, because it is what serves the embedding model (decision 4). Shipping embeddings in-process would add a new runtime dependency; llama-server is already pinned and verified. `scrinium tools install local` adds the chat model. Startup only warns if the embedding model is missing; `doctor` reports the chat model as optional and asks for 4 GB of memory without it (8 GB with it).
+
+**Not measured:** «a stranger reaches their first rules in under 10 minutes with a provider» needs a person; it moves to the pilot (5.4).
 
 ## Revisit when
 

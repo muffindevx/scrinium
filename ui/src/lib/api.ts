@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 export interface SecurityStatus {
   runtime: {
     mode: "local"
@@ -19,11 +20,25 @@ export interface SecurityStatus {
     secret_store_backend: string | null
   }
   ai_mode: AiMode
+  profile: "standard" | "isolated"
+  profile_managed: boolean
+  ai_setup: SetupChoice | null
   connected_sources: number
   limits: string[]
 }
 
-export type AiMode = "local_only" | "remote_allowed"
+export type AiMode = "local_only" | "remote_allowed" | "isolated"
+
+/** Where the writing model lives, chosen on the first run (ADR-013). */
+export type SetupChoice = "provider" | "local_server" | "isolated"
+
+export interface AiSetup {
+  choice: SetupChoice | null
+  isolated: boolean
+  managed: boolean
+  local_server: { url: string; model: string } | null
+  local_model?: string
+}
 
 export interface DataFlow {
   ai_mode: AiMode
@@ -139,7 +154,7 @@ export class ApiError extends Error {
   readonly fields: string[]
 
   constructor(status: number, code: string | null, fields: string[] = []) {
-    super(`Respuesta inesperada: ${status}`)
+    super(t("Respuesta inesperada: {0}", status))
     this.status = status
     this.code = code
     this.fields = fields
@@ -815,6 +830,26 @@ export interface EngineInfo {
 }
 
 export const getEngine = () => getJson<EngineInfo>("/api/v1/system/engine")
+
+export const getAiSetup = () => getJson<AiSetup>("/api/v1/ai-setup")
+
+/** The workspace's language: the console's and the models' (phase 5.5). */
+export const getLanguage = () => getJson<{ language: "es" | "en" }>("/api/v1/workspace/language")
+export async function setLanguage(language: "es" | "en"): Promise<{ language: "es" | "en" }> {
+  return (await mutate("/api/v1/workspace/language", { language }, "PUT")).json()
+}
+
+export async function chooseAiSetup(
+  choice: SetupChoice,
+  localServer?: { url: string; model: string },
+): Promise<AiSetup & { consents_revoked: number }> {
+  const body = choice === "local_server" ? { choice, local_server: localServer } : { choice }
+  return (await mutate("/api/v1/ai-setup", body, "PUT")).json()
+}
+
+export async function checkLocalServer(url: string, model: string): Promise<{ status: EmbeddingStatus }> {
+  return (await mutate("/api/v1/ai-setup/check-local", { url, model })).json()
+}
 
 export interface ExtractionStatus {
   pending: number

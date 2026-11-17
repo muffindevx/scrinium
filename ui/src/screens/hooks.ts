@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { useCallback, useEffect, useState } from "react"
 import { useLocation } from "react-router"
 import { type Analysis, ApiError, getAnalysis, isFinished } from "@/lib/api"
@@ -55,10 +56,10 @@ export function useDebounced<T>(value: T, ms: number): T {
 }
 
 const BACK_LABELS: [prefix: string, label: string][] = [
-  ["/reglas/", "Regla anterior"],
-  ["/reglas", "Reglas"],
-  ["/impacto", "Impacto"],
-  ["/versiones", "Versiones"],
+  ["/reglas/", t("Regla anterior")],
+  ["/reglas", t("Reglas")],
+  ["/impacto", t("Impacto")],
+  ["/versiones", t("Versiones")],
 ]
 
 /** Where the open rule came from: a page of this app, or the rule list when unknown. */
@@ -66,7 +67,7 @@ export function useBackTarget(): { to: string; label: string } {
   const from = (useLocation().state as { from?: unknown } | null)?.from
   // Only paths inside the app: never another origin ("//host") or a full URL.
   const to = typeof from === "string" && from.startsWith("/") && !from.startsWith("//") ? from : "/reglas"
-  if (to === "/") return { to, label: "Inicio" }
-  const label = BACK_LABELS.find(([prefix]) => to.startsWith(prefix))?.[1] ?? "Volver"
+  if (to === "/") return { to, label: t("Inicio") }
+  const label = BACK_LABELS.find(([prefix]) => to.startsWith(prefix))?.[1] ?? t("Volver")
   return { to, label }
 }

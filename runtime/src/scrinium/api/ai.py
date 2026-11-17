@@ -6,7 +6,7 @@ whether a key is set and its last four characters.
 
 import uuid
 from datetime import date
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,12 +14,21 @@ from sqlalchemy.orm import Session
 
 from scrinium.application.ai import providers
 from scrinium.application.ai.connection import check_connection
+from scrinium.application.ai.language import read_language, set_language
 from scrinium.application.ai.providers import ProviderError
 from scrinium.application.ai.routing import build_adapter, tokens_spent
+from scrinium.application.ai.setup import (
+    SetupChoice,
+    SetupError,
+    choose,
+    clean_local_server,
+    read_setup,
+)
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion import sources
 from scrinium.application.workspaces import record_audit
 from scrinium.domain.enums import AiTask, AuditResult, ProviderKind
+from scrinium.infrastructure.llm.switchable import SwitchableChat, local_server_chat
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import ModelProvider, Project, utc_now
 
@@ -75,6 +84,26 @@ class ConsentBody(BaseModel):
     make_default: bool = True
 
 
+class LocalServerBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1, max_length=500)
+    model: str = Field(min_length=1, max_length=200)
+
+
+class SetupBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    choice: SetupChoice
+    local_server: LocalServerBody | None = None
+
+
+class LanguageBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    language: Literal["es", "en"]
+
+
 class DefaultBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -85,10 +114,12 @@ class DefaultBody(BaseModel):
 _CODES = {
     "keyring_unavailable": status.HTTP_503_SERVICE_UNAVAILABLE,
     "name_taken": status.HTTP_409_CONFLICT,
+    "isolated_mode": status.HTTP_403_FORBIDDEN,
+    "isolated_managed": status.HTTP_403_FORBIDDEN,
 }
 
 
-def _error(error: ProviderError) -> HTTPException:
+def _error(error: ProviderError | SetupError) -> HTTPException:
     return HTTPException(_CODES.get(error.code, status.HTTP_422_UNPROCESSABLE_CONTENT), error.code)
 
 
@@ -103,9 +134,64 @@ def _request_id(request: Request) -> str | None:
     return getattr(request.state, "request_id", None)
 
 
-def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRouter:
+def apply_setup(database: Database, local_chat: SwitchableChat | None) -> None:
+    """Points the local chat model at the chosen local server, or back to the default."""
+    if local_chat is None:
+        return
+    with database.session() as session:
+        server = read_setup(session).local_server
+    local_chat.use(local_server_chat(server.url, server.model) if server else None)
+
+
+def build_ai_router(
+    database: Database, environment: LocalEnvironment, local_chat: SwitchableChat | None = None
+) -> APIRouter:
     router = APIRouter()
     store = environment.secret_store
+
+    @router.get("/api/v1/workspace/language")
+    def get_language() -> dict[str, str]:
+        """The console's language and the models' (phase 5.5)."""
+        with database.session() as session:
+            return {"language": read_language(session)}
+
+    @router.put("/api/v1/workspace/language")
+    def put_language(body: LanguageBody, request: Request) -> dict[str, str]:
+        with database.session() as session:
+            return {"language": set_language(session, body.language, _request_id(request))}
+
+    @router.get("/api/v1/ai-setup")
+    def get_setup() -> dict[str, Any]:
+        """The first-run choice (ADR-013), and the local model in use now."""
+        with database.session() as session:
+            setup = read_setup(session).as_dict()
+        if local_chat is not None:
+            setup["local_model"] = local_chat.model_id
+        return setup
+
+    @router.put("/api/v1/ai-setup")
+    def put_setup(body: SetupBody, request: Request) -> dict[str, Any]:
+        try:
+            server = (
+                clean_local_server(body.local_server.url, body.local_server.model)
+                if body.choice is SetupChoice.LOCAL_SERVER and body.local_server
+                else None
+            )
+            with database.session() as session:
+                setup, revoked = choose(session, body.choice, server, _request_id(request))
+        except SetupError as error:
+            raise _error(error) from None
+        apply_setup(database, local_chat)
+        return {**setup.as_dict(), "consents_revoked": revoked}
+
+    @router.post("/api/v1/ai-setup/check-local")
+    def check_local(body: LocalServerBody) -> dict[str, Any]:
+        """Does this loopback server answer, and does it have the model? Nothing leaves."""
+        try:
+            server = clean_local_server(body.url, body.model)
+        except SetupError as error:
+            raise _error(error) from None
+        return {"status": local_server_chat(server.url, server.model).status().value}
 
     @router.get("/api/v1/model-providers")
     def list_providers() -> dict[str, Any]:
@@ -190,6 +276,10 @@ def build_ai_router(database: Database, environment: LocalEnvironment) -> APIRou
     def check(provider_id: uuid.UUID, body: CheckBody, request: Request) -> dict[str, Any]:
         """ "Probar conexión": one short fixed request, nothing from any project."""
         with database.session() as session:
+            try:
+                providers.refuse_if_isolated(session)
+            except ProviderError as error:
+                raise _error(error) from None
             provider = session.get(ModelProvider, provider_id)
             if provider is None:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")

@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { TriangleAlert } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { AnalysisStatusBadge, StatusBadge } from "@/components/status"
@@ -47,7 +48,7 @@ export function EvidenceItem({ evidence }: { evidence: Evidence }) {
     return (
       <p className="text-sm text-muted-foreground">
         {METHOD_LABELS[evidence.method]}
-        {locator.reviewer && ` por ${locator.reviewer}`}
+        {locator.reviewer && t(" por {0}", locator.reviewer)}
       </p>
     )
   }
@@ -73,18 +74,18 @@ const SEVERITY_TONE: Record<Finding["severity"], Tone> = {
 }
 
 const ASSESSMENT: Record<AssessmentStatus, [Tone, string]> = {
-  hypothesis: ["proposed", "Hipótesis sin verificar"],
-  evidence_supported: ["verified", "Con evidencia"],
-  test_verified: ["verified", "Comprobado con test"],
-  human_confirmed: ["verified", "Confirmado"],
-  false_positive: ["discarded", "Descartado (falso positivo)"],
-  unresolved: ["no_evidence", "Sin resolver"],
+  hypothesis: ["proposed", t("Hipótesis sin verificar")],
+  evidence_supported: ["verified", t("Con evidencia")],
+  test_verified: ["verified", t("Comprobado con test")],
+  human_confirmed: ["verified", t("Confirmado")],
+  false_positive: ["discarded", t("Descartado (falso positivo)")],
+  unresolved: ["no_evidence", t("Sin resolver")],
 }
 
 const FEEDBACK: { status: AssessmentStatus; label: string }[] = [
-  { status: "human_confirmed", label: "Confirmar" },
-  { status: "false_positive", label: "Falso positivo" },
-  { status: "unresolved", label: "Sin resolver" },
+  { status: "human_confirmed", label: t("Confirmar") },
+  { status: "false_positive", label: t("Falso positivo") },
+  { status: "unresolved", label: t("Sin resolver") },
 ]
 
 function MergeButton({
@@ -98,7 +99,7 @@ function MergeButton({
 }) {
   const [done, setDone] = useState(false)
   const { error, setError, fail } = useErrors(onSessionLost)
-  if (done) return <span className="text-xs text-muted-foreground">Fusionadas: se conserva la primera.</span>
+  if (done) return <span className="text-xs text-muted-foreground">{t("Fusionadas: se conserva la primera.")}</span>
   return (
     <>
       <Button
@@ -111,7 +112,7 @@ function MergeButton({
             .catch(fail)
         }}
       >
-        Fusionar (conservar la primera)
+        {t("Fusionar (conservar la primera)")}
       </Button>
       <ErrorText>{error}</ErrorText>
     </>
@@ -129,7 +130,7 @@ export function FindingList({
 }) {
   const [items, setItems] = useState(findings)
   const { error, setError, fail } = useErrors(onSessionLost)
-  if (items.length === 0) return <Muted>Sin hallazgos.</Muted>
+  if (items.length === 0) return <Muted>{t("Sin hallazgos.")}</Muted>
   const review = (finding: Finding, status: AssessmentStatus) => {
     setError(null)
     sendFeedback(finding.id, status)
@@ -146,7 +147,7 @@ export function FindingList({
             <li key={finding.id} className="grid gap-2 rounded-lg border p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge tone={SEVERITY_TONE[finding.severity]}>
-                  Gravedad {SEVERITY_LABELS[finding.severity].toLowerCase()}
+                  {t("Gravedad")} {SEVERITY_LABELS[finding.severity].toLowerCase()}
                 </StatusBadge>
                 <StatusBadge tone={tone}>{label}</StatusBadge>
                 <span className="text-sm font-medium">{finding.title}</span>
@@ -154,7 +155,7 @@ export function FindingList({
               <p className="text-sm whitespace-pre-wrap">{finding.description}</p>
               {finding.recommended_next_step && (
                 <p className="text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">Siguiente comprobación: </span>
+                  <span className="font-medium text-foreground">{t("Siguiente comprobación:")} </span>
                   {finding.recommended_next_step}
                 </p>
               )}
@@ -181,7 +182,7 @@ export function FindingList({
                     />
                   )}
                 {finding.reviewed_by && (
-                  <span className="text-xs text-muted-foreground">Revisado por {finding.reviewed_by}</span>
+                  <span className="text-xs text-muted-foreground">{t("Revisado por")} {finding.reviewed_by}</span>
                 )}
               </div>
             </li>
@@ -197,7 +198,7 @@ export function Limitations({ items }: { items: unknown }) {
   if (list.length === 0) return null
   return (
     <div className="grid gap-1">
-      <Eyebrow>Límites de este análisis</Eyebrow>
+      <Eyebrow>{t("Límites de este análisis")}</Eyebrow>
       <ul className="list-disc pl-5 text-sm text-muted-foreground">
         {list.map((item) => (
           <li key={item}>{item}</li>
@@ -222,7 +223,7 @@ export function AnalysisDetail({
   useEffect(() => {
     if (finished) onFinished?.()
   }, [finished, onFinished])
-  if (analysis === null) return <Muted>Cargando…</Muted>
+  if (analysis === null) return <Muted>{t("Cargando…")}</Muted>
   return (
     <div className="grid gap-4">
       <div className="grid gap-2">
@@ -231,7 +232,7 @@ export function AnalysisDetail({
           <AnalysisStatusBadge status={analysis.status} />
           {analysis.model_name && (
             <span className="text-xs text-muted-foreground">
-              Con {analysis.model_name}: son propuestas que hay que verificar.
+              {t("Con")} {analysis.model_name}{t(": son propuestas que hay que verificar.")}
             </span>
           )}
         </div>
@@ -243,7 +244,7 @@ export function AnalysisDetail({
       <AnalysisResult analysis={analysis} />
       {analysis.findings && analysis.findings.length > 0 && (
         <div className="grid gap-2">
-          <Eyebrow>Hallazgos</Eyebrow>
+          <Eyebrow>{t("Hallazgos")}</Eyebrow>
           <FindingList findings={analysis.findings} onSessionLost={onSessionLost} projectId={analysis.project_id} />
         </div>
       )}

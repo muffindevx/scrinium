@@ -1,4 +1,4 @@
-.PHONY: setup build dist release start demo dev check format tools ollama models audit sbom secrets bench size
+.PHONY: setup build dist release reproducible start demo dev check format tools ollama models audit sbom secrets bench size
 
 # Alternative to llama.cpp (SCRINIUM_MODEL_PROVIDER=ollama). Scrinium's own Ollama: only on 127.0.0.1, with the models inside the project, in .models/.
 # It never touches the system Ollama. Leave it running in another terminal.
@@ -25,15 +25,23 @@ dist: build
 	names = zipfile.ZipFile(glob.glob('dist/scrinium-*.whl')[0]).namelist(); \
 	sys.exit(0 if 'scrinium/web_dist/index.html' in names else 'El wheel no incluye la UI')"
 
-# Scrinium options: make start ARGS="--port 8000 --no-browser"
 # Zip for testers: the wheel, constraints.txt and the installers. No Node, no source code.
+# Reproducible (phase 5.3): every timestamp is the last commit's date (SOURCE_DATE_EPOCH), so
+# the same commit gives the same bytes; SHA256SUMS sits next to the zip.
+export SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || echo 315532800)
 release: dist
-	rm -rf dist/release && mkdir -p dist/release/scrinium
-	cp dist/scrinium-*.whl dist/constraints.txt installer/install.sh installer/install.ps1 \
-		installer/LEEME.txt installer/README.txt dist/release/scrinium/
-	cd dist/release && zip -qr ../scrinium-$$(ls scrinium/scrinium-*.whl | sed 's/.*scrinium-\(.*\)-py3.*/\1/').zip scrinium
-	rm -rf dist/release
-	@ls dist/scrinium-*.zip
+	uv run --no-project python runtime/devtools/release_zip.py \
+		dist/scrinium-$$(ls dist/scrinium-*.whl | sed 's/.*scrinium-\(.*\)-py3.*/\1/').zip \
+		dist/scrinium-*.whl dist/constraints.txt installer/install.sh installer/install.ps1 \
+		installer/LEEME.txt installer/README.txt
+
+# Builds the release twice and fails if the two zips differ.
+reproducible:
+	$(MAKE) -s release && cp dist/SHA256SUMS dist/SHA256SUMS.first
+	$(MAKE) -s release && cmp dist/SHA256SUMS.first dist/SHA256SUMS
+	@echo "Reproducible: the same bytes twice."
+
+# Scrinium options: make start ARGS="--port 8000 --no-browser"
 
 start:
 	uv run --project runtime scrinium start $(ARGS)

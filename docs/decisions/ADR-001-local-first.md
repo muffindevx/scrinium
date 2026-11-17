@@ -1,6 +1,6 @@
 # ADR-001: Local-first, for one person
 
-**Status:** accepted, 2026-11-06. Amended on 2026-11-14 by [ADR-010](ADR-010-remote-model-providers.md): a project may use a remote model with explicit consent; local stays the default.
+**Status:** accepted, 2026-11-06. Amended on 2026-11-14 by [ADR-010](ADR-010-remote-model-providers.md): a project may use a remote model with explicit consent; local stays the default. Amended on 2026-11-17 by [ADR-013](ADR-013-own-provider-by-default.md): local stays the home of the data and the runtime; the model that writes the rules is chosen at first run (own provider recommended, a local server, or isolated mode).
 
 ## The question
 

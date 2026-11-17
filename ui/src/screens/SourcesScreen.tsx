@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { PageHeader } from "@/components/page"
 import type { Project, Workspace } from "@/lib/api"
 import { ProjectsCard } from "@/ProjectsCard"
@@ -19,8 +20,8 @@ export function SourcesScreen({
   return (
     <>
       <PageHeader
-        title="Fuentes"
-        description="Los proyectos y lo que Scrinium lee de cada uno: repositorios y carpetas de este equipo, con lo que se excluye y por qué."
+        title={t("Fuentes")}
+        description={t("Los proyectos y lo que Scrinium lee de cada uno: repositorios y carpetas de este equipo, con lo que se excluye y por qué.")}
       />
       {project && <SourcesCard key={project.id} projects={[project]} onSessionLost={onSessionLost} />}
       <ProjectsCard

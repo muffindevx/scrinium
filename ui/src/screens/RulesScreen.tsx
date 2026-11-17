@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { ArrowLeft, BookOpen, Check, ChevronRight, Pause, PenLine, Sparkles, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
@@ -47,45 +48,45 @@ import { ModelPicker } from "@/screens/ModelPicker"
 import { AnalysisDetail, ErrorText, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
 const CATEGORY_LABELS: Record<RuleCategory, string> = {
-  invariant: "Invariante",
-  validation: "Validación",
-  authorization: "Permisos",
-  calculation: "Cálculo",
-  state_transition: "Cambio de estado",
-  workflow: "Proceso",
-  integration_contract: "Integración",
-  performance_constraint: "Rendimiento",
-  security_constraint: "Seguridad",
-  other: "Otra",
+  invariant: t("Invariante"),
+  validation: t("Validación"),
+  authorization: t("Permisos"),
+  calculation: t("Cálculo"),
+  state_transition: t("Cambio de estado"),
+  workflow: t("Proceso"),
+  integration_contract: t("Integración"),
+  performance_constraint: t("Rendimiento"),
+  security_constraint: t("Seguridad"),
+  other: t("Otra"),
 }
 const CRITICALITY_LABELS: Record<RuleSummary["criticality"], string> = {
-  low: "Baja",
-  medium: "Media",
-  high: "Alta",
-  critical: "Crítica",
+  low: t("Baja"),
+  medium: t("Media"),
+  high: t("Alta"),
+  critical: t("Crítica"),
 }
 const ORIGIN_LABELS: Record<RuleVersion["origin"], string> = {
-  human: "Escrita por una persona",
-  source_extraction: "Propuesta por la IA a partir del código",
-  derived_analysis: "Propuesta por un análisis",
-  import: "Importada",
+  human: t("Escrita por una persona"),
+  source_extraction: t("Propuesta por la IA a partir del código"),
+  derived_analysis: t("Propuesta por un análisis"),
+  import: t("Importada"),
 }
 const PROFILE_LABELS: Record<keyof RuleVersion["profile"], string> = {
-  requested: "Pedida",
-  documented: "Documentada",
-  implemented: "Implementada",
-  tested: "Probada",
-  contradicted: "Contradicha",
+  requested: t("Pedida"),
+  documented: t("Documentada"),
+  implemented: t("Implementada"),
+  tested: t("Probada"),
+  contradicted: t("Contradicha"),
 }
 const REVIEW_LABELS: Record<string, string> = {
-  source_deleted: "Revisar: se borró una fuente que la respaldaba",
-  rule_changed: "La regla cambió: el código decide con otros valores",
-  code_changed: "Revisar: cambió el código que la implementa",
-  code_removed: "Retirada: se eliminó el código que la implementa",
-  code_contradicts: "El código ya no la cumple",
-  possible_duplicate: "Revisar: posible duplicado",
-  contradiction: "Revisar: contradice otra regla",
-  ambiguous: "Revisar: regla ambigua",
+  source_deleted: t("Revisar: se borró una fuente que la respaldaba"),
+  rule_changed: t("La regla cambió: el código decide con otros valores"),
+  code_changed: t("Revisar: cambió el código que la implementa"),
+  code_removed: t("Retirada: se eliminó el código que la implementa"),
+  code_contradicts: t("El código ya no la cumple"),
+  possible_duplicate: t("Revisar: posible duplicado"),
+  contradiction: t("Revisar: contradice otra regla"),
+  ambiguous: t("Revisar: regla ambigua"),
 }
 
 type Filter = "all" | "review" | "unverified" | "verified" | "rejected"
@@ -108,7 +109,7 @@ function ReviewError({ error }: { error: string | null }) {
         <>
           {" "}
           <Link to="/ajustes" className="underline">
-            Ir a Ajustes
+            {t("Ir a Ajustes")}
           </Link>
         </>
       )}
@@ -148,37 +149,36 @@ function RemoteEstimate({ estimate }: { estimate: Extract<ExtractionEstimate, { 
     <div role="status" className="grid gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
       {estimate.remote_batches > 0 ? (
         <p>
-          Se enviarán unos <strong>{count(estimate.input_tokens)} tokens</strong> de {count(estimate.files)}{" "}
-          {estimate.files === 1 ? "archivo" : "archivos"} a <strong>{estimate.host}</strong> ({estimate.model}) en{" "}
-          {count(estimate.remote_batches)} {estimate.remote_batches === 1 ? "lote" : "lotes"}, y volverán como mucho{" "}
-          {count(estimate.max_output_tokens)} de respuesta.
+          {t("Se enviarán unos")} <strong>{count(estimate.input_tokens)} tokens</strong> {t("de")} {count(estimate.files)}{" "}
+          {estimate.files === 1 ? t("archivo") : t("archivos")} {t("a")} <strong>{estimate.host}</strong> ({estimate.model}{t(") en")}{" "}
+          {count(estimate.remote_batches)} {estimate.remote_batches === 1 ? t("lote") : t("lotes")}{t(", y volverán como mucho")}{" "}
+          {count(estimate.max_output_tokens)} {t("de respuesta.")}
         </p>
       ) : (
-        <p>Todos los lotes tocan rutas que nunca se envían: esta extracción se hará en este equipo.</p>
+        <p>{t("Todos los lotes tocan rutas que nunca se envían: esta extracción se hará en este equipo.")}</p>
       )}
       {estimate.local_batches > 0 && estimate.remote_batches > 0 && (
         <p className="text-muted-foreground">
-          {count(estimate.local_batches)} {estimate.local_batches === 1 ? "lote se hará" : "lotes se harán"} en local
-          por las rutas que nunca se envían.
+          {count(estimate.local_batches)} {estimate.local_batches === 1 ? t("lote se hará") : t("lotes se harán")} {t("en local por las rutas que nunca se envían.")}
         </p>
       )}
       {left !== null && estimate.remote_batches > 0 && total > left && (
         <p className="font-medium text-amber-700 dark:text-amber-400">
           {left === 0
-            ? "El presupuesto de este mes está agotado: no se enviará nada y todo seguirá en la cola."
-            : `Quedan ${count(left)} tokens del presupuesto de este mes: la extracción se detendrá a medias y lo demás esperará en la cola.`}
+            ? t("El presupuesto de este mes está agotado: no se enviará nada y todo seguirá en la cola.")
+            : t("Quedan {0} tokens del presupuesto de este mes: la extracción se detendrá a medias y lo demás esperará en la cola.", count(left))}
         </p>
       )}
       {estimate.statements_remote && (
         <p className="text-muted-foreground">
-          Después, la redacción de los enunciados también irá al proveedor externo y gastará más tokens.
+          {t("Después, la redacción de los enunciados también irá al proveedor externo y gastará más tokens.")}
         </p>
       )}
       <p className="text-xs text-muted-foreground">
         {estimate.measured
-          ? "Calculado con la proporción de tus envíos anteriores."
-          : "Aproximado: todavía no hay envíos con los que medirlo."}{" "}
-        Puede ser menos si alguna petición ya tiene respuesta guardada.
+          ? t("Calculado con la proporción de tus envíos anteriores.")
+          : t("Aproximado: todavía no hay envíos con los que medirlo.")}{" "}
+        {t("Puede ser menos si alguna petición ya tiene respuesta guardada.")}
       </p>
     </div>
   )
@@ -248,7 +248,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
     cancelAnalysis(analysisId).catch(fail)
   }
   const finished = useCallback(() => {
-    notifyIfAway("La extracción de reglas terminó", "Las reglas nuevas ya están en Reglas.")
+    notifyIfAway(t("La extracción de reglas terminó"), t("Las reglas nuevas ya están en Reglas."))
     setRunning(false)
     setPausing(false)
     onFinished()
@@ -263,23 +263,20 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
   const pending = status?.pending ?? 0
   return (
     <Section
-      title="Extraer reglas automáticamente"
-      description={`Scrinium busca en el código las funciones con señales de regla de negocio y ${
-        shown ? `el modelo externo ${shown.model}` : "la IA local"
-      } propone reglas a partir de ellas, citando las líneas exactas. Lo ya analizado no se repite. Todas nacen sin verificar: tú decides.`}
+      title={t("Extraer reglas automáticamente")}
+      description={t("Scrinium busca en el código las funciones con señales de regla de negocio y {0} propone reglas a partir de ellas, citando las líneas exactas. Lo ya analizado no se repite. Todas nacen sin verificar: tú decides.", shown ? `el modelo externo ${shown.model}` : "la IA local")}
       action={
         running ? (
           <Button size="sm" variant="outline" disabled={pausing} onClick={pause}>
             <Pause data-icon="inline-start" />
-            {pausing ? "Pausando…" : "Pausar"}
+            {pausing ? t("Pausando…") : t("Pausar")}
           </Button>
         ) : undefined
       }
     >
       {running && status?.waiting_for_memory && (
         <p role="status" className="text-sm text-muted-foreground">
-          En pausa: al equipo le queda poca memoria libre. Scrinium sigue solo cuando haya sitio,
-          para no dejar sin memoria tus otras aplicaciones.
+          {t("En pausa: al equipo le queda poca memoria libre. Scrinium sigue solo cuando haya sitio, para no dejar sin memoria tus otras aplicaciones.")}
         </p>
       )}
       {analysisId && (
@@ -295,15 +292,15 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
         >
           {status && status.done + pending > 0 && (
             <p className="text-sm text-muted-foreground">
-              {status.done} trozos de código ya analizados
-              {pending > 0 && `, ${pending} pendientes`}
-              {status.failed > 0 && `, ${status.failed} que fallaron dos veces`}.
+              {status.done} {t("trozos de código ya analizados")}
+              {pending > 0 && t(", {0} pendientes", pending)}
+              {status.failed > 0 && t(", {0} que fallaron dos veces", status.failed)}.
             </p>
           )}
           <details className="text-sm">
-            <summary className="cursor-pointer text-muted-foreground">Opciones avanzadas</summary>
+            <summary className="cursor-pointer text-muted-foreground">{t("Opciones avanzadas")}</summary>
             <div className="mt-2 grid max-w-md gap-1.5">
-              <Label htmlFor="extract-prefix">Solo esta carpeta</Label>
+              <Label htmlFor="extract-prefix">{t("Solo esta carpeta")}</Label>
               <Input
                 id="extract-prefix"
                 maxLength={500}
@@ -320,10 +317,9 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
                 onChange={(event) => setAllFunctions(event.target.checked)}
               />
               <span>
-                Analizar también las funciones sin señales de regla
+                {t("Analizar también las funciones sin señales de regla")}
                 <span className="block text-xs text-muted-foreground">
-                  Mucho más lento. Por defecto solo se leen las que tienen condiciones, validaciones,
-                  cálculos, permisos o estados.
+                  {t("Mucho más lento. Por defecto solo se leen las que tienen condiciones, validaciones, cálculos, permisos o estados.")}
                 </span>
               </span>
             </label>
@@ -340,7 +336,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
           {shown && <RemoteEstimate estimate={shown} />}
           <Button type="submit" className="justify-self-start">
             <Sparkles data-icon="inline-start" />
-            {pending > 0 ? `Continuar la extracción (${pending} pendientes)` : "Empezar la extracción"}
+            {pending > 0 ? t("Continuar la extracción ({0} pendientes)", pending) : t("Empezar la extracción")}
           </Button>
           <ErrorText>{error}</ErrorText>
         </form>
@@ -371,40 +367,40 @@ function ManualRuleForm({
     createRule(project.id, { ...rule, rationale: rule.rationale?.trim() || undefined })
       .then(onCreated)
       .catch((caught: unknown) => {
-        if (caught instanceof ApiError && caught.code === "invalid_request") setError("Revisa el título y la descripción.")
+        if (caught instanceof ApiError && caught.code === "invalid_request") setError(t("Revisa el título y la descripción."))
         else fail(caught)
       })
   }
   return (
     <Section
-      title="Crear regla manual"
-      description="Una regla que conoces aunque no esté en el código. Queda registrada con tu nombre del perfil."
+      title={t("Crear regla manual")}
+      description={t("Una regla que conoces aunque no esté en el código. Queda registrada con tu nombre del perfil.")}
     >
       <form className="grid gap-3" onSubmit={submit}>
         <div className="grid gap-1.5">
-          <Label htmlFor="rule-title">Título</Label>
+          <Label htmlFor="rule-title">{t("Título")}</Label>
           <Input
             id="rule-title"
             required
             maxLength={300}
-            placeholder="Comisión en pagos internacionales"
+            placeholder={t("Comisión en pagos internacionales")}
             value={rule.title}
             onChange={(event) => setRule({ ...rule, title: event.target.value })}
           />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="rule-statement">Qué debe pasar</Label>
+          <Label htmlFor="rule-statement">{t("Qué debe pasar")}</Label>
           <Textarea
             id="rule-statement"
             required
             maxLength={4000}
-            placeholder="La comisión del 2 % se aplica solo si la transacción es internacional."
+            placeholder={t("La comisión del 2 % se aplica solo si la transacción es internacional.")}
             value={rule.statement}
             onChange={(event) => setRule({ ...rule, statement: event.target.value })}
           />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="rule-rationale">Por qué (opcional)</Label>
+          <Label htmlFor="rule-rationale">{t("Por qué (opcional)")}</Label>
           <Textarea
             id="rule-rationale"
             maxLength={4000}
@@ -414,7 +410,7 @@ function ManualRuleForm({
         </div>
         <div className="flex flex-wrap gap-3">
           <div className="grid gap-1.5">
-            <Label htmlFor="rule-category">Tipo</Label>
+            <Label htmlFor="rule-category">{t("Tipo")}</Label>
             <Select
               id="rule-category"
               value={rule.category}
@@ -423,7 +419,7 @@ function ManualRuleForm({
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="rule-criticality">Importancia</Label>
+            <Label htmlFor="rule-criticality">{t("Importancia")}</Label>
             <Select
               id="rule-criticality"
               value={rule.criticality}
@@ -435,7 +431,7 @@ function ManualRuleForm({
         <ReviewError error={error} />
         <Button type="submit" className="justify-self-start" disabled={!rule.title.trim() || !rule.statement.trim()}>
           <PenLine data-icon="inline-start" />
-          Guardar regla
+          {t("Guardar regla")}
         </Button>
       </form>
     </Section>
@@ -449,9 +445,9 @@ export function RuleEvidence({ project, entityId, onSessionLost }: ScreenProps &
     getRule(project.id, entityId).then(setRule).catch(fail)
   }, [project.id, entityId, fail])
   if (error) return <ErrorText>{error}</ErrorText>
-  if (!rule) return <Muted>Cargando…</Muted>
+  if (!rule) return <Muted>{t("Cargando…")}</Muted>
   const evidence = rule.versions[0]?.evidence ?? []
-  if (evidence.length === 0) return <Muted>Esta regla no tiene citas al código.</Muted>
+  if (evidence.length === 0) return <Muted>{t("Esta regla no tiene citas al código.")}</Muted>
   return (
     <div className="grid gap-2">
       {evidence.map((item) => (
@@ -472,7 +468,7 @@ function TicketChip({ ticket }: { ticket: string }) {
   return (
     <span
       className="rounded-full border px-2 py-0.5 font-mono text-xs text-muted-foreground"
-      title="Ticket nombrado por el commit que introdujo o cambió estas líneas"
+      title={t("Ticket nombrado por el commit que introdujo o cambió estas líneas")}
     >
       {ticket}
     </span>
@@ -532,7 +528,7 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
             <span className="font-medium">{rule.name}</span>
             {status && status !== "unverified" && <VerificationStatusBadge status={status} />}
             {rule.review_reason && (
-              <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? "Revisar"}</StatusBadge>
+              <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? t("Revisar")}</StatusBadge>
             )}
             {rule.tickets.map((ticket) => (
               <TicketChip key={ticket} ticket={ticket} />
@@ -541,7 +537,7 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
           <span className={cn("text-sm text-muted-foreground", !open && "line-clamp-1")}>{rule.summary}</span>
           <span className="flex min-w-0 flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
             <span className={cn(important && "font-medium text-foreground")}>
-              Importancia {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
+              {t("Importancia")} {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
             </span>
             <span>{CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category}</span>
             {citation && (
@@ -563,7 +559,7 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
             />
           )}
           {version && (
-            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={`Revisión de ${rule.name}`}>
+            <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("Revisión de {0}", rule.name)}>
               <Button
                 size="sm"
                 variant={status === "human_verified" ? "default" : "outline"}
@@ -571,7 +567,7 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
                 onClick={() => review("human_verified")}
               >
                 <Check data-icon="inline-start" />
-                Válida
+                {t("Válida")}
               </Button>
               <Button
                 size="sm"
@@ -583,7 +579,7 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
                 }}
               >
                 <PenLine data-icon="inline-start" />
-                Mal dicha
+                {t("Mal dicha")}
               </Button>
               <Button
                 size="sm"
@@ -592,19 +588,19 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
                 onClick={() => review("rejected")}
               >
                 <X data-icon="inline-start" />
-                No es regla
+                {t("No es regla")}
               </Button>
               <RuleLink
                 id={rule.entity_id}
                 className="ml-auto text-xs font-medium text-muted-foreground hover:text-foreground hover:underline"
               >
-                {rule.evidence_count > 1 ? `${rule.evidence_count} citas · ` : ""}Ver la regla completa
+                {rule.evidence_count > 1 ? t("{0} citas · ", rule.evidence_count) : ""}{t("Ver la regla completa")}
               </RuleLink>
             </div>
           )}
           {editing && (
             <form className="grid gap-2" onSubmit={save}>
-              <Label htmlFor={`fix-${rule.entity_id}`}>Cómo debería decirse</Label>
+              <Label htmlFor={`fix-${rule.entity_id}`}>{t("Cómo debería decirse")}</Label>
               <Textarea
                 id={`fix-${rule.entity_id}`}
                 required
@@ -613,15 +609,14 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
                 onChange={(event) => setText(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Se guarda como una versión nueva con tu nombre del perfil, con las mismas citas al código, y queda
-                confirmada.
+                {t("Se guarda como una versión nueva con tu nombre del perfil, con las mismas citas al código, y queda confirmada.")}
               </p>
               <div className="flex gap-2">
                 <Button type="submit" size="sm" disabled={!text.trim() || text.trim() === rule.summary}>
-                  Guardar
+                  {t("Guardar")}
                 </Button>
                 <Button type="button" size="sm" variant="ghost" onClick={() => setEditing(false)}>
-                  Cancelar
+                  {t("Cancelar")}
                 </Button>
               </div>
             </form>
@@ -635,9 +630,9 @@ function RuleItem({ rule, onChanged, ...props }: ScreenProps & { rule: RuleSumma
 
 type Grouping = "file" | "criticality" | "none"
 const GROUPING_OPTIONS = [
-  { value: "file", label: "Agrupar por archivo" },
-  { value: "criticality", label: "Agrupar por importancia" },
-  { value: "none", label: "Sin agrupar" },
+  { value: "file", label: t("Agrupar por archivo") },
+  { value: "criticality", label: t("Agrupar por importancia") },
+  { value: "none", label: t("Sin agrupar") },
 ]
 const CRITICALITY_RANK: Record<RuleSummary["criticality"], number> = { critical: 0, high: 1, medium: 2, low: 3 }
 const GROUPING_KEY = "scrinium.rules.grouping"
@@ -678,8 +673,8 @@ function groupRules(rules: RuleSummary[], grouping: Grouping): { key: string; la
   }
   const label = (key: string) =>
     grouping === "criticality"
-      ? `Importancia ${CRITICALITY_LABELS[key as RuleSummary["criticality"]].toLowerCase()}`
-      : key || "Sin cita al código"
+      ? t("Importancia {0}", CRITICALITY_LABELS[key as RuleSummary["criticality"]].toLowerCase())
+      : key || t("Sin cita al código")
   return [...groups.entries()]
     .map(([key, rules]) => ({ key, label: label(key), rules }))
     .sort((a, b) =>
@@ -719,8 +714,8 @@ function RuleGroup({
           />
           <span className={cn("min-w-0 truncate text-sm font-medium", code && "font-mono")}>{label}</span>
           <span className="shrink-0 text-xs text-muted-foreground">
-            {plural(rules.length, "regla", "reglas")}
-            {important > 0 && ` · ${important} de importancia alta`}
+            {plural(rules.length, t("regla"), t("reglas"))}
+            {important > 0 && t(" · {0} de importancia alta", important)}
           </span>
         </button>
       </h2>
@@ -763,20 +758,20 @@ function UnexportedNotice({
           {source.unexported > 0 && (
             <>
               {source.unexported === 1
-                ? "1 regla revisada no está exportada"
-                : `${source.unexported} reglas revisadas no están exportadas`}
+                ? t("1 regla revisada no está exportada")
+                : t("{0} reglas revisadas no están exportadas", source.unexported)}
             </>
           )}
           {source.unexported > 0 && source.extra > 0 && " y "}
           {source.extra > 0 &&
             (source.extra === 1
-              ? "1 archivo de regla sobra"
-              : `${source.extra} archivos de reglas sobran`)}
-          {several && ` en ${source.name}`}. El check de CI no las ve hasta que ejecutes{" "}
+              ? t("1 archivo de regla sobra")
+              : t("{0} archivos de reglas sobran", source.extra))}
+          {several && t(" en {0}", source.name)}{t(". El check de CI no las ve hasta que ejecutes")}{" "}
           <code className="font-mono text-xs">
             scrinium rules export --project "{projectName}"{several && ` --source "${source.name}"`}
           </code>{" "}
-          y hagas commit de <code className="font-mono text-xs">.scrinium/rules/</code>.
+          {t("y hagas commit de")} <code className="font-mono text-xs">.scrinium/rules/</code>.
         </p>
       ))}
     </div>
@@ -828,17 +823,17 @@ function RuleList(props: ScreenProps) {
   return (
     <>
       <PageHeader
-        title="Reglas"
-        description="El libro de reglas del proyecto: lo que el sistema debe hacer, con citas al código. La IA propone y tú decides."
+        title={t("Reglas")}
+        description={t("El libro de reglas del proyecto: lo que el sistema debe hacer, con citas al código. La IA propone y tú decides.")}
         actions={
           <>
             <Button variant={panel === "manual" ? "secondary" : "outline"} onClick={() => toggle("manual")}>
               <PenLine data-icon="inline-start" />
-              Crear regla manual
+              {t("Crear regla manual")}
             </Button>
             <Button variant={panel === "extract" ? "secondary" : "default"} onClick={() => toggle("extract")}>
               <Sparkles data-icon="inline-start" />
-              Extraer reglas automáticamente
+              {t("Extraer reglas automáticamente")}
             </Button>
           </>
         }
@@ -857,42 +852,42 @@ function RuleList(props: ScreenProps) {
       <div className="grid gap-3">
         <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
           <TabsList className="flex-wrap">
-            <TabsTrigger value="all">Todas ({count("all")})</TabsTrigger>
-            <TabsTrigger value="review">Por revisar ({count("review")})</TabsTrigger>
-            <TabsTrigger value="unverified">Sin verificar ({count("unverified")})</TabsTrigger>
-            <TabsTrigger value="verified">Verificadas ({count("verified")})</TabsTrigger>
-            <TabsTrigger value="rejected">Descartadas ({count("rejected")})</TabsTrigger>
+            <TabsTrigger value="all">{t("Todas (")}{count("all")})</TabsTrigger>
+            <TabsTrigger value="review">{t("Por revisar (")}{count("review")})</TabsTrigger>
+            <TabsTrigger value="unverified">{t("Sin verificar (")}{count("unverified")})</TabsTrigger>
+            <TabsTrigger value="verified">{t("Verificadas (")}{count("verified")})</TabsTrigger>
+            <TabsTrigger value="rejected">{t("Descartadas (")}{count("rejected")})</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="flex flex-wrap items-center gap-2">
           <Input
-            aria-label="Buscar reglas"
+            aria-label={t("Buscar reglas")}
             maxLength={200}
-            placeholder="Buscar por texto o ticket…"
+            placeholder={t("Buscar por texto o ticket…")}
             className="max-w-72 min-w-0 flex-1"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <Select aria-label="Agrupar reglas" value={grouping} options={GROUPING_OPTIONS} onValueChange={group} />
+          <Select aria-label={t("Agrupar reglas")} value={grouping} options={GROUPING_OPTIONS} onValueChange={group} />
         </div>
       </div>
       <ErrorText>{error}</ErrorText>
       {rules === null ? (
-        <Muted>Cargando…</Muted>
+        <Muted>{t("Cargando…")}</Muted>
       ) : shown.length === 0 ? (
         <EmptyState
           icon={BookOpen}
-          title={rules.length === 0 ? "Todavía no hay reglas" : "Ninguna regla en este filtro"}
+          title={rules.length === 0 ? t("Todavía no hay reglas") : t("Ninguna regla en este filtro")}
           action={
             rules.length === 0 && (
               <Button onClick={() => setPanel("extract")}>
                 <Sparkles data-icon="inline-start" />
-                Extraer reglas automáticamente
+                {t("Extraer reglas automáticamente")}
               </Button>
             )
           }
         >
-          {rules.length === 0 && "La IA puede proponerlas a partir del código, o puedes escribirlas tú."}
+          {rules.length === 0 && t("La IA puede proponerlas a partir del código, o puedes escribirlas tú.")}
         </EmptyState>
       ) : (
         <div className="grid gap-3">
@@ -925,8 +920,8 @@ function RuleList(props: ScreenProps) {
 /** Two decisions (phase 4.5): a person confirms or rejects. "Backed by the code" is not a
  * decision: it is what the checked citations already say (the evidence profile). */
 const REVIEW_ACTIONS: { status: VerificationStatus; label: string }[] = [
-  { status: "human_verified", label: "Confirmar" },
-  { status: "rejected", label: "Rechazar" },
+  { status: "human_verified", label: t("Confirmar") },
+  { status: "rejected", label: t("Rechazar") },
 ]
 const REVIEWED: VerificationStatus[] = ["human_verified", "rejected"]
 
@@ -986,8 +981,8 @@ function CallLists({ projectId, symbolId }: { projectId: string; symbolId: strin
   if (!found) return null
   return (
     <div className="grid gap-2">
-      <FunctionList label="Llama a" items={found.calls} />
-      <FunctionList label="Llamada por" items={found.called_by} />
+      <FunctionList label={t("Llama a")} items={found.calls} />
+      <FunctionList label={t("Llamada por")} items={found.called_by} />
     </div>
   )
 }
@@ -1005,18 +1000,18 @@ function CitedCode({ evidence, projectId }: { evidence: Evidence; projectId: str
       {symbol && (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span>
-            En <code>{symbol.name}</code>
+            {t("En")} <code>{symbol.name}</code>
             {symbol.nested_in && (
               <>
                 {" "}
-                (dentro de <code>{symbol.nested_in}</code>)
+                {t("(dentro de")} <code>{symbol.nested_in}</code>)
               </>
             )}{" "}
-            · líneas {symbol.start_line}-{symbol.end_line}
+            {t("· líneas")} {symbol.start_line}-{symbol.end_line}
           </span>
           {longer && (
             <Button size="xs" variant="ghost" aria-expanded={whole} onClick={() => setWhole(!whole)}>
-              {whole ? "Ver solo la regla" : "Ver función completa"}
+              {whole ? t("Ver solo la regla") : t("Ver función completa")}
             </Button>
           )}
         </div>
@@ -1064,16 +1059,16 @@ function VersionBlock({
     <Section
       title={
         <span className="flex flex-wrap items-center gap-2">
-          Versión {version.version_number}
+          {t("Versión")} {version.version_number}
           <VerificationStatusBadge status={version.verification_status} />
-          {latest && <StatusBadge tone="no_evidence">Vigente</StatusBadge>}
+          {latest && <StatusBadge tone="no_evidence">{t("Vigente")}</StatusBadge>}
         </span>
       }
       description={
         <>
           {ORIGIN_LABELS[version.origin]}
           {version.model_name && ` (${version.model_name})`} · {new Date(version.created_at).toLocaleString()}
-          {version.reviewed_by && ` · Revisada por ${version.reviewed_by}`}
+          {version.reviewed_by && t(" · Revisada por {0}", version.reviewed_by)}
         </>
       }
     >
@@ -1085,7 +1080,7 @@ function VersionBlock({
             <dl className="grid gap-2 sm:grid-cols-2">
               <div className="grid content-start gap-1">
                 <dt>
-                  <Eyebrow>Cuándo</Eyebrow>
+                  <Eyebrow>{t("Cuándo")}</Eyebrow>
                 </dt>
                 {content.trigger_conditions.map((item) => (
                   <dd key={item.description}>{item.description}</dd>
@@ -1093,7 +1088,7 @@ function VersionBlock({
               </div>
               <div className="grid content-start gap-1">
                 <dt>
-                  <Eyebrow>Entonces</Eyebrow>
+                  <Eyebrow>{t("Entonces")}</Eyebrow>
                 </dt>
                 {content.expected_behavior.map((item) => (
                   <dd key={item.description}>{item.description}</dd>
@@ -1103,7 +1098,7 @@ function VersionBlock({
           )}
           {content.exceptions.length > 0 && (
             <div className="grid gap-1">
-              <Eyebrow>Excepciones</Eyebrow>
+              <Eyebrow>{t("Excepciones")}</Eyebrow>
               <ul className="list-disc pl-5">
                 {content.exceptions.map((item) => (
                   <li key={item.condition}>
@@ -1129,16 +1124,16 @@ function VersionBlock({
           .filter((item) => item.revision_id && item.locator.path && item.locator.start_line && item.type !== "test")
           .map((item) => <CitedCode key={`code-${item.id}`} evidence={item} projectId={projectId} />)}
       <div className="grid gap-2">
-        <Eyebrow>Evidencia</Eyebrow>
+        <Eyebrow>{t("Evidencia")}</Eyebrow>
         {version.evidence.length === 0 ? (
-          <Muted>No se encontró evidencia en el código.</Muted>
+          <Muted>{t("No se encontró evidencia en el código.")}</Muted>
         ) : (
           version.evidence.map((evidence) => <EvidenceItem key={evidence.id} evidence={evidence} />)
         )}
       </div>
       {version.findings.length > 0 && (
         <div className="grid gap-1">
-          <Eyebrow>Hallazgos sobre esta versión</Eyebrow>
+          <Eyebrow>{t("Hallazgos sobre esta versión")}</Eyebrow>
           <ul className="grid gap-1 text-sm">
             {version.findings.map((finding) => (
               <li key={finding.id}>
@@ -1153,7 +1148,7 @@ function VersionBlock({
       )}
       {latest && (
         <div className="grid gap-2 border-t pt-4">
-          <Eyebrow>Verificación</Eyebrow>
+          <Eyebrow>{t("Verificación")}</Eyebrow>
           <div className="flex flex-wrap gap-1">
             {REVIEW_ACTIONS.map(({ status, label }) => (
               <Button
@@ -1168,20 +1163,19 @@ function VersionBlock({
             ))}
           </div>
           <Input
-            aria-label="Motivo de la revisión"
+            aria-label={t("Motivo de la revisión")}
             maxLength={2000}
-            placeholder="Motivo (opcional; al rechazar, viaja con la regla al repositorio)"
+            placeholder={t("Motivo (opcional; al rechazar, viaja con la regla al repositorio)")}
             value={note}
             onChange={(event) => setNote(event.target.value)}
           />
           {REVIEWED.includes(version.verification_status) && (
             <Button size="xs" variant="ghost" className="justify-self-start" onClick={() => review("unverified")}>
-              Deshacer la revisión
+              {t("Deshacer la revisión")}
             </Button>
           )}
           <p className="text-xs text-muted-foreground">
-            Confirmar y rechazar registran tu nombre del perfil. Que el código la respalde lo dicen sus citas
-            comprobadas (arriba), no un botón.
+            {t("Confirmar y rechazar registran tu nombre del perfil. Que el código la respalde lo dicen sus citas comprobadas (arriba), no un botón.")}
           </p>
           <ReviewError error={error} />
         </div>
@@ -1193,19 +1187,19 @@ function VersionBlock({
 /** A relationship in words, from this rule's side. */
 function relationLabel(relation: Relationship): string {
   const [kind, detail] = (relation.basis ?? "").split(":", 2)
-  if (kind === "duplicate") return "Misma decisión, en otro sitio:"
-  if (kind === "same_function") return `Junto a ella en ${detail}:`
-  if (kind === "constant") return `Comparte ${detail} con:`
-  if (kind === "constraint") return `Misma restricción (${detail}) en otro sitio:`
-  if (kind === "permission") return `Exige el mismo permiso «${detail}» que:`
-  if (kind === "same_data") return `Sobre la misma tabla (${detail}):`
+  if (kind === "duplicate") return t("Misma decisión, en otro sitio:")
+  if (kind === "same_function") return t("Junto a ella en {0}:", detail)
+  if (kind === "constant") return t("Comparte {0} con:", detail)
+  if (kind === "constraint") return t("Misma restricción ({0}) en otro sitio:", detail)
+  if (kind === "permission") return t("Exige el mismo permiso «{0}» que:", detail)
+  if (kind === "same_data") return t("Sobre la misma tabla ({0}):", detail)
   if (kind === "calls") {
-    const hops = detail === "1" ? "directamente" : `a través de ${Number(detail) - 1} función(es)`
-    return relation.direction === "out" ? `Su código llama, ${hops}, al de:` : `La usa, ${hops}:`
+    const hops = detail === "1" ? "directamente" : t("a través de {0} función(es)", Number(detail) - 1)
+    return relation.direction === "out" ? t("Su código llama, {0}, al de:", hops) : t("La usa, {0}:", hops)
   }
-  if (relation.relation_type === "depends_on") return relation.direction === "out" ? "Depende de:" : "Dependen de ella:"
-  if (relation.relation_type === "contradicts") return "Contradice:"
-  return "Relacionada con:"
+  if (relation.relation_type === "depends_on") return relation.direction === "out" ? t("Depende de:") : t("Dependen de ella:")
+  if (relation.relation_type === "contradicts") return t("Contradice:")
+  return t("Relacionada con:")
 }
 
 function ImpactName({ id, name, entityType }: { id: string; name: string; entityType: string }) {
@@ -1224,22 +1218,22 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
     impact.same_decision.length === 0 && impact.dependents.length === 0 && impact.flows.length === 0
   return (
     <Section
-      title="Si cambia esta regla"
-      description="Lo que depende de ella según el código: las reglas cuyo código llama al suyo, los procesos que pasan por ellas y sus tickets. Sin IA."
+      title={t("Si cambia esta regla")}
+      description={t("Lo que depende de ella según el código: las reglas cuyo código llama al suyo, los procesos que pasan por ellas y sus tickets. Sin IA.")}
     >
       <div className="grid gap-4 text-sm">
         {impact.tickets.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-muted-foreground">Tickets que la nombran:</span>
+            <span className="text-muted-foreground">{t("Tickets que la nombran:")}</span>
             {impact.tickets.map((ticket) => (
               <TicketChip key={ticket} ticket={ticket} />
             ))}
           </div>
         )}
-        {nothing && <Muted>Según el código, ninguna otra regla ni proceso depende de esta.</Muted>}
+        {nothing && <Muted>{t("Según el código, ninguna otra regla ni proceso depende de esta.")}</Muted>}
         {impact.same_decision.length > 0 && (
           <div className="grid gap-1">
-            <Eyebrow>La misma decisión en otro sitio: cambia con ella</Eyebrow>
+            <Eyebrow>{t("La misma decisión en otro sitio: cambia con ella")}</Eyebrow>
             <ul className="grid gap-1">
               {impact.same_decision.map((other) => (
                 <li key={other.id} className="flex flex-wrap items-baseline gap-x-2">
@@ -1254,7 +1248,7 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
         )}
         {impact.dependents.length > 0 && (
           <div className="grid gap-1">
-            <Eyebrow>Dependen de ella ({impact.dependents.length}{impact.truncated ? "+" : ""})</Eyebrow>
+            <Eyebrow>{t("Dependen de ella (")}{impact.dependents.length}{impact.truncated ? "+" : ""})</Eyebrow>
             <ul className="grid gap-1">
               {impact.dependents.map((dependent) => (
                 <li key={dependent.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
@@ -1268,12 +1262,12 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
                           : "text-muted-foreground",
                       )}
                     >
-                      importancia {CRITICALITY_LABELS[dependent.criticality].toLowerCase()}
+                      {t("importancia")} {CRITICALITY_LABELS[dependent.criticality].toLowerCase()}
                     </span>
                   )}
                   {dependent.via && (
                     <span className="text-xs text-muted-foreground">
-                      a través de{" "}
+                      {t("a través de")}{" "}
                       <RuleLink id={dependent.via.id} className="hover:underline">
                         {dependent.via.name}
                       </RuleLink>
@@ -1286,18 +1280,18 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
               ))}
             </ul>
             {impact.truncated && (
-              <Muted>Hay más; se muestran las más cercanas (hasta {impact.max_depth} pasos).</Muted>
+              <Muted>{t("Hay más; se muestran las más cercanas (hasta")} {impact.max_depth} {t("pasos).")}</Muted>
             )}
           </div>
         )}
         {impact.flows.length > 0 && (
           <div className="grid gap-1">
-            <Eyebrow>Procesos afectados</Eyebrow>
+            <Eyebrow>{t("Procesos afectados")}</Eyebrow>
             <ul className="grid gap-1">
               {impact.flows.map((flow) => (
                 <li key={flow.id} className="flex flex-wrap items-baseline gap-x-2">
                   <span className="font-medium">{flow.name}</span>
-                  <span className="text-xs text-muted-foreground">por {flow.through.join(", ")}</span>
+                  <span className="text-xs text-muted-foreground">{t("por")} {flow.through.join(", ")}</span>
                 </li>
               ))}
             </ul>
@@ -1343,7 +1337,7 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
   const pending = isPending(rule)
   const back = useBackTarget()
   if (error) return <ErrorText>{error}</ErrorText>
-  if (rule === null) return <Muted>Cargando…</Muted>
+  if (rule === null) return <Muted>{t("Cargando…")}</Muted>
   // What depends on this rule, and the same decision elsewhere, are under "Si cambia esta regla".
   const relationships = rule.relationships.filter((relation) => !shownAsImpact(relation))
   return (
@@ -1356,7 +1350,7 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
         title={rule.name}
         description={
           <>
-            {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} · importancia{" "}
+            {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} {t("· importancia")}{" "}
             {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
             {!VERIFIED_STATUSES.includes(rule.versions[0]?.verification_status ?? "unverified") && " (propuesta)"} ·{" "}
             <code className="text-xs">{rule.canonical_key}</code>
@@ -1364,17 +1358,17 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
         }
       />
       {rule.review_reason && (
-        <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? "Revisar"}</StatusBadge>
+        <StatusBadge tone="attention">{REVIEW_LABELS[rule.review_reason] ?? t("Revisar")}</StatusBadge>
       )}
       {pending && (
         <div className="flex flex-wrap items-center gap-3 text-sm">
-          <StatusBadge tone="attention">Sin enunciado</StatusBadge>
-          {writing === "writing" && <Muted>Redactando el enunciado…</Muted>}
+          <StatusBadge tone="attention">{t("Sin enunciado")}</StatusBadge>
+          {writing === "writing" && <Muted>{t("Redactando el enunciado…")}</Muted>}
           {writing === "failed" && (
             <>
-              <Muted>No se pudo redactar ahora; se hará en segundo plano.</Muted>
+              <Muted>{t("No se pudo redactar ahora; se hará en segundo plano.")}</Muted>
               <Button size="sm" variant="outline" onClick={write}>
-                Reintentar
+                {t("Reintentar")}
               </Button>
             </>
           )}
@@ -1382,8 +1376,8 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
       )}
       {relationships.length > 0 && (
         <Section
-          title="Relaciones"
-          description="Lo que el código dice de cómo se relaciona esta regla con otras. Sale del análisis del código, sin IA."
+          title={t("Relaciones")}
+          description={t("Lo que el código dice de cómo se relaciona esta regla con otras. Sale del análisis del código, sin IA.")}
         >
           <ul className="grid gap-2 text-sm">
             {relationships.map((relation) => (

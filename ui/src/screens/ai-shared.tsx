@@ -1,12 +1,13 @@
+import { t } from "@/lib/i18n"
 import { StatusBadge } from "@/components/status"
 import type { ProviderCheck, RetentionNotice } from "@/lib/api"
 import { CHECK_LABELS } from "@/lib/ai"
 
 export function RetentionBadge({ notice }: { notice: RetentionNotice }) {
-  if (!notice.verified) return <StatusBadge tone="attention">Sin verificar</StatusBadge>
+  if (!notice.verified) return <StatusBadge tone="attention">{t("Sin verificar")}</StatusBadge>
   return (
     <StatusBadge tone={notice.stale ? "attention" : "verified"}>
-      {notice.stale ? "Comprobado hace más de 6 meses" : `Comprobado el ${notice.checked_on}`}
+      {notice.stale ? t("Comprobado hace más de 6 meses") : t("Comprobado el {0}", notice.checked_on)}
     </StatusBadge>
   )
 }
@@ -21,7 +22,7 @@ export function RetentionDetails({ notice }: { notice: RetentionNotice }) {
         <ul className="grid gap-0.5 text-xs text-muted-foreground">
           {notice.sources.map((source) => (
             <li key={source} className="break-all">
-              Fuente: {source}
+              {t("Fuente:")} {source}
             </li>
           ))}
         </ul>
@@ -37,9 +38,9 @@ export function CheckResult({ check }: { check: ProviderCheck | "running" | null
       <StatusBadge tone={check.status === "ready" ? "verified" : "attention"}>{CHECK_LABELS[check.reason]}</StatusBadge>
       {check.status !== "ready" && (check.detail || check.http_status) && (
         <p className="text-xs break-words text-muted-foreground">
-          Respuesta del proveedor{check.http_status ? ` (HTTP ${check.http_status}` : ""}
+          {t("Respuesta del proveedor")}{check.http_status ? ` (HTTP ${check.http_status}` : ""}
           {check.error_type ? `, ${check.error_type}` : ""}
-          {check.http_status ? ")" : ""}: {check.detail || "sin detalle"}
+          {check.http_status ? ")" : ""}: {check.detail || t("sin detalle")}
         </p>
       )}
     </div>

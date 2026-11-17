@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { KeyRound, Pencil, Plus, Trash2 } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Section } from "@/components/page"
@@ -27,19 +28,16 @@ import { ErrorText, Muted } from "@/screens/shared"
 const API_TYPE_HELP = (
   <>
     <p>
-      Es el formato en que Scrinium habla con el proveedor, no la marca del modelo. Se elige solo al escribir la
-      dirección.
+      {t("Es el formato en que Scrinium habla con el proveedor, no la marca del modelo. Se elige solo al escribir la dirección.")}
     </p>
     <p>
-      <strong>Compatible con OpenAI</strong> es el formato que ofrecen casi todos: DeepSeek, GLM (Z.ai), Mistral,
-      Groq, OpenRouter, Together y muchos más. Su documentación lo dice como «OpenAI compatible» o muestra una
-      dirección que termina en <code>/v1</code> con <code>/chat/completions</code>.
+      <strong>{t("Compatible con OpenAI")}</strong> {t("es el formato que ofrecen casi todos: DeepSeek, GLM (Z.ai), Mistral, Groq, OpenRouter, Together y muchos más. Su documentación lo dice como «OpenAI compatible» o muestra una dirección que termina en")} <code>/v1</code> {t("con")} <code>/chat/completions</code>.
     </p>
     <p>
-      <strong>Anthropic</strong> es solo para Claude, con su API propia.
+      <strong>{t("Anthropic")}</strong> {t("es solo para Claude, con su API propia.")}
     </p>
     <p className="text-muted-foreground">
-      Si un proveedor solo tiene su propia API, sin modo compatible con OpenAI, Scrinium todavía no puede usarlo.
+      {t("Si un proveedor solo tiene su propia API, sin modo compatible con OpenAI, Scrinium todavía no puede usarlo.")}
     </p>
   </>
 )
@@ -91,7 +89,7 @@ function ProviderDialog({
         }).then((updated) =>
           onSaved(
             updated.consents_revoked > 0
-              ? `Cambió el servidor: se retiraron ${updated.consents_revoked} permisos de proyectos, que tendrán que darse de nuevo.`
+              ? t("Cambió el servidor: se retiraron {0} permisos de proyectos, que tendrán que darse de nuevo.", updated.consents_revoked)
               : null,
           ),
         )
@@ -109,17 +107,17 @@ function ProviderDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={editing ? `Editar ${provider.name}` : "Añadir proveedor"}
+      title={editing ? t("Editar {0}", provider.name) : t("Añadir proveedor")}
       description={
         editing
           ? undefined
-          : "Registrar un proveedor no envía nada: cada proyecto decide después si lo usa y para qué."
+          : t("Registrar un proveedor no envía nada: cada proyecto decide después si lo usa y para qué.")
       }
     >
       <form className="grid gap-3" onSubmit={save} autoComplete="off">
         {!editing && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-xs text-muted-foreground">Rellenar con</span>
+            <span className="text-xs text-muted-foreground">{t("Rellenar con")}</span>
             {PRESETS.map((option, index) => (
               <Button key={option.label} type="button" size="xs" variant="outline" onClick={() => preset(index)}>
                 {option.label}
@@ -128,11 +126,11 @@ function ProviderDialog({
           </div>
         )}
         <div className="grid gap-1.5">
-          <Label htmlFor="provider-name">Nombre</Label>
+          <Label htmlFor="provider-name">{t("Nombre")}</Label>
           <Input id="provider-name" required maxLength={100} value={name} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="provider-url">Dirección (https)</Label>
+          <Label htmlFor="provider-url">{t("Dirección (https)")}</Label>
           <Input
             id="provider-url"
             required
@@ -147,8 +145,8 @@ function ProviderDialog({
         </div>
         <div className="grid gap-1.5">
           <span className="flex items-center gap-1">
-            <Label htmlFor="provider-kind">Tipo de API</Label>
-            <InfoPopover label="Qué tipo de API elegir" title="Qué tipo de API elegir">
+            <Label htmlFor="provider-kind">{t("Tipo de API")}</Label>
+            <InfoPopover label={t("Qué tipo de API elegir")} title={t("Qué tipo de API elegir")}>
               {API_TYPE_HELP}
             </InfoPopover>
           </span>
@@ -160,30 +158,30 @@ function ProviderDialog({
           />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="provider-key">{editing ? "Nueva clave de API" : "Clave de API"}</Label>
+          <Label htmlFor="provider-key">{editing ? t("Nueva clave de API") : t("Clave de API")}</Label>
           <Input
             id="provider-key"
             required={keyNeeded}
             type="password"
             autoComplete="new-password"
             spellCheck={false}
-            placeholder={editing && !newHost ? `Vacía: se mantiene la clave …${provider.key_hint ?? ""}` : undefined}
+            placeholder={editing && !newHost ? t("Vacía: se mantiene la clave …{0}", provider.key_hint ?? "") : undefined}
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
           />
           <Muted>
             {newHost
-              ? "Cambia el servidor: hace falta su clave, y los proyectos tendrán que volver a dar permiso."
-              : "Va al llavero del sistema y no vuelve a mostrarse."}
+              ? t("Cambia el servidor: hace falta su clave, y los proyectos tendrán que volver a dar permiso.")
+              : t("Va al llavero del sistema y no vuelve a mostrarse.")}
           </Muted>
         </div>
         <ErrorText>{error}</ErrorText>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
+            {t("Cancelar")}
           </Button>
           <Button type="submit" disabled={busy || !name.trim() || !baseUrl.trim() || (keyNeeded && !apiKey.trim())}>
-            {busy ? "Guardando…" : editing ? "Guardar" : "Añadir"}
+            {busy ? t("Guardando…") : editing ? t("Guardar") : t("Añadir")}
           </Button>
         </div>
       </form>
@@ -226,12 +224,12 @@ function ModelDialog({
     <Dialog
       open
       onOpenChange={(next) => !next && onClose()}
-      title={`Añadir un modelo de ${provider.name}`}
-      description="El nombre exacto que da el proveedor en su documentación. Añadirlo no envía nada."
+      title={t("Añadir un modelo de {0}", provider.name)}
+      description={t("El nombre exacto que da el proveedor en su documentación. Añadirlo no envía nada.")}
     >
       <form className="grid gap-3" onSubmit={save} autoComplete="off">
         <div className="grid gap-1.5">
-          <Label htmlFor="model-name">Modelo</Label>
+          <Label htmlFor="model-name">{t("Modelo")}</Label>
           <Input
             id="model-name"
             required
@@ -249,13 +247,13 @@ function ModelDialog({
         <ErrorText>{error}</ErrorText>
         <div className="flex flex-wrap justify-end gap-2">
           <Button type="button" variant="outline" disabled={!model.trim() || check === "running"} onClick={runCheck}>
-            {check === "running" ? "Probando…" : "Probar conexión"}
+            {check === "running" ? t("Probando…") : t("Probar conexión")}
           </Button>
           <Button type="submit" disabled={!model.trim()}>
-            Añadir
+            {t("Añadir")}
           </Button>
         </div>
-        <Muted>Probar conexión envía una sola frase fija, nada de ningún proyecto, y gasta unos pocos tokens.</Muted>
+        <Muted>{t("Probar conexión envía una sola frase fija, nada de ningún proyecto, y gasta unos pocos tokens.")}</Muted>
       </form>
     </Dialog>
   )
@@ -289,7 +287,7 @@ function ModelRow({
       .then((result) =>
         onChanged(
           result.consents_revoked > 0
-            ? `Se quitó ${model.model} y se retiraron ${result.consents_revoked} permisos de proyectos que lo usaban.`
+            ? t("Se quitó {0} y se retiraron {1} permisos de proyectos que lo usaban.", model.model, result.consents_revoked)
             : null,
         ),
       )
@@ -302,22 +300,22 @@ function ModelRow({
           {confirming ? (
             <>
               <Button size="xs" variant="destructive" onClick={remove}>
-                Quitar
+                {t("Quitar")}
               </Button>
               <Button size="xs" variant="ghost" onClick={() => setConfirming(false)}>
-                Cancelar
+                {t("Cancelar")}
               </Button>
             </>
           ) : (
             <>
               <Button size="xs" variant="ghost" disabled={check === "running"} onClick={runCheck}>
-                {check === "running" ? "Probando…" : "Probar"}
+                {check === "running" ? t("Probando…") : t("Probar")}
               </Button>
               <Button
                 size="icon-xs"
                 variant="ghost"
-                aria-label={`Quitar ${model.model}`}
-                title="Quitar"
+                aria-label={t("Quitar {0}", model.model)}
+                title={t("Quitar")}
                 onClick={() => setConfirming(true)}
               >
                 <Trash2 />
@@ -326,7 +324,7 @@ function ModelRow({
           )}
         </span>
       </div>
-      {confirming && <Muted>Los proyectos que lo usan dejarán de enviarle tareas y volverán a local.</Muted>}
+      {confirming && <Muted>{t("Los proyectos que lo usan dejarán de enviarle tareas y volverán a local.")}</Muted>}
       <CheckResult check={check} />
       <ErrorText>{error}</ErrorText>
     </li>
@@ -361,19 +359,19 @@ function ProviderCard({
           </span>
           <code className="truncate text-xs text-muted-foreground">
             {provider.base_url}
-            {provider.has_key ? ` · clave …${provider.key_hint ?? ""}` : " · sin clave"}
+            {provider.has_key ? t(" · clave …{0}", provider.key_hint ?? "") : t(" · sin clave")}
           </code>
         </span>
         <span className="flex items-center gap-1">
           <Button size="sm" variant="ghost" onClick={onEdit}>
             <Pencil data-icon="inline-start" />
-            Editar
+            {t("Editar")}
           </Button>
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label={`Quitar ${provider.name}`}
-            title="Quitar"
+            aria-label={t("Quitar {0}", provider.name)}
+            title={t("Quitar")}
             onClick={() => setConfirming(true)}
           >
             <Trash2 />
@@ -383,13 +381,13 @@ function ProviderCard({
       {confirming && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-destructive/40 p-2 text-sm">
           <span className="flex-1">
-            Se borra su clave del llavero y los proyectos que lo usan vuelven a local.
+            {t("Se borra su clave del llavero y los proyectos que lo usan vuelven a local.")}
           </span>
           <Button size="sm" variant="destructive" onClick={remove}>
-            Quitar {provider.name}
+            {t("Quitar")} {provider.name}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-            Cancelar
+            {t("Cancelar")}
           </Button>
         </div>
       )}
@@ -407,11 +405,11 @@ function ProviderCard({
             ))}
           </ul>
         ) : (
-          <Muted>Todavía sin modelos.</Muted>
+          <Muted>{t("Todavía sin modelos.")}</Muted>
         )}
         <Button size="sm" variant="outline" className="justify-self-start" onClick={onAddModel}>
           <Plus data-icon="inline-start" />
-          Añadir modelo
+          {t("Añadir modelo")}
         </Button>
       </div>
       <ErrorText>{error}</ErrorText>
@@ -450,22 +448,22 @@ function ProvidersSection({
       title={
         <span className="flex items-center gap-2">
           <KeyRound className="size-4" />
-          Proveedores externos
+          {t("Proveedores externos")}
         </span>
       }
-      description="Opcional. Las claves se guardan en el llavero del sistema, nunca en los datos de Scrinium."
+      description={t("Opcional. Las claves se guardan en el llavero del sistema, nunca en los datos de Scrinium.")}
       action={
         keyring ? (
           <Button size="sm" variant="outline" onClick={() => open("new")}>
             <Plus data-icon="inline-start" />
-            Añadir proveedor
+            {t("Añadir proveedor")}
           </Button>
         ) : undefined
       }
     >
       {!keyring && (
         <StatusBadge tone="attention">
-          No hay llavero del sistema: sin él no se pueden registrar proveedores externos.
+          {t("No hay llavero del sistema: sin él no se pueden registrar proveedores externos.")}
         </StatusBadge>
       )}
       {notice && (
@@ -487,7 +485,7 @@ function ProvidersSection({
           ))}
         </ul>
       ) : (
-        keyring && <Muted>Ninguno todavía. Todo se resuelve con el modelo local.</Muted>
+        keyring && <Muted>{t("Ninguno todavía. Todo se resuelve con el modelo local.")}</Muted>
       )}
       <ProviderDialog
         key={opened}

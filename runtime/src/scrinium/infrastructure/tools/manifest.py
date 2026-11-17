@@ -7,6 +7,7 @@ GGUF. To update something, change its version (or commit), URL, size and SHA256 
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 
 class Variant(StrEnum):
@@ -199,3 +200,11 @@ MAP_MODEL = Model(
 )
 
 MODELS: Mapping[str, Model] = {model.name: model for model in (CHAT_MODEL, EMBEDDING_MODEL)}
+
+# ADR-013: what `scrinium tools install` downloads by default. No chat model: the writing model
+# is the person's provider or a local server. llama-server stays, because it serves the
+# embedding model that makes search by meaning work without sending the repository.
+DEFAULT_INSTALL: tuple[str, ...] = (GITLEAKS.name, LLAMA_SERVER.name, EMBEDDING_MODEL.name)
+# `scrinium tools install local`: the managed local chat model on top.
+LOCAL_ADDON: Final = "local"
+ADDONS: Mapping[str, tuple[str, ...]] = {LOCAL_ADDON: (LLAMA_SERVER.name, CHAT_MODEL.name)}

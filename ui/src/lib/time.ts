@@ -1,4 +1,5 @@
-const formatter = new Intl.RelativeTimeFormat("es", { numeric: "auto" })
+import { language, t } from "@/lib/i18n"
+const formatter = new Intl.RelativeTimeFormat(language(), { numeric: "auto" })
 
 const STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
   ["year", 365 * 24 * 3600],
@@ -14,5 +15,5 @@ export function relativeTime(iso: string, now: number = Date.now()): string {
   for (const [unit, size] of STEPS) {
     if (Math.abs(seconds) >= size) return formatter.format(Math.round(seconds / size), unit)
   }
-  return "hace un momento"
+  return t("hace un momento")
 }

@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { Activity, Cpu, Gauge, Info } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router"
@@ -31,12 +32,12 @@ import { useErrors } from "@/screens/hooks"
 import { ErrorText, Muted } from "@/screens/shared"
 
 const TASK_HELP: Record<AiTask, string> = {
-  questions: "Responder preguntas sobre el proyecto, con citas.",
-  rule_map: "Leer el código y proponer reglas.",
-  rule_statements: "Redactar el enunciado de cada regla.",
-  consistency: "Buscar reglas duplicadas o contradictorias.",
-  change_impact: "Revisar qué reglas toca un cambio de código.",
-  check_explain: "Explicar en una frase cómo cambia una regla en scrinium check --explain.",
+  questions: t("Responder preguntas sobre el proyecto, con citas."),
+  rule_map: t("Leer el código y proponer reglas."),
+  rule_statements: t("Redactar el enunciado de cada regla."),
+  consistency: t("Buscar reglas duplicadas o contradictorias."),
+  change_impact: t("Revisar qué reglas toca un cambio de código."),
+  check_explain: t("Explicar en una frase cómo cambia una regla en scrinium check --explain."),
 }
 
 function TaskRow({
@@ -59,16 +60,16 @@ function TaskRow({
         <span className="text-xs text-muted-foreground">{TASK_HELP[task]}</span>
         {consent && (
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
-            Permitido {relativeTime(consent.created_at)}
-            {consent.consented_by ? ` por ${consent.consented_by}` : ""}
-            <InfoPopover label="Aviso aceptado" title={`Lo que se aceptó de ${consent.provider_name}`}>
+            {t("Permitido")} {relativeTime(consent.created_at)}
+            {consent.consented_by ? t(" por {0}", consent.consented_by) : ""}
+            <InfoPopover label={t("Aviso aceptado")} title={t("Lo que se aceptó de {0}", consent.provider_name)}>
               <RetentionDetails notice={consent.retention} />
             </InfoPopover>
           </span>
         )}
       </span>
       <Select
-        aria-label={`Modelo para ${TASK_LABELS[task]}`}
+        aria-label={t("Modelo para {0}", TASK_LABELS[task])}
         value={currentChoice(ai, task)}
         options={options}
         onValueChange={(choice) => onChoose(task, choice)}
@@ -102,11 +103,10 @@ function Permissions({
   return (
     <div className="grid gap-2 border-t pt-4">
       <span className="flex items-center gap-1 text-sm font-medium">
-        Modelos permitidos
-        <InfoPopover label="Qué es un modelo permitido" title="Modelos permitidos">
+        {t("Modelos permitidos")}
+        <InfoPopover label={t("Qué es un modelo permitido")} title={t("Modelos permitidos")}>
           <p>
-            Un modelo permitido puede elegirse al extraer reglas, en Opciones avanzadas, aunque no sea el de por
-            defecto. Retirarlo hace que esas tareas vuelvan a este equipo.
+            {t("Un modelo permitido puede elegirse al extraer reglas, en Opciones avanzadas, aunque no sea el de por defecto. Retirarlo hace que esas tareas vuelvan a este equipo.")}
           </p>
         </InfoPopover>
       </span>
@@ -121,21 +121,21 @@ function Permissions({
               {confirming === consent.id ? (
                 <span className="flex items-center gap-1">
                   <Button size="xs" variant="destructive" onClick={() => withdraw(consent.id)}>
-                    Retirar
+                    {t("Retirar")}
                   </Button>
                   <Button size="xs" variant="ghost" onClick={() => setConfirming(null)}>
-                    Cancelar
+                    {t("Cancelar")}
                   </Button>
                 </span>
               ) : (
                 <Button size="xs" variant="ghost" onClick={() => setConfirming(consent.id)}>
-                  Retirar permiso
+                  {t("Retirar permiso")}
                 </Button>
               )}
             </div>
             <span className="text-xs text-muted-foreground">
               {consent.tasks.map((task) => TASK_LABELS[task]).join(", ")} · {relativeTime(consent.created_at)}
-              {consent.consented_by ? ` por ${consent.consented_by}` : ""}
+              {consent.consented_by ? t(" por {0}", consent.consented_by) : ""}
             </span>
           </li>
         ))}
@@ -163,7 +163,7 @@ function ModelsTab({
   const { error, setError, fail } = useErrors(onSessionLost)
   const options = useMemo(
     () => [
-      { value: LOCAL, label: "Local (este equipo)" },
+      { value: LOCAL, label: t("Local (este equipo)") },
       ...providers.flatMap((provider) =>
         provider.models.map((option) => ({
           value: choiceOf(provider.id, option.model),
@@ -201,28 +201,28 @@ function ModelsTab({
   const hasModels = options.length > 1
   return (
     <Section
-      title="Modelo de cada tarea"
-      description="Sin elegir otro, todo se resuelve en este equipo. La búsqueda y los vectores se calculan siempre aquí."
+      title={t("Modelo de cada tarea")}
+      description={t("Sin elegir otro, todo se resuelve en este equipo. La búsqueda y los vectores se calculan siempre aquí.")}
       action={
         ai.consents.length > 0 ? (
           confirming ? (
             <span className="flex items-center gap-1">
               <Button size="sm" variant="destructive" onClick={allLocal}>
-                Sí, todo en local
+                {t("Sí, todo en local")}
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>
-                Cancelar
+                {t("Cancelar")}
               </Button>
             </span>
           ) : (
             <Button size="sm" variant="outline" onClick={() => setConfirming(true)}>
-              Todo en local
+              {t("Todo en local")}
             </Button>
           )
         ) : undefined
       }
     >
-      {confirming && <Muted>Desde la siguiente petición todo se resuelve aquí. Lo ya enviado no se puede recuperar.</Muted>}
+      {confirming && <Muted>{t("Desde la siguiente petición todo se resuelve aquí. Lo ya enviado no se puede recuperar.")}</Muted>}
       <ul className="grid divide-y">
         {TASKS.map((task) => (
           <TaskRow key={task} task={task} ai={ai} options={options} onChoose={choose} />
@@ -235,9 +235,9 @@ function ModelsTab({
         <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <Info className="size-4 shrink-0" aria-hidden="true" />
           <span>
-            Para usar un modelo externo, añádelo antes en{" "}
+            {t("Para usar un modelo externo, añádelo antes en")}{" "}
             <Link to="/ajustes/modelos" className="font-medium text-foreground underline-offset-4 hover:underline">
-              Ajustes → Modelos de IA
+              {t("Ajustes → Modelos de IA")}
             </Link>
             .
           </span>
@@ -289,7 +289,7 @@ function LimitsForm({
       .filter(Boolean)
     const limit = budget.trim() === "" ? null : Number(budget.trim())
     if (limit !== null && (!Number.isInteger(limit) || limit < 0)) {
-      setError("El presupuesto debe ser un número entero de tokens, o quedar vacío.")
+      setError(t("El presupuesto debe ser un número entero de tokens, o quedar vacío."))
       return
     }
     updateProjectAiSettings(project.id, {
@@ -310,7 +310,7 @@ function LimitsForm({
     <form className="grid gap-3" onSubmit={save}>
       <div className="grid gap-3 md:grid-cols-2">
         <div className="grid content-start gap-1.5">
-          <Label htmlFor="never-send">Rutas que nunca se envían</Label>
+          <Label htmlFor="never-send">{t("Rutas que nunca se envían")}</Label>
           <Textarea
             id="never-send"
             rows={4}
@@ -319,32 +319,30 @@ function LimitsForm({
             value={paths}
             onChange={(e) => setPaths(e.target.value)}
           />
-          <Muted>Una por línea. Se indexan y se buscan aquí; una tarea que las necesite se resuelve en local.</Muted>
+          <Muted>{t("Una por línea. Se indexan y se buscan aquí; una tarea que las necesite se resuelve en local.")}</Muted>
         </div>
         <div className="grid content-start gap-1.5">
-          <Label htmlFor="token-budget">Presupuesto mensual de tokens</Label>
+          <Label htmlFor="token-budget">{t("Presupuesto mensual de tokens")}</Label>
           <Input
             id="token-budget"
             inputMode="numeric"
-            placeholder="Sin límite"
+            placeholder={t("Sin límite")}
             value={budget}
             onChange={(e) => setBudget(e.target.value)}
           />
           <Muted>
-            Este mes: {tokens(spent)} tokens{limit !== null ? ` de ${tokens(limit)}` : ""}. Al llegar al límite no
-            se envía nada más hasta el mes siguiente.
+            {t("Este mes:")} {tokens(spent)} tokens{limit !== null ? t(" de {0}", tokens(limit)) : ""}{t(". Al llegar al límite no se envía nada más hasta el mes siguiente.")}
           </Muted>
-          {limit !== null && spent >= limit && <StatusBadge tone="attention">Presupuesto agotado</StatusBadge>}
+          {limit !== null && spent >= limit && <StatusBadge tone="attention">{t("Presupuesto agotado")}</StatusBadge>}
           {ai.cache_hits > 0 && (
             <Muted>
-              {tokens(ai.cache_hits)} {ai.cache_hits === 1 ? "respuesta reutilizada" : "respuestas reutilizadas"} sin
-              enviar nada: la misma petición ya tenía respuesta.
+              {tokens(ai.cache_hits)} {ai.cache_hits === 1 ? "respuesta reutilizada" : "respuestas reutilizadas"} {t("sin enviar nada: la misma petición ya tenía respuesta.")}
             </Muted>
           )}
         </div>
       </div>
       <fieldset className="grid gap-1.5">
-        <legend className="mb-1.5 text-sm font-medium">Enmascarar antes de enviar</legend>
+        <legend className="mb-1.5 text-sm font-medium">{t("Enmascarar antes de enviar")}</legend>
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
@@ -352,7 +350,7 @@ function LimitsForm({
             checked={maskPersonal}
             onChange={(e) => setMaskPersonal(e.target.checked)}
           />
-          Datos personales: correos, teléfonos, direcciones IP y URL con usuario y contraseña
+          {t("Datos personales: correos, teléfonos, direcciones IP y URL con usuario y contraseña")}
         </label>
         <label className="flex items-start gap-2 text-sm">
           <input
@@ -361,18 +359,17 @@ function LimitsForm({
             checked={maskLiterals}
             onChange={(e) => setMaskLiterals(e.target.checked)}
           />
-          Textos largos entre comillas (24 caracteres o más)
+          {t("Textos largos entre comillas (24 caracteres o más)")}
         </label>
         <Muted>
-          Cada valor sale como un marcador (&lt;EMAIL_1&gt;) y vuelve a su sitio en la respuesta. La tabla de
-          equivalencias no sale de este equipo ni se guarda. Los nombres de funciones y tablas no se tocan.
+          {t("Cada valor sale como un marcador (")}&lt;EMAIL_1&gt;{t(") y vuelve a su sitio en la respuesta. La tabla de equivalencias no sale de este equipo ni se guarda. Los nombres de funciones y tablas no se tocan.")}
         </Muted>
       </fieldset>
       <div className="flex items-center gap-3">
         <Button type="submit" variant="outline">
-          Guardar límites
+          {t("Guardar límites")}
         </Button>
-        {saved && <StatusBadge tone="verified">Guardado</StatusBadge>}
+        {saved && <StatusBadge tone="verified">{t("Guardado")}</StatusBadge>}
       </div>
       <ErrorText>{error}</ErrorText>
     </form>
@@ -380,7 +377,7 @@ function LimitsForm({
 }
 
 function RequestLog({ requests }: { requests: AiRequestRecord[] }) {
-  if (requests.length === 0) return <Muted>Todavía no se ha enviado nada desde este proyecto.</Muted>
+  if (requests.length === 0) return <Muted>{t("Todavía no se ha enviado nada desde este proyecto.")}</Muted>
   return (
     <ul className="grid divide-y rounded-lg border text-sm">
       {requests.map((request) => {
@@ -395,9 +392,9 @@ function RequestLog({ requests }: { requests: AiRequestRecord[] }) {
               <StatusBadge tone={outcome.tone}>{outcome.label}</StatusBadge>
             </span>
             <code className="text-xs break-words text-muted-foreground">
-              {request.answered_by || request.model} · {request.host} · {tokens(request.prompt_tokens)} tokens enviados
-              {request.cached_tokens > 0 ? ` (${tokens(request.cached_tokens)} en caché)` : ""} ·{" "}
-              {tokens(request.completion_tokens)} recibidos
+              {request.answered_by || request.model} · {request.host} · {tokens(request.prompt_tokens)} {t("tokens enviados")}
+              {request.cached_tokens > 0 ? t(" ({0} en caché)", tokens(request.cached_tokens)) : ""} ·{" "}
+              {tokens(request.completion_tokens)} {t("recibidos")}
               {request.masked > 0 ? ` · ${request.masked} ${request.masked === 1 ? "valor enmascarado" : "valores enmascarados"}` : ""}
             </code>
             {request.sources.length > 0 && (
@@ -442,40 +439,40 @@ function ActivityTab({
   )
   return (
     <Section
-      title="Qué salió de este equipo"
-      description="Cada envío a un modelo externo: cuándo, a dónde, qué pasajes y cuántos tokens. Nunca el contenido."
+      title={t("Qué salió de este equipo")}
+      description={t("Cada envío a un modelo externo: cuándo, a dónde, qué pasajes y cuántos tokens. Nunca el contenido.")}
     >
       <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
         <div className="grid gap-0.5 rounded-lg border p-3">
-          <dt className="text-xs text-muted-foreground">Tokens este mes</dt>
+          <dt className="text-xs text-muted-foreground">{t("Tokens este mes")}</dt>
           <dd className="font-medium">
             {tokens(ai.remote_tokens_this_month)}
             {ai.remote_token_budget !== null && (
-              <span className="font-normal text-muted-foreground"> de {tokens(ai.remote_token_budget)}</span>
+              <span className="font-normal text-muted-foreground"> {t("de")} {tokens(ai.remote_token_budget)}</span>
             )}
           </dd>
         </div>
         <div className="grid gap-0.5 rounded-lg border p-3">
-          <dt className="text-xs text-muted-foreground">Envíos registrados</dt>
+          <dt className="text-xs text-muted-foreground">{t("Envíos registrados")}</dt>
           <dd className="font-medium">{tokens(requests?.length ?? 0)}</dd>
         </div>
         <div className="grid gap-0.5 rounded-lg border p-3">
-          <dt className="text-xs text-muted-foreground">Respuestas reutilizadas</dt>
+          <dt className="text-xs text-muted-foreground">{t("Respuestas reutilizadas")}</dt>
           <dd className="font-medium">{tokens(ai.cache_hits)}</dd>
         </div>
       </dl>
       <div className="flex flex-wrap gap-2">
         <Select
-          aria-label="Filtrar por tarea"
+          aria-label={t("Filtrar por tarea")}
           value={task}
-          options={[{ value: "all", label: "Todas las tareas" }, ...TASKS.map((value) => ({ value, label: TASK_LABELS[value] }))]}
+          options={[{ value: "all", label: t("Todas las tareas") }, ...TASKS.map((value) => ({ value, label: TASK_LABELS[value] }))]}
           onValueChange={setTask}
         />
         <Select
-          aria-label="Filtrar por resultado"
+          aria-label={t("Filtrar por resultado")}
           value={outcome}
           options={[
-            { value: "all", label: "Todos los resultados" },
+            { value: "all", label: t("Todos los resultados") },
             ...Object.entries(OUTCOME_LABELS).map(([value, { label }]) => ({ value, label })),
           ]}
           onValueChange={setOutcome}
@@ -488,9 +485,9 @@ function ActivityTab({
 }
 
 const TABS = [
-  { value: "modelos", label: "Modelos", icon: Cpu },
-  { value: "limites", label: "Límites", icon: Gauge },
-  { value: "actividad", label: "Actividad", icon: Activity },
+  { value: "modelos", label: t("Modelos"), icon: Cpu },
+  { value: "limites", label: t("Límites"), icon: Gauge },
+  { value: "actividad", label: t("Actividad"), icon: Activity },
 ] as const
 
 /** The project's AI: which model each task uses, what never leaves, and what did. */
@@ -523,11 +520,11 @@ export function ProjectAiScreen({
   return (
     <>
       <PageHeader
-        title="IA del proyecto"
-        description={`Qué modelo usa cada tarea de «${project.name}», qué nunca sale de este equipo y qué salió.`}
+        title={t("IA del proyecto")}
+        description={t("Qué modelo usa cada tarea de «{0}», qué nunca sale de este equipo y qué salió.", project.name)}
       />
       <Tabs value={current} onValueChange={(value) => navigate(`/ia/${value}`)}>
-        <TabsList aria-label="Secciones de IA del proyecto">
+        <TabsList aria-label={t("Secciones de IA del proyecto")}>
           {TABS.map(({ value, label, icon: Icon }) => (
             <TabsTrigger key={value} value={value}>
               <Icon />
@@ -540,14 +537,14 @@ export function ProjectAiScreen({
         error ? (
           <ErrorText>{error}</ErrorText>
         ) : (
-          <Muted>Cargando…</Muted>
+          <Muted>{t("Cargando…")}</Muted>
         )
       ) : current === "modelos" ? (
         <ModelsTab project={project} ai={ai} providers={providers} onChanged={changed} onSessionLost={onSessionLost} />
       ) : current === "limites" ? (
         <Section
-          title="Límites"
-          description="Se aplican a todo lo que este proyecto envíe a un modelo externo."
+          title={t("Límites")}
+          description={t("Se aplican a todo lo que este proyecto envíe a un modelo externo.")}
         >
           <LimitsForm key={project.id} project={project} ai={ai} onSaved={changed} onSessionLost={onSessionLost} />
         </Section>

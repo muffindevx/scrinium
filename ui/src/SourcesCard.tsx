@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { FolderGit2, FolderOpen, GitBranch, RefreshCw, ScanSearch, Trash2 } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { EmptyState, Section } from "@/components/page"
@@ -27,28 +28,28 @@ import {
 const POLL_MS = 1500
 
 const REASONS: Record<string, string> = {
-  default_path: "Dependencias o build",
-  sensitive_file: "Archivo sensible",
-  user_pattern: "Tu exclusión",
-  unsupported_type: "Tipo no admitido",
-  too_large: "Demasiado grande",
-  binary: "Binario",
-  not_utf8: "No es UTF-8",
-  possible_secret: "Posible secreto",
-  symlink: "Enlace simbólico",
-  submodule: "Submódulo",
-  special_file: "Archivo especial",
-  hard_link: "Enlace duro",
-  too_deep: "Demasiado profundo",
-  bad_path: "Ruta no válida",
-  limit_reached: "Límite alcanzado",
-  generated: "Código generado",
+  default_path: t("Dependencias o build"),
+  sensitive_file: t("Archivo sensible"),
+  user_pattern: t("Tu exclusión"),
+  unsupported_type: t("Tipo no admitido"),
+  too_large: t("Demasiado grande"),
+  binary: t("Binario"),
+  not_utf8: t("No es UTF-8"),
+  possible_secret: t("Posible secreto"),
+  symlink: t("Enlace simbólico"),
+  submodule: t("Submódulo"),
+  special_file: t("Archivo especial"),
+  hard_link: t("Enlace duro"),
+  too_deep: t("Demasiado profundo"),
+  bad_path: t("Ruta no válida"),
+  limit_reached: t("Límite alcanzado"),
+  generated: t("Código generado"),
 }
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes < 1024 * 1024) return t("{0} KB", (bytes / 1024).toFixed(1))
+  return t("{0} MB", (bytes / 1024 / 1024).toFixed(1))
 }
 
 function samePreviewInput(a: SourceRequest, b: SourceRequest | null): boolean {
@@ -65,13 +66,13 @@ function PreviewView({ preview }: { preview: SourcePreview }) {
   return (
     <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
       <p>
-        Se leerán <strong>{preview.included_count}</strong> archivos (
-        {formatBytes(preview.included_bytes)}) y se excluirán{" "}
+        {t("Se leerán")} <strong>{preview.included_count}</strong> {t("archivos (")}
+        {formatBytes(preview.included_bytes)}{t(") y se excluirán")}{" "}
         <strong>{preview.excluded_count}</strong>.
         {preview.commit && (
           <>
             {" "}
-            Commit <code>{preview.commit.slice(0, 12)}</code>.
+            {t("Commit")} <code>{preview.commit.slice(0, 12)}</code>.
           </>
         )}
       </p>
@@ -87,7 +88,7 @@ function PreviewView({ preview }: { preview: SourcePreview }) {
         </ul>
       )}
       <details>
-        <summary className="cursor-pointer">Archivos incluidos</summary>
+        <summary className="cursor-pointer">{t("Archivos incluidos")}</summary>
         <ul className="mt-2 max-h-48 overflow-auto font-mono text-xs">
           {preview.included.map((file) => (
             <li key={file.path} className="truncate">
@@ -98,14 +99,14 @@ function PreviewView({ preview }: { preview: SourcePreview }) {
       </details>
       {preview.excluded_count > 0 && (
         <details>
-          <summary className="cursor-pointer">Archivos excluidos y motivo</summary>
+          <summary className="cursor-pointer">{t("Archivos excluidos y motivo")}</summary>
           <ul className="mt-2 max-h-48 overflow-auto text-xs">
             {preview.excluded.map((file) => (
               <li key={file.path} className="flex justify-between gap-3 py-0.5">
                 <span className="truncate font-mono">{file.path}</span>
                 <span className="shrink-0 text-muted-foreground">
                   {REASONS[file.reason] ?? file.reason}
-                  {file.rule && ` (${file.rule}${file.line ? `, línea ${file.line}` : ""})`}
+                  {file.rule && ` (${file.rule}${file.line ? t(", línea {0}", file.line) : ""})`}
                 </span>
               </li>
             ))}
@@ -118,11 +119,11 @@ function PreviewView({ preview }: { preview: SourcePreview }) {
 
 function syncSummary(source: Source): string {
   const run = source.latest_sync
-  if (!run) return "Todavía no se ha leído"
-  if (run.status === "queued" || run.status === "running") return "Leyendo archivos…"
-  if (run.status === "failed") return `Falló: ${sourceErrorLabel(run.error_summary) ?? "error"}`
+  if (!run) return t("Todavía no se ha leído")
+  if (run.status === "queued" || run.status === "running") return t("Leyendo archivos…")
+  if (run.status === "failed") return t("Falló: {0}", sourceErrorLabel(run.error_summary) ?? "error")
   const when = source.last_successful_sync_at ? `${relativeTime(source.last_successful_sync_at)}: ` : ""
-  return `${when}${run.items_created} nuevos, ${run.items_updated} cambiados, ${run.items_deleted} quitados, ${run.items_excluded} excluidos`
+  return when + t("{0} nuevos, {1} cambiados, {2} quitados, {3} excluidos", run.items_created, run.items_updated, run.items_deleted, run.items_excluded)
 }
 
 function plural(count: number, one: string, many: string) {
@@ -161,32 +162,32 @@ function SourceRow({
       </div>
       <code className="truncate text-xs text-muted-foreground">{source.root}</code>
       <p className="text-xs text-muted-foreground">
-        {source.kind === "git_repository" ? "Repositorio Git" : "Carpeta de documentos"} ·{" "}
-        {source.active_files} archivos · {syncSummary(source)}
+        {source.kind === "git_repository" ? t("Repositorio Git") : t("Carpeta de documentos")} ·{" "}
+        {source.active_files} {t("archivos ·")} {syncSummary(source)}
       </p>
       <div className="flex gap-2">
         <Button size="sm" variant="outline" disabled={busy} onClick={() => run(syncSource(source.id))}>
           <RefreshCw data-icon="inline-start" />
-          Sincronizar
+          {t("Sincronizar")}
         </Button>
         {impact === null && (
           <Button size="sm" variant="ghost" disabled={busy} onClick={askImpact}>
             <Trash2 data-icon="inline-start" />
-            Borrar
+            {t("Borrar")}
           </Button>
         )}
       </div>
       {impact !== null && (
         <div className="grid gap-2 rounded-lg border border-destructive/40 p-3 text-sm">
           <p>
-            Se borrarán {plural(impact.files, "archivo", "archivos")},{" "}
-            {plural(impact.revisions, "revisión", "revisiones")}, sus fragmentos y vectores,{" "}
-            {plural(impact.evidence, "evidencia", "evidencias")} y{" "}
-            {plural(impact.releases, "release", "releases")}.
+            {t("Se borrarán")} {plural(impact.files, t("archivo"), t("archivos"))},{" "}
+            {plural(impact.revisions, t("revisión"), t("revisiones"))}{t(", sus fragmentos y vectores,")}{" "}
+            {plural(impact.evidence, t("evidencia"), t("evidencias"))} {t("y")}{" "}
+            {plural(impact.releases, t("release"), t("releases"))}.
             {impact.entities_to_delete > 0 &&
-              ` También ${plural(impact.entities_to_delete, "regla que propuso", "reglas que propuso")} el LLM solo a partir de esta fuente.`}
+              t(" También {0} el LLM solo a partir de esta fuente.", plural(impact.entities_to_delete, t("regla que propuso"), t("reglas que propuso")))}
             {impact.entities_to_review - impact.entities_reviewed_here > 0 &&
-              ` ${plural(impact.entities_to_review - impact.entities_reviewed_here, "regla que también cita otras fuentes se conserva, marcada", "reglas que también citan otras fuentes se conservan, marcadas")} para revisar.`}
+              t(" {0} para revisar.", plural(impact.entities_to_review - impact.entities_reviewed_here, t("regla que también cita otras fuentes se conserva, marcada"), t("reglas que también citan otras fuentes se conservan, marcadas")))}
           </p>
           {impact.entities_reviewed_here > 0 && (
             <label className="flex items-center gap-2">
@@ -195,9 +196,9 @@ function SourceRow({
                 checked={deleteReviewed}
                 onChange={(event) => setDeleteReviewed(event.target.checked)}
               />
-              Borrar también{" "}
-              {plural(impact.entities_reviewed_here, "regla revisada o escrita por una persona", "reglas revisadas o escritas por personas")}{" "}
-              que solo citan esta fuente (si no, se conservan marcadas para revisar)
+              {t("Borrar también")}{" "}
+              {plural(impact.entities_reviewed_here, t("regla revisada o escrita por una persona"), t("reglas revisadas o escritas por personas"))}{" "}
+              {t("que solo citan esta fuente (si no, se conservan marcadas para revisar)")}
             </label>
           )}
           {citing > 0 && (
@@ -207,14 +208,14 @@ function SourceRow({
                 checked={deleteCiting}
                 onChange={(event) => setDeleteCiting(event.target.checked)}
               />
-              Borrar también{" "}
+              {t("Borrar también")}{" "}
               {[
-                impact.citing_questions && plural(impact.citing_questions, "pregunta", "preguntas"),
-                impact.citing_analyses && plural(impact.citing_analyses, "análisis", "análisis"),
+                impact.citing_questions && plural(impact.citing_questions, t("pregunta"), t("preguntas")),
+                impact.citing_analyses && plural(impact.citing_analyses, t("análisis"), t("análisis")),
               ]
                 .filter(Boolean)
                 .join(" y ")}{" "}
-              que la citan (sus respuestas pueden repetir su contenido)
+              {t("que la citan (sus respuestas pueden repetir su contenido)")}
             </label>
           )}
           <div className="flex gap-2">
@@ -227,10 +228,10 @@ function SourceRow({
               }
             >
               <Trash2 data-icon="inline-start" />
-              Borrar fuente
+              {t("Borrar fuente")}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setImpact(null)}>
-              Cancelar
+              {t("Cancelar")}
             </Button>
           </div>
         </div>
@@ -327,14 +328,14 @@ export function SourcesCard({
 
   return (
     <Section
-      title="Fuentes del proyecto"
-      description="Scrinium lee sin modificar nada. De un repositorio Git lee el último commit; de una carpeta, solo Markdown y texto."
+      title={t("Fuentes del proyecto")}
+      description={t("Scrinium lee sin modificar nada. De un repositorio Git lee el último commit; de una carpeta, solo Markdown y texto.")}
     >
       <div className="grid gap-6 md:grid-cols-2">
         <div className="grid content-start gap-3">
           {sources.length === 0 ? (
-            <EmptyState icon={FolderGit2} title="Sin fuentes todavía">
-              Añade el repositorio del proyecto o una carpeta con su documentación.
+            <EmptyState icon={FolderGit2} title={t("Sin fuentes todavía")}>
+              {t("Añade el repositorio del proyecto o una carpeta con su documentación.")}
             </EmptyState>
           ) : (
             <ul className="grid gap-2">
@@ -351,22 +352,22 @@ export function SourcesCard({
         </div>
 
         <form className="grid content-start gap-3" onSubmit={runPreview}>
-          <p className="text-sm font-medium">Añadir una fuente</p>
+          <p className="text-sm font-medium">{t("Añadir una fuente")}</p>
           <Tabs value={kind} onValueChange={(value) => setKind(value as SourceKind)}>
-            <TabsList aria-label="Tipo de fuente">
+            <TabsList aria-label={t("Tipo de fuente")}>
               <TabsTrigger value="git_repository">
                 <GitBranch />
-                Repositorio Git
+                {t("Repositorio Git")}
               </TabsTrigger>
               <TabsTrigger value="folder">
                 <FolderOpen />
-                Carpeta de documentos
+                {t("Carpeta de documentos")}
               </TabsTrigger>
             </TabsList>
           </Tabs>
           <div className="grid gap-1.5">
             <Label htmlFor="source-path">
-              {kind === "git_repository" ? "Ruta de la carpeta del proyecto" : "Ruta de la carpeta de documentos"}
+              {kind === "git_repository" ? t("Ruta de la carpeta del proyecto") : t("Ruta de la carpeta de documentos")}
             </Label>
             <Input
               id="source-path"
@@ -380,18 +381,17 @@ export function SourcesCard({
             />
             {looksLikeUrl && (
               <p role="alert" className="text-xs text-amber-700 dark:text-amber-400">
-                Eso es la dirección del repositorio en un servidor. Escribe la ruta de la carpeta del proyecto en este
-                equipo, por ejemplo /home/tu-usuario/repos/mi-aplicacion.
+                {t("Eso es la dirección del repositorio en un servidor. Escribe la ruta de la carpeta del proyecto en este equipo, por ejemplo /home/tu-usuario/repos/mi-aplicacion.")}
               </p>
             )}
             <p className="text-xs text-muted-foreground">
               {kind === "git_repository"
-                ? "La carpeta de tu proyecto en este equipo, que use Git (tiene una carpeta .git). Scrinium lee lo confirmado en la rama actual; no se conecta a GitHub ni a ningún otro servidor."
-                : "Una carpeta con documentos de texto (Markdown, .txt, reStructuredText, AsciiDoc), leída tal como está en el disco."}
+                ? t("La carpeta de tu proyecto en este equipo, que use Git (tiene una carpeta .git). Scrinium lee lo confirmado en la rama actual; no se conecta a GitHub ni a ningún otro servidor.")
+                : t("Una carpeta con documentos de texto (Markdown, .txt, reStructuredText, AsciiDoc), leída tal como está en el disco.")}
             </p>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="source-patterns">Exclusiones extra (una por línea, opcional)</Label>
+            <Label htmlFor="source-patterns">{t("Exclusiones extra (una por línea, opcional)")}</Label>
             <Textarea
               id="source-patterns"
               placeholder={"docs/borradores/\n*.log"}
@@ -408,11 +408,9 @@ export function SourcesCard({
                 onChange={(event) => setIncludeGenerated(event.target.checked)}
               />
               <span>
-                Incluir el código generado
+                {t("Incluir el código generado")}
                 <span className="block text-xs text-muted-foreground">
-                  Por defecto se excluyen los archivos que dicen ser generados (@generated, DO NOT EDIT) y
-                  los de generadores conocidos (__generated__/, *.pb.go, *_pb2.py): no los escribe una
-                  persona y no contienen sus reglas.
+                  {t("Por defecto se excluyen los archivos que dicen ser generados (@generated, DO NOT EDIT) y los de generadores conocidos (__generated__/, *.pb.go, *_pb2.py): no los escribe una persona y no contienen sus reglas.")}
                 </span>
               </span>
             </label>
@@ -425,7 +423,7 @@ export function SourcesCard({
           <div className="flex flex-wrap gap-2">
             <Button type="submit" variant="outline" disabled={busy}>
               <ScanSearch data-icon="inline-start" />
-              {busy && !preview ? "Revisando…" : "Revisar qué se leerá"}
+              {busy && !preview ? t("Revisando…") : t("Revisar qué se leerá")}
             </Button>
             <Button
               type="button"
@@ -433,7 +431,7 @@ export function SourcesCard({
               onClick={index}
             >
               <FolderGit2 data-icon="inline-start" />
-              Añadir y sincronizar
+              {t("Añadir y sincronizar")}
             </Button>
           </div>
           {preview && <PreviewView preview={preview} />}

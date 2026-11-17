@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { AlertCircle, AlertTriangle, CheckCircle2, HelpCircle, Loader2, XCircle } from "lucide-react"
 import type { ReactNode } from "react"
 import { cn } from "cn"
@@ -57,12 +58,12 @@ export function StatusBadge({
 }
 
 const VERIFICATION: Record<VerificationStatus, [Tone, string]> = {
-  unverified: ["proposed", "Propuesta sin verificar"],
-  source_supported: ["verified", "Verificada con el código"],
-  test_supported: ["verified", "Verificada con un test"],
-  human_verified: ["verified", "Verificada"],
-  conflicted: ["attention", "En conflicto"],
-  rejected: ["discarded", "Descartada (falso positivo)"],
+  unverified: ["proposed", t("Propuesta sin verificar")],
+  source_supported: ["verified", t("Verificada con el código")],
+  test_supported: ["verified", t("Verificada con un test")],
+  human_verified: ["verified", t("Verificada")],
+  conflicted: ["attention", t("En conflicto")],
+  rejected: ["discarded", t("Descartada (falso positivo)")],
 }
 
 export function VerificationStatusBadge({ status }: { status: VerificationStatus }) {
@@ -71,12 +72,12 @@ export function VerificationStatusBadge({ status }: { status: VerificationStatus
 }
 
 const ANALYSIS: Record<AnalysisStatus, [Tone, string]> = {
-  queued: ["in_progress", "En cola…"],
-  running: ["in_progress", "Analizando…"],
-  completed: ["verified", "Terminado"],
-  partial: ["attention", "Terminado en parte"],
-  failed: ["attention", "Falló"],
-  cancelled: ["no_evidence", "En pausa"],
+  queued: ["in_progress", t("En cola…")],
+  running: ["in_progress", t("Analizando…")],
+  completed: ["verified", t("Terminado")],
+  partial: ["attention", t("Terminado en parte")],
+  failed: ["attention", t("Falló")],
+  cancelled: ["no_evidence", t("En pausa")],
 }
 
 export function AnalysisStatusBadge({ status }: { status: AnalysisStatus }) {
@@ -85,9 +86,9 @@ export function AnalysisStatusBadge({ status }: { status: AnalysisStatus }) {
 }
 
 const MODEL: Record<EmbeddingStatus, [Tone, string]> = {
-  ready: ["verified", "Listo"],
-  model_missing: ["attention", "Sin modelo local"],
-  unavailable: ["attention", "El motor no responde"],
+  ready: ["verified", t("Listo")],
+  model_missing: ["attention", t("Sin modelo local")],
+  unavailable: ["attention", t("El motor no responde")],
 }
 
 export function ModelStatusBadge({ status }: { status: EmbeddingStatus }) {

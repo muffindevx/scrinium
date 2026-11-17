@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { ArrowLeft, Bug, FileDiff, ScanSearch } from "lucide-react"
 import { type FormEvent, useCallback, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
@@ -18,16 +19,16 @@ const IMPACT_TYPES: AnalysisType[] = ["code_diff", "sql_review", "bug_investigat
 
 const MODES: Record<Mode, { label: string; field: string; placeholder: string; rows: number; max: number }> = {
   diff: {
-    label: "Diff de Git",
-    field: "Pega la salida de git diff",
+    label: t("Diff de Git"),
+    field: t("Pega la salida de git diff"),
     placeholder: "diff --git a/src/billing.py b/src/billing.py\n…",
     rows: 12,
     max: 500000,
   },
   bug: {
-    label: "Descripción de bug",
-    field: "Describe qué falla",
-    placeholder: "El total de la factura sale con demasiados decimales",
+    label: t("Descripción de bug"),
+    field: t("Describe qué falla"),
+    placeholder: t("El total de la factura sale con demasiados decimales"),
     rows: 4,
     max: 2000,
   },
@@ -62,11 +63,11 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
           <TabsList>
             <TabsTrigger value="diff">
               <FileDiff />
-              Diff de Git
+              {t("Diff de Git")}
             </TabsTrigger>
             <TabsTrigger value="bug">
               <Bug />
-              Descripción de bug
+              {t("Descripción de bug")}
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -86,10 +87,10 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" disabled={busy || !text.trim()}>
             <ScanSearch data-icon="inline-start" />
-            {busy ? "Enviando…" : "Analizar impacto"}
+            {busy ? t("Enviando…") : t("Analizar impacto")}
           </Button>
           <p className="text-xs text-muted-foreground">
-            Nada de lo que pegas se ejecuta ni se guarda entero.
+            {t("Nada de lo que pegas se ejecuta ni se guarda entero.")}
           </p>
         </div>
         <ErrorText>{error}</ErrorText>
@@ -105,8 +106,8 @@ export function ImpactScreen(props: ScreenProps) {
   return (
     <>
       <PageHeader
-        title="Impacto"
-        description="Antes de tocar nada: qué reglas, archivos y tests afecta un cambio o un bug. Los hallazgos son hipótesis hasta que los revisas."
+        title={t("Impacto")}
+        description={t("Antes de tocar nada: qué reglas, archivos y tests afecta un cambio o un bug. Los hallazgos son hipótesis hasta que los revisas.")}
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <div className="grid min-w-0 content-start gap-4">
@@ -117,7 +118,7 @@ export function ImpactScreen(props: ScreenProps) {
                 className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
               >
                 <ArrowLeft className="size-4" />
-                Nuevo análisis
+                {t("Nuevo análisis")}
               </Link>
               <Section>
                 <AnalysisDetail

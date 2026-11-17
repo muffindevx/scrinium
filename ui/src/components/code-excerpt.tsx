@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { cn } from "cn"
 import { getCitedLines } from "@/lib/api"
@@ -74,11 +75,11 @@ export function CodeExcerpt({
     <div ref={ref}>
       {loaded === null ? (
         <CodeFrame className={className}>
-          <p className="px-3 text-muted-foreground">Cargando código…</p>
+          <p className="px-3 text-muted-foreground">{t("Cargando código…")}</p>
         </CodeFrame>
       ) : loaded === "error" ? (
         <CodeFrame className={className}>
-          <p className="px-3 text-muted-foreground">Este archivo ya no está en las fuentes: puede que se haya borrado.</p>
+          <p className="px-3 text-muted-foreground">{t("Este archivo ya no está en las fuentes: puede que se haya borrado.")}</p>
         </CodeFrame>
       ) : (
         <CodeTable

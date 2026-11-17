@@ -45,6 +45,10 @@ By default everything runs on your machine. The heaviest task is extracting the 
 - the installers;
 - `README.txt` and `LEEME.txt`, the end-user readme in English and Spanish.
 
+The zip is reproducible: every timestamp is the last commit's date (`SOURCE_DATE_EPOCH`), so the same commit gives the same bytes, and `dist/SHA256SUMS` sits next to it. `make reproducible` builds it twice and fails if the two differ.
+
+The console is in Spanish or English (Settings › General). The same setting fixes the language the models write new rules in.
+
 Node and the source code are not needed. After unzipping:
 
 ```bash
@@ -61,10 +65,12 @@ The installer:
 
 1. Installs [uv](https://docs.astral.sh/uv/) if missing, after asking (`--yes` skips the question). It uses a pinned version and checks the SHA-256 of its installer.
 2. Installs Scrinium. On Linux with a desktop it adds the Qt window (about 540 MB). `--no-window` skips it, and Scrinium uses the browser instead.
-3. Downloads the tools and models (`scrinium tools install`).
+3. Downloads the tools and the search model (`scrinium tools install`, about 0.7 GB).
 4. Ends with `scrinium doctor`, which checks the machine and explains how to fix anything missing. It can be run again at any time.
 
-Then run `scrinium start`.
+Then run `scrinium start`. The first time, Home asks which model writes the rules: your own provider (recommended), a local server that speaks the OpenAI API (Ollama, vLLM, llama-server) at a loopback address, or **isolated mode**, which blocks every egress and shows it in `security-status` (an organisation can force it with `SCRINIUM_PROFILE=isolated`).
+
+To try Scrinium in five minutes without a model, a GPU or the network, run `scrinium demo`: it creates the example shop with three verified rules, changes one on a branch, and shows `scrinium check` failing on it.
 
 Without the zip, install by hand:
 
@@ -75,7 +81,8 @@ uv tool install dist/scrinium-0.1.0-py3-none-any.whl -c dist/constraints.txt
 For the window on Linux, install `"scrinium[window] @ file://$PWD/dist/scrinium-0.1.0-py3-none-any.whl"` instead. Then run `scrinium tools install` and `scrinium start`.
 
 - **Tools and models.**
-  - `scrinium tools install` downloads gitleaks, llama.cpp and the two local models (about 3.2 GB) into the data directory, each pinned and checked by SHA-256.
+  - `scrinium tools install` downloads gitleaks, llama.cpp and the embedding model (about 0.7 GB) into the data directory, each pinned and checked by SHA-256. Search by meaning always runs here.
+  - `scrinium tools install local` adds Scrinium's own chat model (2.5 GB, best with a GPU), for those who want the rules written on this machine without running a server of their own.
   - On Linux and Windows it picks the GPU build of llama.cpp (Vulkan) when the system supports it. `--cpu` forces the CPU-only build.
   - `scrinium tools status` shows what is installed.
   - `scrinium start` starts llama.cpp itself and stops it when Scrinium closes. Models load on first use.

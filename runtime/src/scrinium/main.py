@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.responses import PlainTextResponse
 
 from scrinium import __version__
-from scrinium.api.ai import build_ai_router
+from scrinium.api.ai import apply_setup, build_ai_router
 from scrinium.api.analyses import build_analyses_router
 from scrinium.api.control import build_control_router
 from scrinium.api.errors import install_error_handlers
@@ -42,6 +42,7 @@ from scrinium.infrastructure.llm.base import LLMProvider
 from scrinium.infrastructure.llm.load_order import ChatFirst
 from scrinium.infrastructure.llm.ollama import OllamaChat
 from scrinium.infrastructure.llm.openai_compatible import OpenAICompatibleChat
+from scrinium.infrastructure.llm.switchable import SwitchableChat
 from scrinium.infrastructure.local_http import LocalHttpClient, ModelError
 from scrinium.infrastructure.secret_store import KeyringSecretStore, SecretStore
 from scrinium.infrastructure.sqlite.database import Database
@@ -153,7 +154,10 @@ def create_app(
             else MemoryGuard(read_available=lambda: None)
         )
     # Remote models only for the tasks a project consented to (ADR-010).
-    llm_service = LlmService(llm or local_llm, memory, Router(database, environment.secret_store))
+    # The local model can be pointed at another loopback server from the first run (ADR-013).
+    local_chat = SwitchableChat(llm or local_llm)
+    apply_setup(database, local_chat if llm is None else None)
+    llm_service = LlmService(local_chat, memory, Router(database, environment.secret_store))
     app.state.questions = QuestionRunner(database, runner.indexer, llm_service, question_executor)
     app.state.analyses = AnalysisRunner(database, llm_service, question_executor)
     analyses = app.state.analyses
@@ -170,7 +174,7 @@ def create_app(
     app.include_router(build_analyses_router(database, app.state.analyses, runner.indexer))
     app.include_router(build_knowledge_router(database, llm_service))
     app.include_router(build_privacy_router(config, database, runner, environment))
-    app.include_router(build_ai_router(database, environment))
+    app.include_router(build_ai_router(database, environment, local_chat))
     app.include_router(build_control_router(config, sessions, database, llm_service))
 
     if config.web_dist.is_dir():

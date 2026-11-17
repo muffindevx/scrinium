@@ -201,3 +201,20 @@ def test_real_gitleaks_release_installs_and_runs(tmp_path: Path) -> None:
     executable = install(GITLEAKS, tmp_path / "tools", os_name, arch, Variant.DEFAULT)
     result = subprocess.run([executable, "version"], capture_output=True, text=True)
     assert result.stdout.strip() == GITLEAKS.version
+
+
+def test_the_default_install_has_no_chat_model() -> None:
+    """ADR-013: search by meaning stays local; the writing model is an add-on."""
+    from scrinium.cli.tools import expand
+    from scrinium.infrastructure.tools.manifest import CHAT_MODEL, EMBEDDING_MODEL, MODELS
+
+    default = expand([])
+    assert CHAT_MODEL.name not in default and EMBEDDING_MODEL.name in default
+    assert "llama-server" in default and "gitleaks" in default
+    assert expand(["local"]) == ["llama-server", CHAT_MODEL.name]
+    assert expand(["gitleaks", "local", "llama-server"]) == [
+        "gitleaks", "llama-server", CHAT_MODEL.name,
+    ]  # fmt: skip
+    # What the default no longer downloads: the chat model, the bulk of it.
+    saved = CHAT_MODEL.size / sum(model.size for model in MODELS.values())
+    assert saved > 0.75

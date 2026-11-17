@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { FolderGit2, Loader2 } from "lucide-react"
 import { type FormEvent, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -9,7 +10,7 @@ import { ErrorText } from "@/screens/shared"
 
 /** The folder's own name: "/home/ana/facturacion/" → "facturacion". */
 function folderName(path: string): string {
-  return path.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop() || "Mi proyecto"
+  return path.trim().replace(/[\\/]+$/, "").split(/[\\/]/).pop() || t("Mi proyecto")
 }
 
 /**
@@ -90,17 +91,15 @@ export function QuickStart({
         </span>
         <div className="grid gap-1">
           <h2 className="font-heading text-lg font-medium">
-            {project ? "Añade la carpeta al proyecto" : "Empieza por la carpeta de tu proyecto"}
+            {project ? t("Añade la carpeta al proyecto") : t("Empieza por la carpeta de tu proyecto")}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Scrinium la lee en este equipo, sin modificar nada, y deja fuera los secretos y archivos sensibles.
-            De un repositorio Git lee el último commit; de otra carpeta, sus documentos. También puedes
-            soltar la carpeta sobre la ventana.
+            {t("Scrinium la lee en este equipo, sin modificar nada, y deja fuera los secretos y archivos sensibles. De un repositorio Git lee el último commit; de otra carpeta, sus documentos. También puedes soltar la carpeta sobre la ventana.")}
           </p>
         </div>
       </div>
       <form onSubmit={start} className="grid gap-2">
-        <Label htmlFor="quick-path">Ruta de la carpeta</Label>
+        <Label htmlFor="quick-path">{t("Ruta de la carpeta")}</Label>
         <div className="flex flex-wrap gap-2">
           <Input
             id="quick-path"
@@ -113,18 +112,17 @@ export function QuickStart({
           />
           <Button type="submit" disabled={busy || !path.trim()}>
             {busy && <Loader2 className="animate-spin" data-icon="inline-start" />}
-            {busy ? "Añadiendo…" : "Leer el proyecto"}
+            {busy ? t("Añadiendo…") : t("Leer el proyecto")}
           </Button>
         </div>
         {!project && path.trim() && (
           <p className="text-xs text-muted-foreground">
-            Se creará el proyecto «{folderName(path)}». Podrás añadirle más fuentes en Fuentes.
+            {t("Se creará el proyecto «")}{folderName(path)}{t("». Podrás añadirle más fuentes en Fuentes.")}
           </p>
         )}
         {drop?.kind === "no_path" && !path && (
           <p className="text-xs text-muted-foreground" role="status">
-            El navegador no dice dónde está lo que sueltas: escribe la ruta. En la ventana de Scrinium sí se puede
-            soltar.
+            {t("El navegador no dice dónde está lo que sueltas: escribe la ruta. En la ventana de Scrinium sí se puede soltar.")}
           </p>
         )}
         <ErrorText>{error}</ErrorText>

@@ -210,7 +210,7 @@ def test_a_hook_in_another_language_is_not_edited(repo: Path) -> None:
 
 
 def test_anchors_of_an_older_extractor_are_computed_again_from_the_base(repo: Path) -> None:
-    old = render(_rule(PAGOS)).replace('decisions: "2"', 'decisions: "1"')
+    old = render(_rule(PAGOS)).replace('decisions: "3"', 'decisions: "1"')
     old = old.replace('shape: "', 'shape: "00').replace('value: "', 'value: "00')
     write(repo, f"{RULES_DIR}/{RULE_ID}.md", old)
     commit_all(repo)

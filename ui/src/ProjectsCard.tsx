@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { FolderPlus } from "lucide-react"
 import { type FormEvent, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -8,7 +9,7 @@ import { ApiError, type Project, type Workspace, createProject } from "@/lib/api
 const FIELD_NAMES: Record<string, string> = {
   name: "nombre",
   project_key: "clave",
-  description: "descripción",
+  description: t("descripción"),
 }
 
 // Must match the runtime's PROJECT_KEY_PATTERN.
@@ -16,20 +17,20 @@ const PROJECT_KEY_PATTERN = "[a-z0-9]+(-[a-z0-9]+)*"
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError && error.code === "project_key_taken") {
-    return "Ya existe un proyecto con esa clave. Elige otra."
+    return t("Ya existe un proyecto con esa clave. Elige otra.")
   }
   if (error instanceof ApiError && error.code === "invalid_request") {
     const fields = error.fields.map((field) => FIELD_NAMES[field] ?? field)
     return fields.length > 0
-      ? `Revisa estos campos: ${fields.join(", ")}.`
-      : "Revisa los campos del formulario."
+      ? t("Revisa estos campos: {0}.", fields.join(", "))
+      : t("Revisa los campos del formulario.")
   }
-  return "No se pudo crear el proyecto. Comprueba que Scrinium sigue en marcha."
+  return t("No se pudo crear el proyecto. Comprueba que Scrinium sigue en marcha.")
 }
 
 function ProjectList({ projects }: { projects: Project[] }) {
   if (projects.length === 0) {
-    return <p className="text-sm text-muted-foreground">Todavía no hay proyectos.</p>
+    return <p className="text-sm text-muted-foreground">{t("Todavía no hay proyectos.")}</p>
   }
   return (
     <ul className="grid content-start gap-2">
@@ -84,13 +85,13 @@ export function ProjectsCard({
   }
 
   return (
-    <Section title="Proyectos" description={`${workspace.name}. Se guardan solo en este equipo.`}>
+    <Section title={t("Proyectos")} description={t("{0}. Se guardan solo en este equipo.", workspace.name)}>
       <div className="grid gap-6 md:grid-cols-2">
         <ProjectList projects={projects} />
         <form className="grid content-start gap-3" onSubmit={submit}>
-          <p className="text-sm font-medium">Nuevo proyecto</p>
+          <p className="text-sm font-medium">{t("Nuevo proyecto")}</p>
           <div className="grid gap-1.5">
-            <Label htmlFor="project-name">Nombre</Label>
+            <Label htmlFor="project-name">{t("Nombre")}</Label>
             <Input
               id="project-name"
               required
@@ -100,19 +101,19 @@ export function ProjectsCard({
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="project-key">Clave (opcional)</Label>
+            <Label htmlFor="project-key">{t("Clave (opcional)")}</Label>
             <Input
               id="project-key"
               maxLength={64}
               pattern={PROJECT_KEY_PATTERN}
-              placeholder="Se genera a partir del nombre"
-              title="Minúsculas, números y guiones; por ejemplo, pagos-movil"
+              placeholder={t("Se genera a partir del nombre")}
+              title={t("Minúsculas, números y guiones; por ejemplo, pagos-movil")}
               value={projectKey}
               onChange={(event) => setProjectKey(event.target.value)}
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="project-description">Descripción (opcional)</Label>
+            <Label htmlFor="project-description">{t("Descripción (opcional)")}</Label>
             <Textarea
               id="project-description"
               maxLength={2000}
@@ -127,7 +128,7 @@ export function ProjectsCard({
           )}
           <Button type="submit" disabled={saving} className="justify-self-start">
             <FolderPlus data-icon="inline-start" />
-            {saving ? "Creando…" : "Crear proyecto"}
+            {saving ? t("Creando…") : t("Crear proyecto")}
           </Button>
         </form>
       </div>

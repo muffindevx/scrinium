@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { ArrowLeft, Camera, GitCompare, Tags } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router"
@@ -22,11 +23,11 @@ import { useErrors } from "@/screens/hooks"
 import { AnalysisDetail, ErrorText, Muted, type ScreenProps } from "@/screens/shared"
 
 const STATUS: Record<Release["status"], [Tone, string]> = {
-  discovered: ["no_evidence", "Sin estado guardado"],
-  indexing: ["in_progress", "Guardando…"],
-  ready: ["verified", "Estado guardado"],
-  partial: ["attention", "Guardado en parte"],
-  failed: ["attention", "Falló"],
+  discovered: ["no_evidence", t("Sin estado guardado")],
+  indexing: ["in_progress", t("Guardando…")],
+  ready: ["verified", t("Estado guardado")],
+  partial: ["attention", t("Guardado en parte")],
+  failed: ["attention", t("Falló")],
 }
 
 function Explorer({ project, onSessionLost }: ScreenProps) {
@@ -52,7 +53,7 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
     setError(null)
     discoverReleases(source.id)
       .then((result) => {
-        setNotice(`${result.created.length} versiones nuevas, ${result.existing} ya conocidas.`)
+        setNotice(t("{0} versiones nuevas, {1} ya conocidas.", result.created.length, result.existing))
         load()
       })
       .catch(fail)
@@ -75,35 +76,35 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
     <>
       {(releases?.length ?? 0) >= 2 && (
         <Section
-          title="Comparar dos versiones"
-          description="Qué reglas se añadieron, cambiaron o se retiraron, con su evidencia, y qué código cambió."
+          title={t("Comparar dos versiones")}
+          description={t("Qué reglas se añadieron, cambiaron o se retiraron, con su evidencia, y qué código cambió.")}
         >
           <form className="flex flex-wrap items-end gap-3" onSubmit={compare}>
             <div className="grid gap-1.5">
-              <Label htmlFor="release-base">Desde</Label>
+              <Label htmlFor="release-base">{t("Desde")}</Label>
               <Select id="release-base" value={base} options={options} onValueChange={setBase} />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="release-target">Hasta</Label>
+              <Label htmlFor="release-target">{t("Hasta")}</Label>
               <Select id="release-target" value={target} options={options} onValueChange={setTarget} />
             </div>
             <Button type="submit" disabled={!base || !target || base === target}>
               <GitCompare data-icon="inline-start" />
-              Comparar
+              {t("Comparar")}
             </Button>
           </form>
         </Section>
       )}
       <Section
-        title="Versiones del proyecto"
-        description="Salen de los tags de Git. Guardar el estado fija qué reglas se conocían en esa versión; solo se puede en la versión que está sincronizada ahora."
+        title={t("Versiones del proyecto")}
+        description={t("Salen de los tags de Git. Guardar el estado fija qué reglas se conocían en esa versión; solo se puede en la versión que está sincronizada ahora.")}
         action={
           sources.length > 0 && (
             <div className="flex flex-wrap gap-2">
               {sources.map((source) => (
                 <Button key={source.id} size="sm" variant="outline" onClick={() => discover(source)}>
                   <Tags data-icon="inline-start" />
-                  Leer tags{sources.length > 1 && ` de ${source.display_name}`}
+                  {t("Leer tags")}{sources.length > 1 && t(" de {0}", source.display_name)}
                 </Button>
               ))}
             </div>
@@ -113,14 +114,14 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
         {notice && <Muted>{notice}</Muted>}
         <ErrorText>{error}</ErrorText>
         {sources.length === 0 && releases !== null ? (
-          <EmptyState icon={Tags} title="Sin repositorio Git">
-            Las versiones se leen de los tags de un repositorio. Añade uno en Fuentes.
+          <EmptyState icon={Tags} title={t("Sin repositorio Git")}>
+            {t("Las versiones se leen de los tags de un repositorio. Añade uno en Fuentes.")}
           </EmptyState>
         ) : releases === null ? (
-          <Muted>Cargando…</Muted>
+          <Muted>{t("Cargando…")}</Muted>
         ) : releases.length === 0 ? (
-          <EmptyState icon={Tags} title="Todavía no hay versiones">
-            Pulsa "Leer tags" para descubrirlas.
+          <EmptyState icon={Tags} title={t("Todavía no hay versiones")}>
+            {t("Pulsa \"Leer tags\" para descubrirlas.")}
           </EmptyState>
         ) : (
           <ul className="divide-y">
@@ -137,12 +138,12 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
                       <code>{shortSha(release.commit_sha)}</code>
                       {release.released_at && ` · ${new Date(release.released_at).toLocaleDateString()}`}
                       {release.previous_release_id &&
-                        ` · después de ${names.get(release.previous_release_id) ?? "otra"}`}
+                        t(" · después de {0}", names.get(release.previous_release_id) ?? "otra")}
                     </span>
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => snapshot(release)}>
                     <Camera data-icon="inline-start" />
-                    Guardar estado
+                    {t("Guardar estado")}
                   </Button>
                 </li>
               )
@@ -161,8 +162,8 @@ export function VersionsScreen(props: ScreenProps) {
   return (
     <>
       <PageHeader
-        title="Versiones"
-        description="Explora las versiones del proyecto y compara qué cambió entre dos de ellas."
+        title={t("Versiones")}
+        description={t("Explora las versiones del proyecto y compara qué cambió entre dos de ellas.")}
       />
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <div className="grid min-w-0 content-start gap-4">
@@ -173,7 +174,7 @@ export function VersionsScreen(props: ScreenProps) {
                 className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
               >
                 <ArrowLeft className="size-4" />
-                Todas las versiones
+                {t("Todas las versiones")}
               </Link>
               <Section>
                 <AnalysisDetail

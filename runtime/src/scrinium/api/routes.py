@@ -20,6 +20,7 @@ from scrinium.application import workspaces
 from scrinium.application.ai.answering import QuestionRunner
 from scrinium.application.ai.providers import remote_destinations
 from scrinium.application.ai.service import LlmService
+from scrinium.application.ai.setup import read_setup
 from scrinium.application.engine import engine_info
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion.sources import IngestionRunner
@@ -81,13 +82,18 @@ class SecurityStatusResponse(BaseModel):
     runtime: RuntimeStatus
     providers: ProviderStatus
     storage: StorageStatus
-    ai_mode: Literal["local_only", "remote_allowed"] = "local_only"
+    ai_mode: Literal["local_only", "remote_allowed", "isolated"] = "local_only"
+    # ADR-013: "isolated" blocks every egress; `profile_managed` if the environment forces it.
+    profile: Literal["standard", "isolated"] = "standard"
+    profile_managed: bool = False
+    # The first-run choice: provider, local_server, isolated, or None if not made yet.
+    ai_setup: str | None = None
     connected_sources: int
     limits: list[str]
 
 
 class DataFlowResponse(BaseModel):
-    ai_mode: Literal["local_only", "remote_allowed"] = "local_only"
+    ai_mode: Literal["local_only", "remote_allowed", "isolated"] = "local_only"
     remote_ai_providers: list[str]
     outbound_destinations: list[str]
     stored_locally: list[str]
@@ -187,6 +193,12 @@ def _request_id(request: Request) -> str | None:
     return request_id
 
 
+def _ai_mode(db: DbSession) -> Literal["local_only", "remote_allowed", "isolated"]:
+    if read_setup(db).isolated:
+        return "isolated"
+    return "remote_allowed" if remote_destinations(db) else "local_only"
+
+
 def build_router(
     config: RuntimeConfig,
     sessions: LocalSessionManager,
@@ -276,6 +288,7 @@ def build_router(
     @router.get("/api/v1/system/security-status")
     def security_status(db: Db) -> SecurityStatusResponse:
         backend = environment.secret_store.backend_name
+        setup = read_setup(db)
         return SecurityStatusResponse(
             runtime=RuntimeStatus(
                 version=__version__,
@@ -295,7 +308,10 @@ def build_router(
                 secret_store="available" if backend else "unavailable",
                 secret_store_backend=backend,
             ),
-            ai_mode="remote_allowed" if remote_destinations(db) else "local_only",
+            ai_mode=_ai_mode(db),
+            profile="isolated" if setup.isolated else "standard",
+            profile_managed=setup.managed,
+            ai_setup=setup.choice.value if setup.choice else None,
             connected_sources=workspaces.count_connections(db, workspaces.local_workspace(db)),
             limits=_limits(environment),
         )
@@ -320,7 +336,7 @@ def build_router(
         # Embeddings and search never leave; only the tasks a project consented to (ADR-010).
         remote = remote_destinations(db)
         return DataFlowResponse(
-            ai_mode="remote_allowed" if remote else "local_only",
+            ai_mode=_ai_mode(db),
             remote_ai_providers=remote,
             outbound_destinations=remote,
             stored_locally=[

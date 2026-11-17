@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Select } from "@/components/ui/select"
 import { LOCAL, choiceOf, currentChoice, permission, splitChoice } from "@/lib/ai"
@@ -43,7 +44,7 @@ export function ModelPicker({
   useEffect(load, [load])
   const options = useMemo(
     () => [
-      { value: LOCAL, label: "Local (este equipo)" },
+      { value: LOCAL, label: t("Local (este equipo)") },
       ...providers.flatMap((provider) =>
         provider.models.map((option) => ({
           value: choiceOf(provider.id, option.model),
@@ -73,26 +74,26 @@ export function ModelPicker({
     shown === LOCAL ? null : providers.find((provider) => provider.id === splitChoice(shown)[0])?.host
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="text-muted-foreground">Modelo</span>
+      <span className="text-muted-foreground">{t("Modelo")}</span>
       <Select
-        aria-label="Modelo para esta ejecución"
+        aria-label={t("Modelo para esta ejecución")}
         value={shown}
         options={options}
         onValueChange={pick}
         className="max-w-72"
       />
       {shown === fallback ? (
-        <span className="text-xs text-muted-foreground">por defecto</span>
+        <span className="text-xs text-muted-foreground">{t("por defecto")}</span>
       ) : (
         <button
           type="button"
           className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
           onClick={() => onChange(undefined)}
         >
-          volver al de por defecto
+          {t("volver al de por defecto")}
         </button>
       )}
-      {host && <span className="text-xs text-amber-700 dark:text-amber-400">Sale a {host}</span>}
+      {host && <span className="text-xs text-amber-700 dark:text-amber-400">{t("Sale a")} {host}</span>}
       <ErrorText>{error}</ErrorText>
       {asking && (
         <ConsentDialog

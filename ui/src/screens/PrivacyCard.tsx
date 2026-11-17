@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { Download, ShieldCheck, Trash2, Upload } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -15,26 +16,26 @@ import {
 import { useErrors } from "@/screens/hooks"
 import { ErrorText, Muted } from "@/screens/shared"
 
-const WIPE_CONFIRMATION = "BORRAR TODO"
+const WIPE_CONFIRMATION = t("BORRAR TODO")
 const MIN_PASSPHRASE = 12
 
 const COUNT_LABELS: Record<string, string> = {
-  projects: "Proyectos",
-  sources: "Fuentes",
-  files: "Archivos",
-  revisions: "Revisiones",
-  fragments: "Citas de código preparadas",
-  rules: "Reglas",
-  evidence: "Evidencias",
-  analyses: "Preguntas y análisis",
-  findings: "Hallazgos",
-  releases: "Versiones",
-  audit_events: "Eventos de auditoría",
+  projects: t("Proyectos"),
+  sources: t("Fuentes"),
+  files: t("Archivos"),
+  revisions: t("Revisiones"),
+  fragments: t("Citas de código preparadas"),
+  rules: t("Reglas"),
+  evidence: t("Evidencias"),
+  analyses: t("Preguntas y análisis"),
+  findings: t("Hallazgos"),
+  releases: t("Versiones"),
+  audit_events: t("Eventos de auditoría"),
 }
 
 function size(bytes: number) {
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  if (bytes < 1024 * 1024) return t("{0} KB", (bytes / 1024).toFixed(0))
+  return t("{0} MB", (bytes / 1024 / 1024).toFixed(1))
 }
 
 function ExportForm({ onSessionLost }: { onSessionLost: (error: unknown) => void }) {
@@ -63,16 +64,14 @@ function ExportForm({ onSessionLost }: { onSessionLost: (error: unknown) => void
   }
   return (
     <form className="grid gap-3" onSubmit={submit}>
-      <p className="text-sm font-medium">Exportar</p>
+      <p className="text-sm font-medium">{t("Exportar")}</p>
       <Muted>
-        Todo el workspace, con el texto de las fuentes, en un archivo. Va cifrado con tu
-        contraseña: sin ella no se puede abrir, y Scrinium no la guarda. Los vectores y fragmentos no
-        van dentro; se regeneran.
+        {t("Todo el workspace, con el texto de las fuentes, en un archivo. Va cifrado con tu contraseña: sin ella no se puede abrir, y Scrinium no la guarda. Los vectores y fragmentos no van dentro; se regeneran.")}
       </Muted>
       {!unencrypted && (
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1.5">
-            <Label htmlFor="export-passphrase">Contraseña (mínimo {MIN_PASSPHRASE})</Label>
+            <Label htmlFor="export-passphrase">{t("Contraseña (mínimo")} {MIN_PASSPHRASE})</Label>
             <Input
               id="export-passphrase"
               type="password"
@@ -82,7 +81,7 @@ function ExportForm({ onSessionLost }: { onSessionLost: (error: unknown) => void
             />
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="export-repeat">Repítela</Label>
+            <Label htmlFor="export-repeat">{t("Repítela")}</Label>
             <Input
               id="export-repeat"
               type="password"
@@ -100,19 +99,19 @@ function ExportForm({ onSessionLost }: { onSessionLost: (error: unknown) => void
           checked={unencrypted}
           onChange={(event) => setUnencrypted(event.target.checked)}
         />
-        Exportar sin cifrar
+        {t("Exportar sin cifrar")}
       </label>
       {unencrypted && (
         <ErrorText>
-          Sin cifrar, cualquiera que tenga el archivo puede leer tu código y tus documentos.
+          {t("Sin cifrar, cualquiera que tenga el archivo puede leer tu código y tus documentos.")}
         </ErrorText>
       )}
-      {mismatch && <ErrorText>Las contraseñas no coinciden.</ErrorText>}
+      {mismatch && <ErrorText>{t("Las contraseñas no coinciden.")}</ErrorText>}
       <Button type="submit" variant="outline" disabled={!ready || busy} className="justify-self-start">
         <Download data-icon="inline-start" />
-        {busy ? "Preparando…" : "Descargar exportación"}
+        {busy ? t("Preparando…") : t("Descargar exportación")}
       </Button>
-      {done && <Muted>Descargado: {done}. Guárdalo en un sitio seguro.</Muted>}
+      {done && <Muted>{t("Descargado:")} {done}{t(". Guárdalo en un sitio seguro.")}</Muted>}
       <ErrorText>{error}</ErrorText>
     </form>
   )
@@ -141,14 +140,13 @@ function RestoreForm({
   }
   return (
     <form className="grid gap-3" onSubmit={submit}>
-      <p className="text-sm font-medium">Restaurar una exportación</p>
+      <p className="text-sm font-medium">{t("Restaurar una exportación")}</p>
       <Muted>
-        Solo con el workspace vacío. Se comprueba el archivo entero antes de escribir nada; si algo
-        no cuadra, no se restaura nada. Después se vuelven a calcular el índice y los vectores.
+        {t("Solo con el workspace vacío. Se comprueba el archivo entero antes de escribir nada; si algo no cuadra, no se restaura nada. Después se vuelven a calcular el índice y los vectores.")}
       </Muted>
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="grid gap-1.5">
-          <Label htmlFor="restore-file">Archivo (.scrinium o .json)</Label>
+          <Label htmlFor="restore-file">{t("Archivo (.scrinium o .json)")}</Label>
           <Input
             id="restore-file"
             type="file"
@@ -157,7 +155,7 @@ function RestoreForm({
           />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="restore-passphrase">Contraseña (si está cifrado)</Label>
+          <Label htmlFor="restore-passphrase">{t("Contraseña (si está cifrado)")}</Label>
           <Input
             id="restore-passphrase"
             type="password"
@@ -169,7 +167,7 @@ function RestoreForm({
       </div>
       <Button type="submit" variant="outline" disabled={!file || busy} className="justify-self-start">
         <Upload data-icon="inline-start" />
-        {busy ? "Restaurando…" : "Restaurar"}
+        {busy ? t("Restaurando…") : t("Restaurar")}
       </Button>
       <ErrorText>{error}</ErrorText>
     </form>
@@ -208,7 +206,7 @@ function ConfirmedDelete({
       <div className="flex flex-wrap items-end gap-2">
         <div className="grid min-w-48 flex-1 gap-1.5">
           <Label htmlFor={id}>
-            Escribe <code>{expected}</code> para confirmar
+            {t("Escribe")} <code>{expected}</code> {t("para confirmar")}
           </Label>
           <Input
             id={id}
@@ -219,7 +217,7 @@ function ConfirmedDelete({
         </div>
         <Button type="submit" variant="destructive" disabled={typed !== expected || busy}>
           <Trash2 data-icon="inline-start" />
-          {busy ? "Borrando…" : "Borrar"}
+          {busy ? t("Borrando…") : t("Borrar")}
         </Button>
       </div>
       <ErrorText>{error}</ErrorText>
@@ -250,10 +248,10 @@ export function PrivacyCard({
       title={
         <span className="flex items-center gap-2">
           <ShieldCheck className="size-4" />
-          Datos guardados
+          {t("Datos guardados")}
         </span>
       }
-      description="Qué guarda Scrinium en este equipo, cómo llevártelo y cómo borrarlo. Al borrar, también se purga del disco: base de datos, índice de texto y vectores."
+      description={t("Qué guarda Scrinium en este equipo, cómo llevártelo y cómo borrarlo. Al borrar, también se purga del disco: base de datos, índice de texto y vectores.")}
     >
         <ErrorText>{error}</ErrorText>
         {stored && (
@@ -267,7 +265,7 @@ export function PrivacyCard({
               ))}
             </dl>
             <Muted>
-              En disco: base de datos {size(stored.bytes_on_disk.database)}, vectores{" "}
+              {t("En disco: base de datos")} {size(stored.bytes_on_disk.database)}{t(", vectores")}{" "}
               {size(stored.bytes_on_disk.vectors)}.
             </Muted>
           </div>
@@ -284,8 +282,8 @@ export function PrivacyCard({
           <div className="border-t pt-4">
             <ConfirmedDelete
               key={project.id}
-              title={`Borrar el proyecto ${project.name}`}
-              description="Borra sus fuentes, revisiones, índices, reglas, versiones, preguntas y análisis. Los demás proyectos no se tocan."
+              title={t("Borrar el proyecto {0}", project.name)}
+              description={t("Borra sus fuentes, revisiones, índices, reglas, versiones, preguntas y análisis. Los demás proyectos no se tocan.")}
               expected={project.project_key}
               action={() => deleteProject(project.id, project.project_key).then(() => onProjectDeleted(project.id))}
               onSessionLost={onSessionLost}
@@ -294,17 +292,15 @@ export function PrivacyCard({
         )}
         <div className="border-t pt-4">
           <ConfirmedDelete
-            title="Borrar todos los datos"
-            description="Borra todo el workspace, la auditoría incluida (queda un único registro de que se borró), las credenciales de conectores del keyring y tu nombre de perfil. Las exportaciones que ya descargaste no se pueden borrar desde aquí."
+            title={t("Borrar todos los datos")}
+            description={t("Borra todo el workspace, la auditoría incluida (queda un único registro de que se borró), las credenciales de conectores del keyring y tu nombre de perfil. Las exportaciones que ya descargaste no se pueden borrar desde aquí.")}
             expected={WIPE_CONFIRMATION}
             action={() => wipeWorkspace(WIPE_CONFIRMATION).then(onWiped)}
             onSessionLost={onSessionLost}
           />
         </div>
         <Muted>
-          Límites: el sistema de archivos o el SSD pueden conservar copias en bloques liberados;
-          el cifrado de disco es lo que las protege. Las copias de seguridad del equipo tampoco se
-          borran desde aquí.
+          {t("Límites: el sistema de archivos o el SSD pueden conservar copias en bloques liberados; el cifrado de disco es lo que las protege. Las copias de seguridad del equipo tampoco se borran desde aquí.")}
         </Muted>
     </Section>
   )

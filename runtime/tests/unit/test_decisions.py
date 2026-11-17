@@ -97,3 +97,28 @@ def test_a_collection_of_values_keeps_its_shape_whatever_its_size() -> None:
     assert len(shapes) == 1
     assert len({guard(text)[1] for text in (base, fewer, swapped)}) == 3
     assert guard(reordered) == guard(base)  # A set has no order.
+
+
+@pytest.mark.parametrize(
+    ("path", "template"),
+    [
+        (
+            "envios.py",
+            'LIMITE = Decimal("{}")\n\ndef f(x):\n'
+            '    if x >= LIMITE:\n        raise ValueError("no")\n',
+        ),
+        (
+            "envios.ts",
+            "const LIMITE = new Decimal({});\nfunction f(x) {{\n"
+            "  if (x >= LIMITE) {{ throw new Error('no') }}\n}}\n",
+        ),
+    ],
+)  # fmt: skip
+def test_a_constant_in_a_number_constructor_is_part_of_the_value(path: str, template: str) -> None:
+    """Money is written `Decimal("40")`: moving it to 60 changes the rule's value (v3)."""
+    before = parse_decisions(path, template.format("40"))
+    after = parse_decisions(path, template.format("60"))
+    assert before and after
+    assert before[0].shape == after[0].shape
+    assert before[0].value != after[0].value
+    assert "40" in before[0].literals and "60" in after[0].literals

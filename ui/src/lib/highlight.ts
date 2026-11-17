@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import type { HighlighterCore, ThemedToken } from "shiki/core"
 
 /**
@@ -11,9 +12,9 @@ export type CodeThemeId = "github" | "one-dark-pro" | "dracula"
 type ThemeName = "github-light" | "github-dark" | "one-dark-pro" | "dracula"
 
 export const CODE_THEMES: { id: CodeThemeId; label: string; hint: string }[] = [
-  { id: "github", label: "GitHub", hint: "Claro u oscuro, como la aplicación" },
-  { id: "one-dark-pro", label: "One Dark Pro", hint: "Oscuro" },
-  { id: "dracula", label: "Dracula", hint: "Oscuro" },
+  { id: "github", label: t("GitHub"), hint: t("Claro u oscuro, como la aplicación") },
+  { id: "one-dark-pro", label: t("One Dark Pro"), hint: t("Oscuro") },
+  { id: "dracula", label: t("Dracula"), hint: t("Oscuro") },
 ]
 
 const THEME_LOADERS: Record<ThemeName, () => Promise<{ default: unknown }>> = {

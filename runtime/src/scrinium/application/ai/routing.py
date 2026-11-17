@@ -26,8 +26,15 @@ from typing import Any, ClassVar, Final
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
+from scrinium.application.ai.language import localize, read_language
 from scrinium.application.ai.masking import Masker
-from scrinium.application.ai.providers import ProviderError, consent_for_task, provider_key
+from scrinium.application.ai.providers import (
+    ProviderError,
+    consent_for_task,
+    parse_choice,
+    provider_key,
+)
+from scrinium.application.ai.setup import is_isolated
 from scrinium.application.ingestion.policy import matches_user_pattern
 from scrinium.core.secret_patterns import redact_tokens
 from scrinium.domain.enums import AiTask, ProviderKind
@@ -167,6 +174,15 @@ class Router:
             project = session.get(Project, project_id)
             if project is None:
                 return None
+            if is_isolated(session):
+                # Isolated mode (ADR-013): the local model, or a refusal if a run named another.
+                try:
+                    remote = parse_choice(choice) not in (None, ("", ""))
+                except ProviderError:
+                    remote = True
+                if remote:
+                    raise ModelNotPermittedError
+                return None
             try:
                 consent = consent_for_task(session, project, task, choice)
             except ProviderError:
@@ -193,6 +209,11 @@ class Router:
                 self._adapters[key], tuple(project.never_send or ()), project.remote_token_budget,
                 bool(project.mask_personal), bool(project.mask_literals),
             )  # fmt: skip
+
+    def language(self) -> str:
+        """The language the models answer in (phase 5.5)."""
+        with self._database.session() as session:
+            return read_language(session)
 
     def cached(self, route: _Route, key: str, now: datetime) -> AiCacheEntry | None:
         """The answer kept for this very request, if it is recent enough; counts the reuse."""
@@ -344,6 +365,8 @@ class TaskModel:
         max_tokens: int = 2048,
         json_schema: dict[str, Any] | None = None,
     ) -> Completion:
+        if self._router is not None:
+            messages = localize(messages, self._router.language())
         route = self._route()
         if route is None or self._router is None:
             return self._local.complete(messages, max_tokens, json_schema)

@@ -15,7 +15,14 @@ from scrinium.infrastructure.tools.installer import (
     locate,
     locate_model,
 )
-from scrinium.infrastructure.tools.manifest import MODELS, TOOLS
+from scrinium.infrastructure.tools.manifest import (
+    ADDONS,
+    CHAT_MODEL,
+    DEFAULT_INSTALL,
+    LOCAL_ADDON,
+    MODELS,
+    TOOLS,
+)
 
 
 class _Progress:
@@ -36,6 +43,16 @@ def _progress(name: str) -> _Progress | None:
     return _Progress(name) if sys.stdout.isatty() else None
 
 
+def expand(names: Sequence[str]) -> list[str]:
+    """No names: the default install (ADR-013). An add-on (`local`) stands for its parts."""
+    wanted: list[str] = []
+    for name in names or DEFAULT_INSTALL:
+        for part in ADDONS.get(name, (name,)):
+            if part not in wanted:
+                wanted.append(part)
+    return wanted
+
+
 def install_tools(data_dir: Path, names: Sequence[str], prefer_cpu: bool) -> int:
     tools_dir = data_dir / TOOLS_DIRNAME
     try:
@@ -43,7 +60,7 @@ def install_tools(data_dir: Path, names: Sequence[str], prefer_cpu: bool) -> int
     except ToolError as error:
         print(error, file=sys.stderr)
         return 1
-    wanted = names or [*TOOLS, *MODELS]
+    wanted = expand(names)
     failed = False
     for name in wanted:
         try:
@@ -83,8 +100,12 @@ def show_tools(data_dir: Path) -> int:
         for model in MODELS.values()
     ]
     for label, path in found:
-        missing = missing or path is None
-        print(f"{label}: {path if path is not None else 'no instalado'}")
+        optional = label.startswith(CHAT_MODEL.name)
+        missing = missing or (path is None and not optional)
+        shown = path if path is not None else "no instalado"
+        if path is None and optional:
+            shown = f"no instalado (opcional: scrinium tools install {LOCAL_ADDON})"
+        print(f"{label}: {shown}")
     if missing:
         print("Instala lo que falta con: scrinium tools install")
     return 0

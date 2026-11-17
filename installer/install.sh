@@ -5,7 +5,7 @@
 #   sh install.sh --no-window   without the Linux Qt window (about 540 MB less)
 #   sh install.sh --yes         does not ask before installing uv
 #
-# Steps: uv (if missing, after confirming), Scrinium, its tools and models (about 3.2 GB, with
+# Steps: uv (if missing, after confirming), Scrinium, its tools and the search model (about 0.7 GB, with
 # pinned SHA256) and a final check with `scrinium doctor`. No sudo.
 set -eu
 
@@ -90,7 +90,7 @@ echo "Instalando Scrinium..."
 scrinium="$("$uv_bin" tool dir --bin)/scrinium"
 [ -x "$scrinium" ] || fail "Scrinium no quedo instalado en $scrinium."
 
-echo "Descargando herramientas y modelos (unos 3,2 GB la primera vez)..."
+echo "Descargando herramientas y el modelo de busqueda (unos 0,7 GB la primera vez)..."
 "$scrinium" tools install || fail "No se pudo descargar todo. Repite este script para continuar."
 
 echo

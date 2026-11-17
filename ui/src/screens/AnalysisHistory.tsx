@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { History, Trash2 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { NavLink } from "react-router"
@@ -34,13 +35,13 @@ export function AnalysisHistory({
     <aside className="grid content-start gap-2">
       <p className="flex items-center gap-1.5 text-sm font-medium">
         <History className="size-4 text-muted-foreground" aria-hidden="true" />
-        Historial
+        {t("Historial")}
       </p>
       <ErrorText>{error}</ErrorText>
       {analyses === null ? (
-        <Muted>Cargando…</Muted>
+        <Muted>{t("Cargando…")}</Muted>
       ) : analyses.length === 0 ? (
-        <Muted>Todavía no hay análisis.</Muted>
+        <Muted>{t("Todavía no hay análisis.")}</Muted>
       ) : (
         <ul className="grid gap-0.5">
           {analyses.map((analysis) => (
@@ -59,7 +60,7 @@ export function AnalysisHistory({
                 size="icon-xs"
                 variant="ghost"
                 className="mt-1.5 mr-1 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
-                aria-label="Borrar análisis"
+                aria-label={t("Borrar análisis")}
                 disabled={analysis.status === "queued" || analysis.status === "running"}
                 onClick={() => remove(analysis.id)}
               >

@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import {
   ArrowRight,
   BookOpen,
@@ -13,6 +14,7 @@ import { ModelStatusBadge, StatusBadge } from "@/components/status"
 import { sourceTone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
 import {
+  type AiSetup,
   type Project,
   type RulebookHealth,
   type SecurityStatus,
@@ -23,6 +25,7 @@ import {
 import { relativeTime } from "@/lib/time"
 import { useErrors } from "@/screens/hooks"
 import type { Drop } from "@/lib/folder-drop"
+import { ModelSetup } from "@/screens/ModelSetup"
 import { QuickStart } from "@/screens/QuickStart"
 import { ErrorText } from "@/screens/shared"
 
@@ -77,11 +80,15 @@ export function HomeScreen({
   onProjectCreated,
   drop,
   onDropUsed,
+  setup = null,
+  onSetupChosen = () => undefined,
   onSessionLost,
 }: {
   project: Project | null
   status: SecurityStatus
   localOnly?: boolean
+  setup?: AiSetup | null
+  onSetupChosen?: (setup: AiSetup) => void
   onProjectCreated: (project: Project) => void
   drop: Drop | null
   onDropUsed: () => void
@@ -108,16 +115,29 @@ export function HomeScreen({
     return () => window.clearInterval(timer)
   }, [syncing, load])
 
+  // ADR-013: until someone chooses where the writing model lives, Home asks first.
+  const firstRun = setup !== null && setup.choice === null && (
+    <section className="grid gap-3">
+      <div className="grid gap-1">
+        <h2 className="font-heading text-lg font-medium">{t("¿Qué modelo escribe las reglas?")}</h2>
+        <p className="text-sm text-muted-foreground">
+          {t("La búsqueda, el índice y las reglas se quedan en este equipo. Solo el modelo que redacta las propuestas puede estar fuera, y nada se envía sin tu permiso. Puedes cambiarlo en Ajustes.")}
+        </p>
+      </div>
+      <ModelSetup setup={setup} onChosen={onSetupChosen} onSessionLost={onSessionLost} />
+    </section>
+  )
+
   if (!project) {
     return (
       <>
         <header className="grid gap-1">
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">Te damos la bienvenida a Scrinium</h1>
+          <h1 className="font-heading text-2xl font-semibold tracking-tight">{t("Te damos la bienvenida a Scrinium")}</h1>
           <p className="max-w-2xl text-sm text-muted-foreground">
-            Lee tu repositorio y tus documentos en este equipo y te explica qué hace el sistema, siempre con
-            citas al código. Nada sale de aquí.
+            {t("Lee tu repositorio y tus documentos en este equipo y te explica qué hace el sistema, siempre con citas al código. Nada sale de aquí sin tu permiso.")}
           </p>
         </header>
+        {firstRun}
         <QuickStart
           key={drop?.at}
           project={null}
@@ -133,9 +153,9 @@ export function HomeScreen({
   const synced = lastSync(sources ?? [])
   const hasSources = (sources?.length ?? 0) > 0
   const steps = [
-    { done: hasSources, label: <Link to="/fuentes" className="hover:underline">Añade el repositorio o la carpeta del proyecto</Link> },
-    { done: synced !== null, label: <Link to="/fuentes" className="hover:underline">Sincronízalo para preparar el conocimiento</Link> },
-    { done: (rules?.rules ?? 0) > 0, label: <Link to="/reglas" className="hover:underline">Extrae las reglas del código</Link> },
+    { done: hasSources, label: <Link to="/fuentes" className="hover:underline">{t("Añade el repositorio o la carpeta del proyecto")}</Link> },
+    { done: synced !== null, label: <Link to="/fuentes" className="hover:underline">{t("Sincronízalo para preparar el conocimiento")}</Link> },
+    { done: (rules?.rules ?? 0) > 0, label: <Link to="/reglas" className="hover:underline">{t("Extrae las reglas del código")}</Link> },
   ]
   const pendingSetup = sources !== null && rules !== null && steps.some((step) => !step.done)
 
@@ -145,16 +165,17 @@ export function HomeScreen({
         <h1 className="font-heading text-2xl font-semibold tracking-tight">{project.name}</h1>
         <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           {syncing ? (
-            <StatusBadge tone="in_progress">Sincronizando…</StatusBadge>
+            <StatusBadge tone="in_progress">{t("Sincronizando…")}</StatusBadge>
           ) : synced ? (
-            <>Sincronizado {relativeTime(synced)}</>
+            <>{t("Sincronizado")} {relativeTime(synced)}</>
           ) : sources !== null ? (
-            <>Todavía sin sincronizar</>
+            <>{t("Todavía sin sincronizar")}</>
           ) : null}
           {project.description && <span>· {project.description}</span>}
         </p>
       </header>
       <ErrorText>{error}</ErrorText>
+      {firstRun}
 
       {sources !== null && (!hasSources || drop !== null) && (
         <QuickStart
@@ -172,7 +193,7 @@ export function HomeScreen({
 
       {pendingSetup && (
         <section className="grid gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
-          <h2 className="text-sm font-medium">Próximos pasos</h2>
+          <h2 className="text-sm font-medium">{t("Próximos pasos")}</h2>
           <ol className="grid gap-2">
             {steps.map((step, index) => (
               <Step key={index} done={step.done}>
@@ -186,54 +207,54 @@ export function HomeScreen({
       <div className="grid gap-4 md:grid-cols-3">
         <HealthCard
           icon={BookOpen}
-          title="Reglas"
+          title={t("Reglas")}
           footer={
             <Link to="/reglas" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
-              Revisar reglas <ArrowRight className="size-3.5" />
+              {t("Revisar reglas")} <ArrowRight className="size-3.5" />
             </Link>
           }
         >
           {rules === null ? (
-            <p className="text-sm text-muted-foreground">Cargando…</p>
+            <p className="text-sm text-muted-foreground">{t("Cargando…")}</p>
           ) : (
             <div className="grid gap-2">
               <p className="font-heading text-3xl font-semibold">{rules.rules}</p>
               <div className="flex flex-wrap gap-1.5">
-                <StatusBadge tone="verified">{rules.verified} verificadas</StatusBadge>
-                <StatusBadge tone="proposed">{rules.unreviewed} sin revisar</StatusBadge>
-                {rules.drifted > 0 && <StatusBadge tone="attention">{rules.drifted} cambiaron</StatusBadge>}
+                <StatusBadge tone="verified">{rules.verified} {t("verificadas")}</StatusBadge>
+                <StatusBadge tone="proposed">{rules.unreviewed} {t("sin revisar")}</StatusBadge>
+                {rules.drifted > 0 && <StatusBadge tone="attention">{rules.drifted} {t("cambiaron")}</StatusBadge>}
               </div>
               {rules.inbox > 0 && (
                 <Link to="/bandeja" className="text-sm hover:underline">
-                  {rules.inbox === 1 ? "1 regla en la bandeja" : `${rules.inbox} reglas en la bandeja`}
+                  {rules.inbox === 1 ? t("1 regla en la bandeja") : t("{0} reglas en la bandeja", rules.inbox)}
                 </Link>
               )}
               <p className="text-xs text-muted-foreground">
-                {rules.last_review_at ? `Última revisión ${relativeTime(rules.last_review_at)}` : "Nada revisado aún"}
+                {rules.last_review_at ? t("Última revisión {0}", relativeTime(rules.last_review_at)) : t("Nada revisado aún")}
                 {rules.oldest_unreviewed_at &&
-                  ` · la propuesta más antigua sin revisar es de ${relativeTime(rules.oldest_unreviewed_at)}`}
+                  t(" · la propuesta más antigua sin revisar es de {0}", relativeTime(rules.oldest_unreviewed_at))}
               </p>
             </div>
           )}
         </HealthCard>
         <HealthCard
           icon={Cpu}
-          title="Motor de IA local"
+          title={t("Motor de IA local")}
           footer={
             <Link to="/ajustes/modelos" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
-              Ver el motor <ArrowRight className="size-3.5" />
+              {t("Ver el motor")} <ArrowRight className="size-3.5" />
             </Link>
           }
         >
           <dl className="grid gap-2 text-sm">
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">Respuestas</dt>
+              <dt className="text-muted-foreground">{t("Respuestas")}</dt>
               <dd>
                 <ModelStatusBadge status={status.providers.llm} />
               </dd>
             </div>
             <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">Búsqueda por significado</dt>
+              <dt className="text-muted-foreground">{t("Búsqueda por significado")}</dt>
               <dd>
                 <ModelStatusBadge status={status.providers.embeddings} />
               </dd>
@@ -241,22 +262,21 @@ export function HomeScreen({
           </dl>
           <p className="text-xs text-muted-foreground">
             {localOnly
-              ? "Todo se calcula en este equipo. Nada sale de aquí."
-              : "La búsqueda se calcula aquí. Algunas tareas de este proyecto van a un proveedor externo: míralo en Ajustes."}
+              ? t("Todo se calcula en este equipo. Nada sale de aquí.")
+              : t("La búsqueda se calcula aquí. Algunas tareas de este proyecto van a un proveedor externo: míralo en Ajustes.")}
           </p>
         </HealthCard>
         <HealthCard
           icon={ScanSearch}
-          title="Impacto de un cambio"
+          title={t("Impacto de un cambio")}
           footer={
             <Button variant="outline" size="sm" render={<Link to="/impacto" />} nativeButton={false}>
-              Analizar un cambio
+              {t("Analizar un cambio")}
             </Button>
           }
         >
           <p className="text-sm text-muted-foreground">
-            Pega un diff o la descripción de un bug y mira qué reglas y tests se ven afectados antes de
-            tocar nada.
+            {t("Pega un diff o la descripción de un bug y mira qué reglas y tests se ven afectados antes de tocar nada.")}
           </p>
         </HealthCard>
       </div>

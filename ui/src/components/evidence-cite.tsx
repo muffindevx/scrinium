@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { Check, ChevronDown, Copy, FileCode2 } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { cn } from "cn"
@@ -77,21 +78,21 @@ export function EvidenceCite({
           {canOpen && (
             <Button size="xs" variant="ghost" aria-expanded={open} onClick={toggle}>
               <ChevronDown data-icon="inline-start" className={cn("transition-transform", open && "rotate-180")} />
-              {open ? "Ocultar" : "Abrir"}
+              {open ? t("Ocultar") : t("Abrir")}
             </Button>
           )}
-          <Button size="xs" variant="ghost" onClick={copy} aria-label={`Copiar ${reference}`}>
+          <Button size="xs" variant="ghost" onClick={copy} aria-label={t("Copiar {0}", reference)}>
             {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
-            {copied ? "Copiado" : "Copiar"}
+            {copied ? t("Copiado") : t("Copiar")}
           </Button>
         </span>
       </div>
       {open && (
         <div className="max-h-64 overflow-auto border-t bg-muted/50 py-2 font-mono text-xs">
           {lines === null ? (
-            <p className="px-3 text-muted-foreground">Cargando…</p>
+            <p className="px-3 text-muted-foreground">{t("Cargando…")}</p>
           ) : lines === "error" ? (
-            <p className="px-3 text-muted-foreground">Este archivo ya no está en las fuentes: puede que se haya borrado.</p>
+            <p className="px-3 text-muted-foreground">{t("Este archivo ya no está en las fuentes: puede que se haya borrado.")}</p>
           ) : (
             <table className="w-full border-collapse">
               <tbody>

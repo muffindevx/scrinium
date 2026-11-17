@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai.retention import notice_for
+from scrinium.application.ai.setup import is_isolated
 from scrinium.application.ingestion.policy import validate_user_patterns
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
 from scrinium.domain.enums import AiMode, AiTask, AuditResult, ProviderKind
@@ -42,6 +43,12 @@ class ProviderError(ValueError):
     def __init__(self, code: str) -> None:
         super().__init__(code)
         self.code = code
+
+
+def refuse_if_isolated(session: Session) -> None:
+    """Isolated mode (ADR-013): no provider is registered, edited, consented to or chosen."""
+    if is_isolated(session):
+        raise ProviderError("isolated_mode")
 
 
 def check_base_url(url: str) -> tuple[str, str]:
@@ -163,6 +170,7 @@ def update_provider(
     """Changes a provider. A new host needs a new key (a key goes only to the host it was given
     for) and revokes the consents given for the old host. Returns the provider and how many
     consents were revoked."""
+    refuse_if_isolated(session)
     provider = session.get(ModelProvider, provider_id)
     if provider is None:
         raise LookupError
@@ -226,6 +234,7 @@ def register_provider(
     request_id: str | None = None,
 ) -> ModelProvider:
     """A new provider. The key is checked, put in the keyring, and never read back here."""
+    refuse_if_isolated(session)
     name = name.strip()
     if not 1 <= len(name) <= 100:
         raise ProviderError("invalid_name")
@@ -434,6 +443,7 @@ def give_consent(
     models keep theirs. With `make_default`, these tasks use this model unless a run chooses
     another; without it, the model is only allowed, to be chosen for a run.
     """
+    refuse_if_isolated(session)
     model = model.strip()
     if not tasks or not 1 <= len(model) <= 200:
         raise ProviderError("invalid_consent")
@@ -520,6 +530,7 @@ def set_default(
     if provider_id is None or not model:
         defaults.pop(task.value, None)
     else:
+        refuse_if_isolated(session)
         if not any(
             _permits(c, task.value, str(provider_id), model) for c in _active(session, project)
         ):

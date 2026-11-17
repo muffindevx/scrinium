@@ -21,6 +21,7 @@ from scrinium.application.retrieval.indexing import Indexer
 from scrinium.core.config import RuntimeConfig
 from scrinium.core.session import LocalSessionManager
 from scrinium.infrastructure.llm.base import ChatMessage, Completion
+from scrinium.infrastructure.llm.switchable import SwitchableChat
 from scrinium.infrastructure.local_http import ModelError, ModelStatus
 from scrinium.infrastructure.secret_store import KeyringSecretStore
 from scrinium.infrastructure.sqlite.database import Database
@@ -159,6 +160,9 @@ class Runtime:
     @property
     def chat(self) -> FakeChat:
         provider = self.llm.provider
+        # The local model sits behind the first-run switch (ADR-013).
+        if isinstance(provider, SwitchableChat):
+            provider = provider.current
         assert isinstance(provider, FakeChat)
         return provider
 

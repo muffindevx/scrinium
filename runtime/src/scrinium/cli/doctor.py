@@ -32,11 +32,20 @@ from scrinium.infrastructure.tools.installer import (
     locate,
     locate_model,
 )
-from scrinium.infrastructure.tools.manifest import LLAMA_SERVER, MODELS, TOOLS
+from scrinium.infrastructure.tools.manifest import (
+    CHAT_MODEL,
+    DEFAULT_INSTALL,
+    LLAMA_SERVER,
+    LOCAL_ADDON,
+    MODELS,
+    TOOLS,
+)
 
 _GB: Final = 1024**3
 # Chat (2.5 GB) and embeddings (0.6 GB) loaded, with their context, plus Scrinium and the system.
 _MIN_MEMORY_GB: Final = 8
+# Without the local chat model (ADR-013): embeddings, Scrinium and the system.
+_MIN_MEMORY_GB_NO_CHAT: Final = 4
 _RUN_TIMEOUT_SECONDS: Final = 20
 _INSTALL_FIX: Final = "Instalalo con: scrinium tools install"
 
@@ -87,15 +96,16 @@ def _keyring() -> Check:
     )
 
 
-def _memory() -> Check:
+def _memory(local_chat: bool) -> Check:
     total = total_memory_bytes()
     if total is None:
         return Check(Level.WARN, "No se pudo saber cuanta memoria tiene el equipo.")
     gigabytes = round(total / _GB)
-    if gigabytes < _MIN_MEMORY_GB:
+    needed = _MIN_MEMORY_GB if local_chat else _MIN_MEMORY_GB_NO_CHAT
+    if gigabytes < needed:
         return Check(
             Level.WARN,
-            f"Memoria: {gigabytes} GB. Con menos de {_MIN_MEMORY_GB} GB, las respuestas "
+            f"Memoria: {gigabytes} GB. Con menos de {needed} GB, las respuestas "
             "seran lentas o el equipo ira justo.",
             "Cierra otros programas pesados (navegadores, maquinas virtuales) mientras usas "
             "Scrinium.",
@@ -104,7 +114,11 @@ def _memory() -> Check:
 
 
 def _disk_space(data_dir: Path, models_dir: Path) -> Check:
-    missing = sum(m.size for m in MODELS.values() if locate_model(m, models_dir) is None)
+    missing = sum(
+        m.size
+        for m in MODELS.values()
+        if m.name in DEFAULT_INSTALL and locate_model(m, models_dir) is None
+    )
     free = shutil.disk_usage(data_dir).free
     if free < missing + _GB:
         return Check(
@@ -126,6 +140,15 @@ def _tools(data_dir: Path, os_name: str, arch: str) -> list[Check]:
             checks.append(Check(Level.OK, f"{tool.name} {tool.version}"))
     for model in MODELS.values():
         if locate_model(model, data_dir / MODELS_DIRNAME) is None:
+            if model.name not in DEFAULT_INSTALL:
+                checks.append(
+                    Check(
+                        Level.OK,
+                        f"Modelo de chat local {model.name}: no instalado (opcional, "
+                        f"scrinium tools install {LOCAL_ADDON})",
+                    )
+                )
+                continue
             checks.append(Check(Level.FAIL, f"Falta el modelo {model.name}.", _INSTALL_FIX))
         else:
             checks.append(Check(Level.OK, f"Modelo {model.name}"))
@@ -179,6 +202,42 @@ def _ollama() -> Check:
     return Check(Level.OK, f"Ollama responde en {default_ollama_url()}")
 
 
+def _ai_setup(data_dir: Path) -> Check:
+    """The first-run choice (ADR-013), and whether a chosen local server answers."""
+    # Imported here: the database is the heaviest import of the doctor.
+    from scrinium.application.ai.setup import SetupChoice, managed_isolated, read_setup
+    from scrinium.infrastructure.llm.switchable import local_server_chat
+    from scrinium.infrastructure.sqlite.database import DATABASE_FILENAME, Database
+
+    if managed_isolated():
+        return Check(Level.OK, "Modo aislado, impuesto por SCRINIUM_PROFILE: nada sale del equipo")
+    if not (data_dir / DATABASE_FILENAME).is_file():
+        return Check(Level.OK, "Primera ejecucion: la consola pregunta donde escribe el modelo")
+    try:
+        database = Database.open(data_dir)
+        with database.session() as session:
+            setup = read_setup(session)
+    except Exception:
+        return Check(Level.WARN, "No se pudo leer la eleccion del modelo en la base de datos.")
+    if setup.choice is None:
+        return Check(Level.OK, "Aun sin elegir donde escribe el modelo: lo pregunta la consola")
+    if setup.choice is SetupChoice.ISOLATED:
+        return Check(Level.OK, "Modo aislado: no se puede registrar ni usar ningun proveedor")
+    if setup.choice is SetupChoice.PROVIDER:
+        return Check(Level.OK, "Modelo: tu proveedor, con el consentimiento de cada proyecto")
+    server = setup.local_server
+    if server is None:
+        return Check(Level.WARN, "Servidor local elegido, pero sin direccion.")
+    status = local_server_chat(server.url, server.model).status()
+    if status.value != "ready":
+        return Check(
+            Level.WARN,
+            f"El servidor local {server.url} no responde con el modelo {server.model}.",
+            "Arrancalo, o cambia la eleccion en Ajustes > Modelo.",
+        )
+    return Check(Level.OK, f"Servidor local {server.url} con {server.model}")
+
+
 def _window() -> Check:
     if window_available():
         return Check(Level.OK, "Ventana propia de Scrinium")
@@ -202,7 +261,8 @@ def run_checks(data_dir: Path) -> list[Check]:
     steps: list[Callable[[], Check | list[Check] | None]] = [
         lambda: _disk_encryption(data_dir),
         _keyring,
-        _memory,
+        lambda: _memory(locate_model(CHAT_MODEL, data_dir / MODELS_DIRNAME) is not None),
+        lambda: _ai_setup(data_dir),
         lambda: _disk_space(data_dir, data_dir / MODELS_DIRNAME),
         lambda: _tools(data_dir, os_name, arch),
     ]

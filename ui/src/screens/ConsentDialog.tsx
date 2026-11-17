@@ -1,3 +1,4 @@
+import { t } from "@/lib/i18n"
 import { type FormEvent, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
@@ -54,18 +55,17 @@ export function ConsentDialog({
     <Dialog
       open
       onOpenChange={(next) => !next && onClose()}
-      title={`Usar ${provider.name} · ${model}`}
-      description={`Para ${tasks.map((task) => TASK_LABELS[task].toLowerCase()).join(", ")} de «${project.name}».`}
+      title={t("Usar {0} · {1}", provider.name, model)}
+      description={t("Para {0} de «{1}».", tasks.map((task) => TASK_LABELS[task].toLowerCase()).join(", "), project.name)}
     >
       <form className="grid gap-3" onSubmit={allow}>
         <p className="text-sm">
-          Lo que se envíe queda en manos de un tercero: los pasajes que necesite cada tarea salen a{" "}
-          <strong>{provider.host}</strong>. Antes, Scrinium quita las claves que reconoce y nunca envía las rutas
-          marcadas en Límites. Cada envío queda en Actividad.
+          {t("Lo que se envíe queda en manos de un tercero: los pasajes que necesite cada tarea salen a")}{" "}
+          <strong>{provider.host}</strong>{t(". Antes, Scrinium quita las claves que reconoce y nunca envía las rutas marcadas en Límites. Cada envío queda en Actividad.")}
         </p>
         <div className="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
-          <span className="font-medium">Qué guarda {provider.name}</span>
-          {notice ? <RetentionDetails notice={notice} /> : <Muted>Cargando el aviso…</Muted>}
+          <span className="font-medium">{t("Qué guarda")} {provider.name}</span>
+          {notice ? <RetentionDetails notice={notice} /> : <Muted>{t("Cargando el aviso…")}</Muted>}
         </div>
         <label className="flex items-start gap-2 text-sm">
           <input
@@ -75,15 +75,15 @@ export function ConsentDialog({
             disabled={notice === null}
             onChange={(e) => setAcknowledged(e.target.checked)}
           />
-          He leído qué guarda {provider.name} y acepto enviarle esas tareas de este proyecto.
+          {t("He leído qué guarda")} {provider.name} {t("y acepto enviarle esas tareas de este proyecto.")}
         </label>
         <ErrorText>{error}</ErrorText>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
+            {t("Cancelar")}
           </Button>
           <Button type="submit" disabled={!acknowledged || busy}>
-            Permitir
+            {t("Permitir")}
           </Button>
         </div>
       </form>
