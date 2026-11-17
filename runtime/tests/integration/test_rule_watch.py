@@ -208,3 +208,57 @@ def test_a_change_beside_the_decision_does_not_flag_the_rule(api: Api) -> None:
     _change(api, COMMISSION.replace("    return 0\n", "    nota = 'sin comision'\n    return 0\n"))
     assert _rule(api)["review_reason"] is None
     assert all("[R1]" not in batch[1].content for batch in api.runtime.chat.received)
+
+
+def test_a_rule_merged_by_title_gives_back_its_other_place(api: Api) -> None:
+    # Before anchors, a later extraction could give the same title to the decision in
+    # recargos.py and attach it to this rule: pagos.py was left without a rule (ADR-011, 1.6).
+    from sqlalchemy import select
+
+    from scrinium.application.knowledge.content import RuleContent
+    from scrinium.application.knowledge.entities import add_rule_version, latest_version
+    from scrinium.application.knowledge.evidence import cite_source
+    from scrinium.application.knowledge.split import split_title_merges
+    from scrinium.domain.enums import EvidenceRole, EvidenceType, VerificationMethod
+    from scrinium.infrastructure.sqlite.models import (
+        KnowledgeEntity,
+        Project,
+        SourceItem,
+        SourceRevision,
+    )
+
+    original = uuid.UUID(_rule(api)["entity_id"])
+    with api.runtime.database.session() as session:
+        project = session.get_one(Project, uuid.UUID(api.project_id))
+        content = RuleContent.model_validate(
+            {"title": "Comision por venta", "statement": "Importes negativos no se aceptan."}
+        )
+        version, _ = add_rule_version(session, project, original, content)
+        recargos = session.scalars(
+            select(SourceRevision)
+            .join(SourceItem, SourceItem.current_revision_id == SourceRevision.id)
+            .where(SourceRevision.metadata_["path"].as_string() == "src/recargos.py")
+        ).one()
+        cite_source(
+            session, project, entity_id=original, revision_id=recargos.id, start_line=2,
+            end_line=3, role=EvidenceRole.SUPPORTS, evidence_type=EvidenceType.CODE,
+            method=VerificationMethod.LLM_PROPOSAL, version_id=version.knowledge_entity_version_id,
+        )  # fmt: skip
+        latest_before = latest_version(session, original)
+        assert latest_before is not None
+
+        created = split_title_merges(session, project)
+        assert len(created) == 1
+        assert split_title_merges(session, project) == []
+        latest_after = latest_version(session, original)
+        assert latest_after is not None and latest_after.id == latest_before.id
+        new_rule = session.get_one(KnowledgeEntity, created[0])
+        assert new_rule.name == "Comision por venta" and new_rule.canonical_key != (
+            session.get_one(KnowledgeEntity, original).canonical_key
+        )
+
+    detail = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/rules/{created[0]}").json()
+    evidence = detail["versions"][0]["evidence"]
+    assert [(e["locator"]["path"], e["locator"]["start_line"]) for e in evidence] == [
+        ("src/pagos.py", 2)
+    ]

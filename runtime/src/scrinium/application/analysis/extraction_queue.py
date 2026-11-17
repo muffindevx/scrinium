@@ -31,6 +31,8 @@ def unit_key(candidate: Candidate) -> str:
     else:
         identity = candidate.text
     raw = f"{candidate.path}\0{candidate.symbol or ''}\0{identity}"
+    if candidate.source:
+        raw = f"{candidate.source}\0{raw}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 

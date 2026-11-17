@@ -227,6 +227,19 @@ def _check_analysis(session: Session, project: Project, provenance: Provenance) 
         raise KnowledgeNotFoundError
 
 
+def free_rule_key(session: Session, project: Project, key: str) -> str:
+    """`key`, or `key` with a suffix when another rule already has it. A title only names a
+    rule (ADR-011): two decisions a model titled alike are two rules."""
+    taken = session.scalar(
+        select(KnowledgeEntity.id).where(
+            KnowledgeEntity.project_id == project.id,
+            KnowledgeEntity.entity_type == EntityType.BUSINESS_RULE,
+            KnowledgeEntity.canonical_key == key,
+        )
+    )
+    return key if taken is None else f"{key[:190]}-{uuid.uuid4().hex[:8]}"
+
+
 def create_business_rule(
     session: Session,
     project: Project,

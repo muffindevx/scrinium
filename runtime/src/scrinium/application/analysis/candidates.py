@@ -261,6 +261,10 @@ class Candidate:
     logic_hash: str | None = None
     # Chunk number within its function, if it was split for length.
     part: int = 0
+    # The source when it is not the project's first: two sources may hold the same path and
+    # function, and they are two pieces of work (ADR-011, 1.5). Empty for the first source, so
+    # keys of single-source projects stay as they were.
+    source: str = ""
 
 
 @dataclass
@@ -482,6 +486,13 @@ def select_candidates(
 ) -> Selection:
     """The project's candidates, from highest to lowest score."""
     path = SourceRevision.metadata_["path"].as_string()
+    first_source = session.scalar(
+        select(SourceConnection.id)
+        .where(SourceConnection.project_id == project_id)
+        .order_by(SourceConnection.created_at, SourceConnection.id)
+        .limit(1)
+    )
+    namespace: dict[uuid.UUID, str] = {}
     revisions = session.execute(
         select(SourceRevision)
         .join(SourceItem, SourceItem.current_revision_id == SourceRevision.id)
@@ -497,6 +508,9 @@ def select_candidates(
     code: list[SourceRevision] = []
     for revision in revisions:
         file_path = revision.metadata_.get("path", "")
+        item = session.get(SourceItem, revision.source_item_id)
+        source_id = item.source_connection_id if item is not None else None
+        namespace[revision.id] = "" if source_id == first_source else str(source_id)
         if not is_rule_source(file_path):
             selection.not_code += 1
         elif not is_test_path(file_path):
@@ -556,6 +570,7 @@ def select_candidates(
             _visual_penalty(fragment)
             found.append(fragment)
     for candidate in found:
+        candidate.source = namespace.get(candidate.revision_id, "")
         if candidate.score >= min_score:
             selection.candidates.extend(_split(candidate))
         else:

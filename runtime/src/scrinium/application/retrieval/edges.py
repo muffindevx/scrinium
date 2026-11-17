@@ -70,10 +70,13 @@ class _Symbol:
     calls: tuple[str, ...]
 
 
-def _current(session: Session, project_id: uuid.UUID) -> tuple[list[_Symbol], dict[str, str]]:
-    """The project's functions and methods in current revisions, and each file's text."""
+def _current(
+    session: Session, project_id: uuid.UUID
+) -> dict[uuid.UUID, tuple[list[_Symbol], dict[str, str]]]:
+    """Per source: its functions and methods in current revisions, and each file's text. Two
+    sources are separate code bases (ADR-011, 1.5): nothing resolves across them."""
     rows = session.execute(
-        select(CodeSymbol, SourceRevision)
+        select(CodeSymbol, SourceRevision, SourceItem.source_connection_id)
         .join(SourceRevision, SourceRevision.id == CodeSymbol.source_revision_id)
         .join(SourceItem, SourceItem.current_revision_id == SourceRevision.id)
         .join(SourceConnection, SourceConnection.id == SourceItem.source_connection_id)
@@ -83,15 +86,16 @@ def _current(session: Session, project_id: uuid.UUID) -> tuple[list[_Symbol], di
             CodeSymbol.kind != "class",
         )
     ).all()
-    symbols, texts = [], {}
-    for symbol, revision in rows:
+    sources: dict[uuid.UUID, tuple[list[_Symbol], dict[str, str]]] = defaultdict(lambda: ([], {}))
+    for symbol, revision, source_id in rows:
         path = revision.metadata_.get("path", "")
         # Tests and tooling folders (.claude, .github...) are out of the product's map too.
         if not path or is_test_path(path) or not is_rule_source(path):
             continue
+        symbols, texts = sources[source_id]
         symbols.append(_Symbol(symbol.id, symbol.name, symbol.kind, path, tuple(symbol.calls)))
         texts[path] = revision.text_content or ""
-    return symbols, texts
+    return dict(sources)
 
 
 def _module_file(module: str, importer: str, files: set[str]) -> str | None:
@@ -124,7 +128,19 @@ def _module_file(module: str, importer: str, files: set[str]) -> str | None:
 def build_edges(session: Session, project: Project) -> EdgeStats:
     """Rebuilds the project's call edges. Returns how many calls resolved."""
     session.execute(delete(CodeEdge).where(CodeEdge.project_id == project.id))
-    symbols, texts = _current(session, project.id)
+    stats = EdgeStats()
+    for symbols, texts in _current(session, project.id).values():
+        _build_source(session, project, symbols, texts, stats)
+    return stats
+
+
+def _build_source(
+    session: Session,
+    project: Project,
+    symbols: list[_Symbol],
+    texts: dict[str, str],
+    stats: EdgeStats,
+) -> None:
     files = set(texts)
     by_file: dict[str, dict[str, list[_Symbol]]] = defaultdict(lambda: defaultdict(list))
     by_name: dict[str, list[_Symbol]] = defaultdict(list)
@@ -135,7 +151,6 @@ def build_edges(session: Session, project: Project) -> EdgeStats:
         path: [(i, _module_file(i.module, path, files)) for i in parse_imports(path, text)]
         for path, text in texts.items()
     }
-    stats = EdgeStats()
     for caller in symbols:
         for name in caller.calls:
             stats.calls += 1
@@ -154,7 +169,6 @@ def build_edges(session: Session, project: Project) -> EdgeStats:
                     callee=name[:300], status=status,
                 )
             )  # fmt: skip
-    return stats
 
 
 # Methods of arrays, sets, maps, strings, promises and events: `x.find()` is almost never a

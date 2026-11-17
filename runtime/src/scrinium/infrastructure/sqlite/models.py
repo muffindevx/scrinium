@@ -29,6 +29,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
+from scrinium.core.ids import uuid7
 from scrinium.domain.enums import (
     AiMode,
     AnalysisStatus,
@@ -602,7 +603,7 @@ class KnowledgeEntity(ProjectScoped, Timestamps, Base):
     __tablename__ = "knowledge_entities"
     __table_args__ = (UniqueConstraint("project_id", "entity_type", "canonical_key"), _scope_key())
 
-    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
     entity_type: Mapped[EntityType] = mapped_column(_enum(EntityType, "entity_type"))
     canonical_key: Mapped[str] = mapped_column(String(200))
     name: Mapped[str] = mapped_column(String(300))

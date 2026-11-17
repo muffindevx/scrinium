@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from scrinium.application.analysis.candidates import is_rule_source
 from scrinium.application.knowledge.entities import latest_version
+from scrinium.application.knowledge.files import shown_path, source_names, source_of
 from scrinium.application.knowledge.views import first_code_citation
 from scrinium.domain.enums import EntityType, ItemLifecycle
 from scrinium.domain.paths import is_test_path
@@ -63,8 +64,9 @@ def _code(
 ) -> tuple[list[_Function], dict[uuid.UUID, _Function]]:
     """The project's top-level functions in current revisions, and every symbol (nested too)
     mapped to its top-level function, so a nested call counts for the function that holds it."""
+    names = source_names(session, project_id)
     rows = session.execute(
-        select(CodeSymbol, SourceRevision)
+        select(CodeSymbol, SourceRevision, SourceItem.source_connection_id)
         .join(SourceRevision, SourceRevision.id == CodeSymbol.source_revision_id)
         .join(SourceItem, SourceItem.current_revision_id == SourceRevision.id)
         .join(SourceConnection, SourceConnection.id == SourceItem.source_connection_id)
@@ -76,10 +78,12 @@ def _code(
     ).all()
     tops: list[_Function] = []
     nested: list[tuple[CodeSymbol, str]] = []
-    for symbol, revision in rows:
+    for symbol, revision, source_id in rows:
         path = revision.metadata_.get("path", "")
         if not path or is_test_path(path) or not is_rule_source(path):
             continue
+        # With several sources, each is a root of its own: `src/utils.ts` of two never mix.
+        path = shown_path(names, source_id, path)
         if symbol.kind == NESTED:
             nested.append((symbol, path))
         else:
@@ -103,6 +107,7 @@ def _code(
 
 def _rule_places(session: Session, project_id: uuid.UUID) -> list[tuple[dict[str, Any], str, int]]:
     """Each rule with the path and first line of its current citation."""
+    names = source_names(session, project_id)
     places = []
     for entity in session.scalars(
         select(KnowledgeEntity).where(
@@ -118,7 +123,9 @@ def _rule_places(session: Session, project_id: uuid.UUID) -> list[tuple[dict[str
             "entity_id": str(entity.id), "name": entity.name,
             "verification_status": version.verification_status.value if version else None,
         }  # fmt: skip
-        places.append((rule, str(citation["path"]), int(citation["start_line"])))
+        source_id = source_of(session, uuid.UUID(citation["revision_id"]))
+        path = shown_path(names, source_id, str(citation["path"]))
+        places.append((rule, path, int(citation["start_line"])))
     return places
 
 

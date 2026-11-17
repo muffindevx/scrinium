@@ -16,7 +16,7 @@ found by its content.
 """
 
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final
 
 from sqlalchemy import select
@@ -24,7 +24,8 @@ from sqlalchemy.orm import Session
 
 from scrinium.application.knowledge.anchoring import Match, OldAnchor, reanchor
 from scrinium.application.knowledge.common import KnowledgeError
-from scrinium.application.knowledge.evidence import cite_source, decisions_of
+from scrinium.application.knowledge.evidence import anchored_locator, cite_source, decisions_of
+from scrinium.application.knowledge.files import file_key, source_of
 from scrinium.domain.enums import EntityLifecycle, EntityType, ItemLifecycle
 from scrinium.infrastructure.code_structure import NESTED
 from scrinium.infrastructure.decisions import Decision
@@ -104,17 +105,24 @@ class _Followed:
 
 
 def _current_files(session: Session, project_id: uuid.UUID) -> dict[str, SourceRevision]:
-    """Path to current revision of every active item of the project."""
+    """File key (source and path) to current revision of every active item of the project."""
     rows = session.execute(
-        select(SourceRevision)
+        select(SourceRevision, SourceItem.source_connection_id)
         .join(SourceItem, SourceItem.current_revision_id == SourceRevision.id)
         .join(SourceConnection, SourceConnection.id == SourceItem.source_connection_id)
         .where(
             SourceConnection.project_id == project_id,
             SourceItem.lifecycle_status == ItemLifecycle.ACTIVE,
         )
-    ).scalars()
-    return {str(revision.metadata_.get("path", "")): revision for revision in rows}
+    ).all()
+    return {
+        file_key(source_id, str(revision.metadata_.get("path", ""))): revision
+        for revision, source_id in rows
+    }
+
+
+def _path(revision: SourceRevision) -> str:
+    return str(revision.metadata_.get("path", ""))
 
 
 def _follow(session: Session, project_id: uuid.UUID, citations: list[EvidenceRecord]) -> _Followed:
@@ -122,10 +130,13 @@ def _follow(session: Session, project_id: uuid.UUID, citations: list[EvidenceRec
     current = _current_files(session, project_id)
     cited_hashes: dict[str, str] = {}
     for evidence in citations:
-        anchor = OldAnchor.from_locator(evidence.id, evidence.locator)
+        locator = anchored_locator(session, evidence)
+        anchor = OldAnchor.from_locator(evidence.id, locator)
         cited = session.get(SourceRevision, evidence.source_revision_id)
         if anchor is None or cited is None:
             continue
+        source_id = locator.get("source_id") or source_of(session, cited.id)
+        anchor = replace(anchor, path=file_key(source_id, anchor.path))
         now = current.get(anchor.path)
         if now is not None and now.id == cited.id:
             continue  # The cited code is the current one: nothing to follow.
@@ -142,7 +153,7 @@ def _follow(session: Session, project_id: uuid.UUID, citations: list[EvidenceRec
     }
     near = {renames.get(path, path) for path in cited_hashes}
     decisions: dict[str, list[Decision]] = {
-        path: decisions_of(path, current[path]) for path in near if path in current
+        key: decisions_of(_path(current[key]), current[key]) for key in near if key in current
     }
     anchors = list(followed.anchors.values())
     followed.matches = {
@@ -153,7 +164,7 @@ def _follow(session: Session, project_id: uuid.UUID, citations: list[EvidenceRec
     lost = [anchor for anchor in anchors if anchor.key not in followed.matches]
     if lost:
         # Moved to another file: only then is the rest of the project parsed.
-        everywhere = {path: decisions_of(path, revision) for path, revision in current.items()}
+        everywhere = {key: decisions_of(_path(rev), rev) for key, rev in current.items()}
         for key, match in reanchor(lost, everywhere, renames).items():
             if isinstance(key, uuid.UUID):
                 followed.matches[key] = match
@@ -172,7 +183,7 @@ def _compare_anchored(
             decision = match.decision
             rule.changed.append(
                 ChangedCode(
-                    revision.id, match.path, decision.symbol or "", decision.start_line,
+                    revision.id, _path(revision), decision.symbol or "", decision.start_line,
                     decision.end_line,
                 )
             )  # fmt: skip
@@ -190,7 +201,7 @@ def _compare_anchored(
         return False
     rule.changed.append(
         ChangedCode(
-            still.id, anchor.path, holder.qualified_name, holder.start_line, holder.end_line
+            still.id, _path(still), holder.qualified_name, holder.start_line, holder.end_line
         )
     )
     return True

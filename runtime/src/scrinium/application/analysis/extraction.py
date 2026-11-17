@@ -54,10 +54,12 @@ from scrinium.application.knowledge.entities import (
     Provenance,
     add_rule_version,
     create_business_rule,
+    free_rule_key,
     title_slug,
 )
 from scrinium.application.knowledge.evidence import cite_source
 from scrinium.application.knowledge.identity import RuleIndex
+from scrinium.application.knowledge.split import split_title_merges
 from scrinium.application.knowledge.tickets import label_rules
 from scrinium.application.knowledge.watch import (
     REVIEW_CODE_CONTRADICTS,
@@ -71,7 +73,6 @@ from scrinium.domain.enums import (
     AnalysisStatus,
     AnalysisType,
     Criticality,
-    EntityType,
     EvidenceRole,
     EvidenceType,
     RuleCategory,
@@ -386,6 +387,8 @@ def select_work(
     """
     # Projects synced before the structural map existed: completed now.
     ensure_project_symbols(session, project.id)
+    # Rules merged by title before anchors existed get their places back (ADR-011, 1.6).
+    split_title_merges(session, project)
     # Also for projects synced before the call graph existed; it takes well under a second.
     build_edges(session, project)
     watched = detect_changes(session, project.id)
@@ -668,19 +671,6 @@ def answered_by(run: AnalysisRun, model_id: str | None) -> tuple[str | None, str
     return model_id.split(":", 1)[0], model_id
 
 
-def _free_key(session: Session, project: Project, key: str) -> str:
-    """The title's key, with a suffix when another rule already uses it: two decisions that a
-    model titled alike are two rules."""
-    taken = session.scalar(
-        select(KnowledgeEntity.id).where(
-            KnowledgeEntity.project_id == project.id,
-            KnowledgeEntity.entity_type == EntityType.BUSINESS_RULE,
-            KnowledgeEntity.canonical_key == key,
-        )
-    )
-    return key if taken is None else f"{key[:190]}-{uuid.uuid4().hex[:8]}"
-
-
 # Versions a person decided on: a later model proposal never adds a version over them.
 _REVIEWED_STATUSES: Final = frozenset(
     {
@@ -739,9 +729,13 @@ def store_rules(
     for rule in rules:
         fragment, start, end = rule.citations[0]
         entity_id = index.find(
-            session.get_one(SourceRevision, fragment.revision_id), fragment.path, start, end
+            session,
+            session.get_one(SourceRevision, fragment.revision_id),
+            fragment.path,
+            start,
+            end,
         )
-        key = _free_key(session, project, rule_key(rule.content.title))
+        key = free_rule_key(session, project, rule_key(rule.content.title))
         try:
             if entity_id is None:
                 version = create_business_rule(

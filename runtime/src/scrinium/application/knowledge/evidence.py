@@ -139,6 +139,29 @@ def anchor_of(path: str, revision: SourceRevision, start: int, end: int) -> dict
     }
 
 
+def anchored_locator(session: Session, evidence: EvidenceRecord) -> dict[str, Any]:
+    """The citation's locator with its source and anchor. Citations from before anchors
+    (ADR-011, 1.6) get them derived from their cited revision, which never changes: the same
+    result as if they had been stored, without rewriting evidence (it is append-only)."""
+    locator = dict(evidence.locator or {})
+    if evidence.source_revision_id is None or ("anchor" in locator and "source_id" in locator):
+        return locator
+    revision = session.get(SourceRevision, evidence.source_revision_id)
+    if revision is None:
+        return locator
+    if "source_id" not in locator:
+        item = session.get(SourceItem, revision.source_item_id)
+        locator["source_id"] = str(item.source_connection_id) if item is not None else None
+    if "anchor" not in locator and "start_line" in locator:
+        start = int(locator["start_line"])
+        anchor = anchor_of(
+            str(locator.get("path", "")), revision, start, int(locator.get("end_line", start))
+        )
+        if anchor is not None:
+            locator["anchor"] = anchor
+    return locator
+
+
 def _revision_in_project(
     session: Session, project: Project, revision_id: uuid.UUID
 ) -> SourceRevision:
