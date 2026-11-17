@@ -65,6 +65,9 @@ class Decision:
     value: str
     # MinHash of the shape's 3-token shingles: finds the same decision after a real edit.
     sketch: str = ""
+    # The values it decides with, in order: literals and same-file constants resolved, numbers
+    # normalised (`0.25`, `30`), strings unquoted. What mirrors compare (phase 3.5).
+    literals: tuple[str, ...] = ()
 
 
 def _fingerprint(kind: str, canonical: str) -> str:
@@ -269,15 +272,42 @@ def similarity(first: str, second: str) -> float:
     return same / (len(first) // 8)
 
 
-def _fingerprints(kind: str, nodes: list[Node], constants: dict[str, str]) -> tuple[str, str, str]:
+_VALUE_LITERAL: Final = re.compile(
+    r"'((?:[^'\\]|\\.)*)'|(?<![\w.])(-?\d+(?:\.\d+)?(?:e-?\d+)?)(?![\w.])|\b(true|false)\b"
+)
+
+
+def literals_of(canonical: str) -> tuple[str, ...]:
+    """The values in a canonical form with values kept, in order."""
+    found = []
+    for match in _VALUE_LITERAL.finditer(canonical):
+        text, number, boolean = match.groups()
+        if number is not None:
+            value = float(number)
+            found.append(repr(int(value)) if value.is_integer() else repr(value))
+        else:
+            found.append(boolean if boolean is not None else text.replace("\\'", "'"))
+    return tuple(found)
+
+
+def _fingerprints(
+    kind: str, nodes: list[Node], constants: dict[str, str]
+) -> tuple[str, str, str, tuple[str, ...]]:
     canon = _Canon(keep_values=False, constants=constants)
     parts = [canon(node) for node in nodes]
     shape = " ".join(parts)
     value = " ".join(_Canon(keep_values=True, constants=constants)(node) for node in nodes)
     # A guard's sketch is its condition: the exit (`raise UserError(...)`) is alike everywhere
-    # and would make different guards look the same.
+    # and would make different guards look the same. Its values are the condition's too: the
+    # exit's message is not what the rule decides.
     sketched = parts[0] if kind == Kind.GUARD else shape
-    return _fingerprint(kind, shape), _fingerprint(kind, value), sketch_of(sketched)
+    decided = (
+        _Canon(keep_values=True, constants=constants)(nodes[0]) if kind == Kind.GUARD else value
+    )
+    return (
+        _fingerprint(kind, shape), _fingerprint(kind, value), sketch_of(sketched),
+        literals_of(decided),
+    )  # fmt: skip
 
 
 # --- Python, TypeScript and JavaScript --------------------------------------------------------
@@ -671,10 +701,10 @@ def _parse_code(path: str, text: str, language: str) -> list[Decision]:
     symbols = [(s.qualified_name, s.start_line, s.end_line) for s in parse_symbols(path, text)]
     found: list[Decision] = []
     for kind, nodes, start, end in _code_nodes(root):
-        shape, value, sketch = _fingerprints(kind, nodes, constants)
+        shape, value, sketch, literals = _fingerprints(kind, nodes, constants)
         first, last = start + 1, end + 1
         symbol = _innermost(symbols, first, last)
-        found.append(Decision(kind, first, last, symbol, shape, value, sketch))
+        found.append(Decision(kind, first, last, symbol, shape, value, sketch, literals))
     return found
 
 
@@ -718,6 +748,19 @@ def _sql_canonical(fragment: str, keep_values: bool) -> str:
     return " ".join(out)
 
 
+def _sql_literals(fragment: str) -> tuple[str, ...]:
+    try:
+        tokens = _sql_tokenizer().tokenize(fragment)
+    except Exception:  # the tokenizer raises plain errors on odd input
+        return ()
+    values: list[str] = []
+    for token in tokens:
+        if token.token_type in _SQL_LITERALS:
+            quoted = token.token_type is TokenType.STRING
+            values.extend(literals_of(f"'{token.text}'" if quoted else token.text))
+    return tuple(values)
+
+
 def _parse_sql(text: str) -> list[Decision]:
     lines = text.splitlines()
     found: list[Decision] = []
@@ -747,6 +790,7 @@ def _parse_sql(text: str) -> list[Decision]:
                     _fingerprint(kind, shape),
                     _fingerprint(kind, _sql_canonical(fragment, keep_values=True)),
                     sketch_of(shape),
+                    _sql_literals(fragment),
                 )
             )
             break

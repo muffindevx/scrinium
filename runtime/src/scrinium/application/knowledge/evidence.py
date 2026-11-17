@@ -125,8 +125,11 @@ def anchor_of(path: str, revision: SourceRevision, start: int, end: int) -> dict
     """The decision node a citation of lines `start`-`end` rests on (ADR-011), as stored in the
     evidence locator; None when the file has no decisions there or its language has no support."""
     decision = anchor_for(decisions_of(path, revision), start, end)
-    if decision is None:
-        return None
+    return None if decision is None else anchor_dict(decision)
+
+
+def anchor_dict(decision: Decision) -> dict[str, Any]:
+    """A decision as stored in an evidence locator."""
     return {
         "version": DECISIONS_VERSION,
         "kind": decision.kind,
@@ -204,8 +207,12 @@ def cite_source(
     method: VerificationMethod,
     version_id: uuid.UUID | None = None,
     request_id: str | None = None,
+    decision: Decision | None = None,
 ) -> tuple[EvidenceRecord, bool]:
-    """Evidence on lines of a revision. Returns the evidence and whether it is new."""
+    """Evidence on lines of a revision. Returns the evidence and whether it is new.
+
+    `decision`, when the caller knows it (re-anchoring, import), is the anchor; otherwise the
+    best decision over the lines is (a guard over a threshold it holds, for instance)."""
     if method not in _METHOD_STATUS:
         raise KnowledgeError("method_not_allowed")
     if method is VerificationMethod.TEST_RESULT and evidence_type is not EvidenceType.TEST:
@@ -250,7 +257,12 @@ def cite_source(
         "start_line": start_line,
         "end_line": end_line,
     }
-    anchor = anchor_of(path, revision, start_line, end_line)
+    anchor = (
+        anchor_dict(decision)
+        if decision is not None
+        and start_line <= decision.start_line <= decision.end_line <= end_line
+        else anchor_of(path, revision, start_line, end_line)
+    )
     if anchor is not None:
         locator["anchor"] = anchor
     record = EvidenceRecord(

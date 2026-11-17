@@ -28,6 +28,7 @@ from scrinium.application.knowledge.entities import (
     set_verification,
     title_slug,
 )
+from scrinium.application.knowledge.rulebook import export_status
 from scrinium.application.retrieval import edges
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
 from scrinium.domain.enums import (
@@ -109,6 +110,13 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
                 AuditResult.SUCCESS, getattr(request.state, "request_id", None),
             )  # fmt: skip
             return ProfileResponse(display_name=profile.display_name)
+
+    @router.get("/api/v1/projects/{project_id}/rulebook")
+    def rulebook(project_id: uuid.UUID) -> dict[str, Any]:
+        """Per source, the reviewed rules not yet exported to its .scrinium/rules/ (ADR-012)."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            return {"sources": export_status(session, project)}
 
     @router.get("/api/v1/projects/{project_id}/rules")
     def rules(

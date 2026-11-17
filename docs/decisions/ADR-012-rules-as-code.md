@@ -1,6 +1,6 @@
 # ADR-012: Verified rules live in the repository, one file per rule
 
-**Status:** proposed, 2026-11-15. Needs the owner's acceptance before phase 3 (rules as code and mirrors) starts. Depends on [ADR-011](ADR-011-rule-identity.md). Since 2026-11-16 (phase 2), the part of the file `scrinium check` reads is in use, brought forward with the owner's agreement: see [What phase 2 implements](#what-phase-2-implements).
+**Status:** accepted by the owner, 2026-11-17 (proposed 2026-11-15). Depends on [ADR-011](ADR-011-rule-identity.md). Since 2026-11-16 (phase 2), the part of the file `scrinium check` reads is in use, brought forward with the owner's agreement: see [What phase 2 implements](#what-phase-2-implements).
 
 ## The question
 
@@ -66,9 +66,17 @@ shape: 1a0e…9c
 
 Re-extraction skips any candidate whose shape matches a tombstone. If the code changes (a new shape), it can be proposed again.
 
+As built (phase 3), a tombstone keeps `verified_by` and `verified_at` (who rejected it and when) and its anchors in full (path, symbol, kind, lines, shape, value, sketch), because import needs them to cite the decision again; it has no title and no statement. `reason` is the last note the person wrote when reviewing, if any. "Skips" works through identity: import creates a rejected rule on the tombstone's decision, and extraction never replaces a version a person reviewed ([ADR-011](ADR-011-rule-identity.md)).
+
 ### Round trip
 
 `export → import → export` must produce identical files. A clean clone plus `import` must reproduce the verified rulebook.
+
+As built (phase 3): `scrinium rules import` reads a source's `.scrinium/rules/` and, for each file, creates the rule with the file's id (or adds a version to it), cites it where each anchor's decision is now (the same re-anchoring as the rule watch), and records the file's review: who and when. Importing twice changes nothing. The body carries WHEN and THEN as lists and the reason under `WHY:`; `provenance:` (extractor and model) is a nested mapping. The console warns, per source, about reviewed rules not yet exported and rule files that belong to no reviewed rule.
+
+### The product manifest and mirrors (as built)
+
+`scrinium.product.yaml`, in the backend repository, names the product's sources (paths relative to it: a sibling clone or a monorepo subfolder) and pairs verified rules as mirrors (`rule` and `mirror`, by id). `scrinium mirrors` re-anchors both sides in the code as it is and compares the values each decides with (literals and same-file constants, resolved), and exits 1 if any pair diverges: "0.25 in backend, 0.3 in ui". A mirror whose rule is not a verified rule of the product's own sources is an error, so two products never link by mistake. Values are compared as written: `0.25` and `25` (a percentage) differ.
 
 ### What phase 2 implements
 
@@ -104,7 +112,7 @@ How it differs from the sketch above, and why:
 - **Strings in JSON quoting.** Valid YAML, and a fingerprint such as `0789` or `1e5` is never read as a number by any YAML reader.
 - **A strict reader.** The reader accepts only this subset (scalars and one list of flat mappings) and names the line of anything else. A broken rule file makes the check exit with 2 ("could not check"), never pass.
 
-`scrinium rules export` writes the latest human-verified version of each rule cited in the source; a later version the model proposed after a code change is not exported until a person verifies it, so the file keeps saying what a person agreed to. Provenance, WHEN and THEN, the reason, tombstones and `import` are phase 3.
+`scrinium rules export` writes the latest human-verified version of each rule cited in the source; a later version the model proposed after a code change is not exported until a person verifies it, so the file keeps saying what a person agreed to. Provenance, WHEN and THEN, the reason, tombstones and `import` came in phase 3 (below).
 
 **Exit codes of `scrinium check`.** 0: no verified rule changed. 1: a verified rule's decision has other values and the same change does not update its file (with `--strict`, also a rule to review or retired). 2: the check could not run (no base in the clone, a broken rule file).
 

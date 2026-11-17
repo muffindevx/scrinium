@@ -597,6 +597,16 @@ export const listRules = async (
   )
   return (await getJson<{ rules: RuleSummary[] }>(`/api/v1/projects/${projectId}/rules?${params}`)).rules
 }
+export type RulebookSource = {
+  source_id: string
+  name: string
+  available: boolean
+  reviewed: number
+  unexported: number
+  extra: number
+}
+export const getRulebook = async (projectId: string) =>
+  (await getJson<{ sources: RulebookSource[] }>(`/api/v1/projects/${projectId}/rulebook`)).sources
 export const getRule = (projectId: string, entityId: string) =>
   getJson<RuleDetail>(`/api/v1/projects/${projectId}/rules/${entityId}`)
 // S3: the rule map arrives before the statements. A rule opened without a statement gets it

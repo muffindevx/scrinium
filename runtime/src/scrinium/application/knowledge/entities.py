@@ -108,6 +108,7 @@ def create_entity(
     metadata: dict[str, Any] | None = None,
     lifecycle: EntityLifecycle = EntityLifecycle.PROPOSED,
     request_id: str | None = None,
+    entity_id: uuid.UUID | None = None,
 ) -> KnowledgeEntity:
     if not CANONICAL_KEY_PATTERN.fullmatch(canonical_key):
         raise KnowledgeError("invalid_canonical_key")
@@ -122,6 +123,7 @@ def create_entity(
     if session.scalar(taken) is not None:
         raise KnowledgeError("entity_exists")
     entity = KnowledgeEntity(
+        **({"id": entity_id} if entity_id is not None else {}),
         workspace_id=project.workspace_id,
         project_id=project.id,
         entity_type=entity_type,
@@ -253,12 +255,14 @@ def create_business_rule(
     owner_ref: str | None = None,
     provenance: Provenance = HUMAN,
     request_id: str | None = None,
+    entity_id: uuid.UUID | None = None,
 ) -> BusinessRuleVersion:
+    """A new rule; `entity_id` keeps the id a rule file gives (import, ADR-012)."""
     _check_analysis(session, project, provenance)
     entity = create_entity(
         session, project, entity_type=EntityType.BUSINESS_RULE, canonical_key=canonical_key,
         name=content.title, summary=content.statement[:2000],
-        lifecycle=_initial_lifecycle(provenance), request_id=request_id,
+        lifecycle=_initial_lifecycle(provenance), request_id=request_id, entity_id=entity_id,
     )  # fmt: skip
     session.add(
         BusinessRule(

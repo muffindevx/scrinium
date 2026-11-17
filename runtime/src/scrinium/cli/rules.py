@@ -21,7 +21,7 @@ from scrinium.application.check.hooks import HookError, install, uninstall
 from scrinium.application.check.report import FORMATS
 from scrinium.application.check.rule_files import RULES_DIR, write_all
 
-LIGHT_COMMANDS: Final = frozenset({"check", "hooks"})
+LIGHT_COMMANDS: Final = frozenset({"check", "hooks", "mirrors"})
 _EXPLAIN_TIMEOUT_SECONDS: Final = 120
 
 
@@ -77,18 +77,33 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
         sub = hooks_commands.add_parser(name, help=text)
         sub.add_argument("--root", type=Path, default=Path("."), help="Carpeta de la fuente.")
 
+    mirrors_parser = commands.add_parser(
+        "mirrors",
+        help="Compara las reglas espejo de scrinium.product.yaml (sin modelo ni red).",
+        description=(
+            "Lee scrinium.product.yaml y, para cada par de reglas espejo, compara los valores "
+            "con que decide cada una en el código actual. Sale con 1 si alguno diverge."
+        ),
+    )
+    mirrors_parser.add_argument(
+        "--root", type=Path, default=Path("."), help="Carpeta del manifiesto (por defecto, esta)."
+    )
+
     rules_parser = commands.add_parser(
         "rules", help="Las reglas verificadas como archivos del repositorio (.scrinium/rules/)."
     )
     rules_commands = rules_parser.add_subparsers(dest="rules_command", required=True)
-    export_parser = rules_commands.add_parser(
-        "export", help="Escribe las reglas verificadas de una fuente en su .scrinium/rules/."
-    )
-    export_parser.add_argument("--project", help="Nombre o id del proyecto (si hay varios).")
-    export_parser.add_argument("--source", help="Nombre o id de la fuente (si hay varias).")
-    export_parser.add_argument(
-        "--to", type=Path, help="Carpeta de destino (por defecto, .scrinium/rules/ de la fuente)."
-    )
+    for name, text in (
+        ("export", "Escribe las reglas revisadas de una fuente en su .scrinium/rules/."),
+        ("import", "Reconstruye las reglas revisadas desde .scrinium/rules/ (un clon limpio)."),
+    ):
+        sub = rules_commands.add_parser(name, help=text)
+        sub.add_argument("--project", help="Nombre o id del proyecto (si hay varios).")
+        sub.add_argument("--source", help="Nombre o id de la fuente (si hay varias).")
+        sub.add_argument(
+            "--dir", dest="folder", type=Path,
+            help="Otra carpeta de reglas (por defecto, .scrinium/rules/ de la fuente).",
+        )  # fmt: skip
 
 
 def run(args: argparse.Namespace) -> int:
@@ -96,7 +111,9 @@ def run(args: argparse.Namespace) -> int:
         return run_check(args)
     if args.command == "hooks":
         return run_hooks(args)
-    return run_export(args)
+    if args.command == "mirrors":
+        return run_mirrors(args)
+    return run_rules(args)
 
 
 # --- check ------------------------------------------------------------------------------------
@@ -198,6 +215,38 @@ def run_check(args: argparse.Namespace) -> int:
     return 1 if result.failed else 0
 
 
+# --- mirrors ----------------------------------------------------------------------------------
+
+
+def run_mirrors(args: argparse.Namespace) -> int:
+    from scrinium.application.check.product import (
+        MANIFEST,
+        compare_mirrors,
+        describe,
+        load_manifest,
+    )
+    from scrinium.application.check.yaml_subset import FileFormatError
+
+    try:
+        manifest = load_manifest(args.root.resolve())
+    except (FileFormatError, OSError) as error:
+        print(f"scrinium mirrors: {error}", file=sys.stderr)
+        return 2
+    if manifest is None:
+        print(f"No hay {MANIFEST} en {args.root.resolve()}.", file=sys.stderr)
+        return 2
+    report = compare_mirrors(manifest)
+    for problem in report.errors:
+        print(f"Error: {problem}", file=sys.stderr)
+    if report.divergent:
+        print(f"{manifest.product}: {len(report.divergent)} de {report.pairs} pares divergen.")
+        for first, second in report.divergent:
+            print(f"- {describe(first, second)}")
+    else:
+        print(f"{manifest.product}: {report.pairs} pares de reglas espejo, ninguno diverge.")
+    return 2 if report.errors else 1 if report.divergent else 0
+
+
 # --- hooks ------------------------------------------------------------------------------------
 
 
@@ -230,14 +279,15 @@ def run_hooks(args: argparse.Namespace) -> int:
     return 0
 
 
-# --- rules export -----------------------------------------------------------------------------
+# --- rules export | import -------------------------------------------------------------------
 
 
-def run_export(args: argparse.Namespace) -> int:
+def run_rules(args: argparse.Namespace) -> int:
     from sqlalchemy import select
 
+    from scrinium.application.check.rule_files import RuleFileError, load
     from scrinium.application.ingestion.sources import settings_of
-    from scrinium.application.knowledge.rulebook import verified_rules
+    from scrinium.application.knowledge.rulebook import import_rules, reviewed_rules
     from scrinium.core.config import default_data_dir
     from scrinium.infrastructure.sqlite.database import DATABASE_FILENAME, Database
     from scrinium.infrastructure.sqlite.models import Project, SourceConnection
@@ -265,16 +315,38 @@ def run_export(args: argparse.Namespace) -> int:
         if source_id is None:
             return 1
         source = sources[source_id]
-        rules = verified_rules(session, uuid.UUID(project_id), source.id)
         root = settings_of(source).root
-    if args.to is None and not root.is_dir():
+        folder = args.folder or root / RULES_DIR
+        if args.rules_command == "import":
+            try:
+                files = load(folder)
+            except (RuleFileError, OSError) as error:
+                print(f"scrinium rules import: {error}", file=sys.stderr)
+                return 2
+            project = session.get_one(Project, uuid.UUID(project_id))
+            done = import_rules(session, project, source, files)
+            print(
+                f"{len(files)} reglas leídas de {folder}: {len(done.created)} creadas, "
+                f"{len(done.updated)} actualizadas, {len(done.unchanged)} sin cambios"
+                + (f", {len(done.skipped)} omitidas" if done.skipped else "")
+                + "."
+            )
+            if done.unanchored:
+                print(
+                    f"{len(done.unanchored)} reglas tienen anclas que ya no están en el código: "
+                    "revísalas en la consola.",
+                    file=sys.stderr,
+                )
+            return 0
+        rules = reviewed_rules(session, uuid.UUID(project_id), source.id)
+    if args.folder is None and not root.is_dir():
         print(f"La carpeta de la fuente no existe en este equipo: {root}", file=sys.stderr)
         return 1
-    target = args.to or root / RULES_DIR
-    written, unchanged, removed = write_all(target, rules)
+    written, unchanged, removed = write_all(folder, rules)
+    tombstones = sum(1 for rule in rules if rule.is_tombstone)
     print(
-        f"{len(rules)} reglas verificadas en {target}: {written} escritas, {unchanged} sin "
-        f"cambios, {removed} quitadas."
+        f"{len(rules) - tombstones} reglas verificadas y {tombstones} rechazadas en {folder}: "
+        f"{written} escritas, {unchanged} sin cambios, {removed} quitadas."
     )
     return 0
 

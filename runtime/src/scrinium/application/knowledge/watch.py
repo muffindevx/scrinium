@@ -248,7 +248,7 @@ def _recite(session: Session, project_id: uuid.UUID, followed: _Followed) -> Non
                 revision_id=followed.revisions[match.path].id,
                 start_line=match.decision.start_line, end_line=match.decision.end_line,
                 role=evidence.evidence_role, evidence_type=evidence.evidence_type,
-                method=evidence.verification_method,
+                method=evidence.verification_method, decision=match.decision,
             )  # fmt: skip
         except KnowledgeError:
             continue

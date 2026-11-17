@@ -280,7 +280,7 @@ def check(
             )
             level = REVIEW if alive else REMOVED
         if level is not None:
-            result.findings.append(Finding(rule.id, rule.title, level, anchor, now))
+            result.findings.append(Finding(rule.id, rule.title or "", level, anchor, now))
     order = {CHANGED: 0, REVIEW: 1, REMOVED: 2, UPDATED: 3, MOVED: 4}
     result.findings.sort(key=lambda f: (order[f.level], f.anchor.path, f.anchor.start_line))
     result.seconds = time.perf_counter() - started

@@ -178,13 +178,13 @@ class Runtime:
 
 
 @pytest.fixture
-def make_runtime(tmp_path: Path) -> Iterator[Callable[[], Runtime]]:
-    """Each call simulates a new start on the same data directory."""
+def make_runtime(tmp_path: Path) -> Iterator[Callable[..., Runtime]]:
+    """Each call simulates a new start on the same data directory (or on `data_dir`)."""
     databases: list[Database] = []
 
-    def factory() -> Runtime:
+    def factory(data_dir: Path | None = None) -> Runtime:
         config = RuntimeConfig(
-            port=TEST_PORT, data_dir=tmp_path / "data", web_dist=tmp_path / "no-ui"
+            port=TEST_PORT, data_dir=data_dir or tmp_path / "data", web_dist=tmp_path / "no-ui"
         )
         sessions = LocalSessionManager()
         database, environment = open_runtime(config, memory_secret_store())

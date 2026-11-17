@@ -1,7 +1,6 @@
-"""Rule files: `.scrinium/rules/<id>.md`, the verified rules a repository carries (ADR-012).
+"""Rule files: `.scrinium/rules/<id>.md`, the rules a repository carries (ADR-012).
 
-One file per verified rule. A front matter in a small, strict subset of YAML (scalars, and one
-list of flat mappings for the anchors) and, after it, the statement:
+One file per rule a person reviewed. A verified rule:
 
     ---
     scrinium: 1
@@ -10,6 +9,9 @@ list of flat mappings for the anchors) and, after it, the statement:
     status: verified
     verified_by: "Ana"
     verified_at: "2026-11-16T18:00:00Z"
+    provenance:
+      extractor: "rules-detail-1"
+      model: "deepseek-chat"
     anchors:
       - path: "sale/models/sale_order.py"
         symbol: "SaleOrder._unlink_except_draft_or_cancel"
@@ -22,17 +24,23 @@ list of flat mappings for the anchors) and, after it, the statement:
     ---
     Solo se pueden borrar pedidos en presupuesto o cancelados.
 
-Phase 2 writes and reads the part `scrinium check` needs; phase 3 completes the format (WHEN and
-THEN, the reason, provenance and tombstones of rejected rules) without changing these keys.
+    WHEN:
+    - el pedido está enviado o confirmado
+    THEN:
+    - no se puede borrar
 
-The writer is deterministic: keys in a fixed order, strings as JSON strings (valid YAML; a
-fingerprint is always quoted, so no YAML reader takes `0789` or `1e5` for a number), `\\n`
-line ends and a final newline, so exporting twice gives the same bytes and diffs stay clean.
-The reader accepts only that subset, plus comments and blank lines, and says on which line
-anything else is. The files hold no source code: paths, lines and fingerprints only.
+    WHY:
+    Un pedido confirmado ya generó entregas o facturas.
+
+A rejected rule leaves a **tombstone**: `status: rejected`, the reason and its anchors, with no
+title and no text, so the same decision is not proposed again while its shape is the same.
+
+The header is the strict YAML subset of `yaml_subset.py`. The writer is deterministic (keys in
+a fixed order, anchors by path and line, `\\n` line ends, a final newline), so exporting twice,
+or exporting what was imported, gives the same bytes. The files hold no source code: paths,
+lines and fingerprints only. Older files without the phase 3 keys still read.
 """
 
-import json
 import re
 import uuid
 from collections.abc import Iterator
@@ -40,28 +48,35 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
+from scrinium.application.check.yaml_subset import (
+    LINES,
+    Entries,
+    Fields,
+    FileFormatError,
+    bare,
+    items,
+    mapping,
+    optional,
+    scalar,
+    text_of,
+)
+from scrinium.application.check.yaml_subset import parse as parse_entries
 from scrinium.infrastructure.decisions import DECISIONS_VERSION
 
 FORMAT_VERSION: Final = 1
 RULES_DIR: Final = Path(".scrinium") / "rules"
 VERIFIED: Final = "verified"
+REJECTED: Final = "rejected"
 
 _FINGERPRINT: Final = re.compile(r"^[0-9a-f]{1,1024}$")
-_KEY: Final = re.compile(r"^([a-z_]+):(?: (.*))?$")
-_PLAIN: Final = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$|^[0-9a-f]{8}-[0-9a-f-]{27}$")
-_LINES: Final = re.compile(r"\[\s*(\d+)\s*,\s*(\d+)\s*\]")
-_NUMBER_LIKE: Final = re.compile(r"^[-+]?[0-9.]+(?:e[-+]?[0-9]+)?$", re.I)
+_SECTIONS: Final = ("WHEN:", "THEN:", "WHY:")
 
-
-class RuleFileError(ValueError):
-    def __init__(self, path: Path | str, line: int, message: str) -> None:
-        super().__init__(f"{path}:{line}: {message}")
-        self.path, self.line, self.message = str(path), line, message
+RuleFileError = FileFormatError
 
 
 @dataclass(frozen=True)
 class FileAnchor:
-    """Where a verified rule is decided: a decision node, by its fingerprints (ADR-011)."""
+    """Where a rule is decided: a decision node, by its fingerprints (ADR-011)."""
 
     path: str
     symbol: str | None
@@ -78,125 +93,143 @@ class FileAnchor:
 @dataclass(frozen=True)
 class RuleFile:
     id: str
-    title: str
+    title: str | None
     statement: str
     status: str = VERIFIED
     verified_by: str | None = None
     verified_at: str | None = None
     anchors: tuple[FileAnchor, ...] = field(default_factory=tuple)
+    when: tuple[str, ...] = ()
+    then: tuple[str, ...] = ()
+    why: str | None = None
+    # Where the reviewed text came from: the extractor and the model, when a model wrote it.
+    extractor: str | None = None
+    model: str | None = None
+    # Why a person rejected it (tombstones only).
+    reason: str | None = None
 
     @property
     def file_name(self) -> str:
         return f"{self.id}.md"
 
+    @property
+    def is_tombstone(self) -> bool:
+        return self.status == REJECTED
+
 
 # --- Writing ----------------------------------------------------------------------------------
 
 
-def _scalar(value: str | None) -> str:
-    return "null" if value is None else json.dumps(value, ensure_ascii=False)
+def _one_line(text: str) -> str:
+    return " ".join(text.split())
 
 
-def _bare(value: str) -> str:
-    """Kinds, statuses and ids: plain when no YAML reader can take them for something else."""
-    plain = _PLAIN.match(value) and not _NUMBER_LIKE.match(value)
-    return value if plain and value not in {"null", "true", "false"} else _scalar(value)
+def _body(rule: RuleFile) -> list[str]:
+    if rule.is_tombstone:
+        return []
+    lines = [line.rstrip() for line in rule.statement.strip().splitlines()]
+    if rule.when or rule.then:
+        lines.append("")
+    if rule.when:
+        lines += ["WHEN:", *(f"- {_one_line(item)}" for item in rule.when)]
+    if rule.then:
+        lines += ["THEN:", *(f"- {_one_line(item)}" for item in rule.then)]
+    if rule.why:
+        lines += ["", "WHY:", *(line.rstrip() for line in rule.why.strip().splitlines())]
+    return lines
 
 
 def render(rule: RuleFile) -> str:
-    lines = [
-        "---",
-        f"scrinium: {FORMAT_VERSION}",
-        f"id: {_bare(rule.id)}",
-        f"title: {_scalar(rule.title)}",
-        f"status: {_bare(rule.status)}",
-        f"verified_by: {_scalar(rule.verified_by)}",
-        f"verified_at: {_scalar(rule.verified_at)}",
-        "anchors:" if rule.anchors else "anchors: []",
+    lines = ["---", f"scrinium: {FORMAT_VERSION}", f"id: {bare(rule.id)}"]
+    if not rule.is_tombstone:
+        lines.append(f"title: {scalar(rule.title)}")
+    lines.append(f"status: {bare(rule.status)}")
+    if rule.is_tombstone:
+        lines.append(f"reason: {scalar(rule.reason)}")
+    lines += [
+        f"verified_by: {scalar(rule.verified_by)}",
+        f"verified_at: {scalar(rule.verified_at)}",
     ]
+    if not rule.is_tombstone and (rule.extractor or rule.model):
+        lines += [
+            "provenance:",
+            f"  extractor: {scalar(rule.extractor)}",
+            f"  model: {scalar(rule.model)}",
+        ]
+    lines.append("anchors:" if rule.anchors else "anchors: []")
     ordered = sorted(rule.anchors, key=lambda a: (a.path, a.start_line, a.end_line, a.shape))
     for anchor in ordered:
         lines += [
-            f"  - path: {_scalar(anchor.path)}",
-            f"    symbol: {_scalar(anchor.symbol)}",
-            f"    kind: {_bare(anchor.kind)}",
+            f"  - path: {scalar(anchor.path)}",
+            f"    symbol: {scalar(anchor.symbol)}",
+            f"    kind: {bare(anchor.kind)}",
             f"    lines: [{anchor.start_line}, {anchor.end_line}]",
-            f"    shape: {_scalar(anchor.shape)}",
-            f"    value: {_scalar(anchor.value)}",
-            f"    sketch: {_scalar(anchor.sketch)}",
-            f"    decisions: {_scalar(anchor.decisions)}",
+            f"    shape: {scalar(anchor.shape)}",
+            f"    value: {scalar(anchor.value)}",
+            f"    sketch: {scalar(anchor.sketch)}",
+            f"    decisions: {scalar(anchor.decisions)}",
         ]
     lines.append("---")
-    statement = "\n".join(line.rstrip() for line in rule.statement.strip().splitlines())
-    return "\n".join(lines) + "\n" + statement + "\n"
+    return "\n".join([*lines, *_body(rule)]) + "\n"
 
 
 # --- Reading ----------------------------------------------------------------------------------
 
 
-def _value(raw: str | None, where: Path | str, number: int) -> str | None:
-    """A scalar as text: numbers stay text (a fingerprint can be all digits)."""
-    if raw is None or raw == "" or raw == "null" or raw == "~":
-        return None
-    if raw.startswith('"'):
-        try:
-            loaded = json.loads(raw)
-        except json.JSONDecodeError:
-            raise RuleFileError(where, number, "cadena entre comillas mal cerrada") from None
-        if not isinstance(loaded, str):
-            raise RuleFileError(where, number, "se esperaba una cadena")
-        return loaded
-    if raw.startswith("'") and raw.endswith("'") and len(raw) >= 2:
-        return raw[1:-1].replace("''", "'")
-    if _LINES.fullmatch(raw):
-        return raw
-    if raw.startswith(("[", "{", "&", "*", "!", "|", ">")) and raw != "[]":
-        raise RuleFileError(where, number, "valor no admitido en un archivo de reglas")
-    return raw
-
-
-def _text(value: str | None, where: Path | str, number: int, key: str) -> str:
-    if value is None or str(value) == "":
-        raise RuleFileError(where, number, f"falta «{key}»")
-    return str(value)
-
-
-def _anchor(fields: dict[str, tuple[int, str | None]], where: Path | str) -> FileAnchor:
+def _anchor(fields: Fields, where: Path | str) -> FileAnchor:
     first = min((number for number, _ in fields.values()), default=0)
 
-    def get(key: str) -> tuple[int, str | None]:
-        return fields.get(key, (first, None))
+    def at(key: str) -> int:
+        return fields.get(key, (first, None))[0]
 
-    lines_at, lines = get("lines")
-    match = _LINES.fullmatch(str(lines or ""))
+    lines = optional(fields, "lines")
+    match = LINES.fullmatch(lines or "")
     if match is None:
-        raise RuleFileError(where, lines_at, "«lines» debe ser [inicio, fin], como [10, 12]")
+        raise RuleFileError(where, at("lines"), "«lines» debe ser [inicio, fin], como [10, 12]")
     start, end = int(match[1]), int(match[2])
     if not 1 <= start <= end:
-        raise RuleFileError(where, lines_at, "«lines» fuera de rango")
+        raise RuleFileError(where, at("lines"), "«lines» fuera de rango")
     values: dict[str, str] = {}
     for key in ("shape", "value"):
-        at, raw = get(key)
-        text = _text(raw, where, at, key)
+        text = text_of(optional(fields, key), where, at(key), key)
         if not _FINGERPRINT.match(text):
-            raise RuleFileError(where, at, f"«{key}» debe ser una huella hexadecimal")
+            raise RuleFileError(where, at(key), f"«{key}» debe ser una huella hexadecimal")
         values[key] = text
-    sketch_at, sketch = get("sketch")
-    if sketch and not _FINGERPRINT.match(str(sketch)):
-        raise RuleFileError(where, sketch_at, "«sketch» debe ser hexadecimal")
-    symbol = get("symbol")[1]
-    decisions = get("decisions")[1]
+    sketch = optional(fields, "sketch") or ""
+    if sketch and not _FINGERPRINT.match(sketch):
+        raise RuleFileError(where, at("sketch"), "«sketch» debe ser hexadecimal")
     return FileAnchor(
-        path=_text(get("path")[1], where, get("path")[0], "path"),
-        symbol=None if symbol is None else str(symbol),
-        kind=_text(get("kind")[1], where, get("kind")[0], "kind"),
+        path=text_of(optional(fields, "path"), where, at("path"), "path"),
+        symbol=optional(fields, "symbol"),
+        kind=text_of(optional(fields, "kind"), where, at("kind"), "kind"),
         start_line=start,
         end_line=end,
         shape=values["shape"],
         value=values["value"],
-        sketch=str(sketch or ""),
-        decisions=str(decisions if decisions is not None else "1"),
+        sketch=sketch,
+        decisions=optional(fields, "decisions") or "1",
     )
+
+
+def _parse_body(lines: list[str]) -> tuple[str, tuple[str, ...], tuple[str, ...], str | None]:
+    """(statement, WHEN items, THEN items, WHY) of the text after the header."""
+    sections: dict[str, list[str]] = {"": [], "WHEN:": [], "THEN:": [], "WHY:": []}
+    current = ""
+    for line in lines:
+        if line.strip() in _SECTIONS:
+            current = line.strip()
+            continue
+        sections[current].append(line)
+
+    def listed(name: str) -> tuple[str, ...]:
+        return tuple(
+            line.strip()[2:].strip()
+            for line in sections[name]
+            if line.strip().startswith("- ") and line.strip()[2:].strip()
+        )
+
+    why = "\n".join(sections["WHY:"]).strip() or None
+    return "\n".join(sections[""]).strip(), listed("WHEN:"), listed("THEN:"), why
 
 
 def parse(text: str, where: Path | str = "<regla>") -> RuleFile:
@@ -207,61 +240,46 @@ def parse(text: str, where: Path | str = "<regla>") -> RuleFile:
         close = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
     except StopIteration:
         raise RuleFileError(where, 1, "falta el --- que cierra la cabecera") from None
+    entries: Entries = parse_entries(lines[1:close], where, first_number=2)
 
-    top: dict[str, tuple[int, str | None]] = {}
-    anchors: list[dict[str, tuple[int, str | None]]] = []
-    in_anchors = False
-    for index in range(1, close):
-        number, line = index + 1, lines[index]
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        if not line.startswith(" "):
-            match = _KEY.match(stripped)
-            if match is None:
-                raise RuleFileError(where, number, "se esperaba «clave: valor»")
-            key, raw = match[1], match[2]
-            in_anchors = key == "anchors" and raw in (None, "")
-            if key == "anchors" and raw not in (None, "", "[]"):
-                raise RuleFileError(where, number, "«anchors» debe ser una lista")
-            top[key] = (number, None if key == "anchors" else _value(raw, where, number))
-            continue
-        if not in_anchors:
-            raise RuleFileError(where, number, "sangría inesperada")
-        item = stripped
-        if item.startswith("- "):
-            anchors.append({})
-            item = item[2:].strip()
-        elif not anchors:
-            raise RuleFileError(where, number, "cada ancla empieza con «- »")
-        match = _KEY.match(item)
-        if match is None:
-            raise RuleFileError(where, number, "se esperaba «clave: valor» en el ancla")
-        anchors[-1][match[1]] = (number, _value(match[2], where, number))
-
-    version = top.get("scrinium", (1, None))
-    if version[1] != str(FORMAT_VERSION):
-        raise RuleFileError(where, version[0], f"versión de formato no admitida: {version[1]}")
-    id_at, rule_id = top.get("id", (1, None))
-    rule_id = _text(rule_id, where, id_at, "id")
+    version_at = entries.get("scrinium", (1, None))[0]
+    if optional(entries, "scrinium") != str(FORMAT_VERSION):
+        raise RuleFileError(
+            where, version_at, f"versión de formato no admitida: {optional(entries, 'scrinium')}"
+        )
+    id_at = entries.get("id", (1, None))[0]
+    rule_id = text_of(optional(entries, "id"), where, id_at, "id")
     try:
         uuid.UUID(rule_id)
     except ValueError:
         raise RuleFileError(where, id_at, "«id» debe ser un UUID") from None
-    title_at, title = top.get("title", (1, None))
-
-    def optional(key: str) -> str | None:
-        raw = top.get(key, (1, None))[1]
-        return None if raw is None else str(raw)
-
+    status = optional(entries, "status") or VERIFIED
+    if status not in {VERIFIED, REJECTED}:
+        raise RuleFileError(where, entries["status"][0], f"estado desconocido: {status}")
+    anchors = tuple(_anchor(fields, where) for fields in items(entries, "anchors", where))
+    provenance = mapping(entries, "provenance", where)
+    if status == REJECTED:
+        return RuleFile(
+            id=rule_id, title=None, statement="", status=status,
+            verified_by=optional(entries, "verified_by"),
+            verified_at=optional(entries, "verified_at"),
+            anchors=anchors, reason=optional(entries, "reason"),
+        )  # fmt: skip
+    statement, when, then, why = _parse_body(lines[close + 1 :])
+    title_at = entries.get("title", (1, None))[0]
     return RuleFile(
         id=rule_id,
-        title=_text(title, where, title_at, "title"),
-        statement="\n".join(lines[close + 1 :]).strip(),
-        status=optional("status") or VERIFIED,
-        verified_by=optional("verified_by"),
-        verified_at=optional("verified_at"),
-        anchors=tuple(_anchor(fields, where) for fields in anchors),
+        title=text_of(optional(entries, "title"), where, title_at, "title"),
+        statement=statement,
+        status=status,
+        verified_by=optional(entries, "verified_by"),
+        verified_at=optional(entries, "verified_at"),
+        anchors=anchors,
+        when=when,
+        then=then,
+        why=why,
+        extractor=optional(provenance, "extractor"),
+        model=optional(provenance, "model"),
     )
 
 
@@ -282,6 +300,18 @@ def load(directory: Path) -> list[RuleFile]:
             raise RuleFileError(path, 1, f"el archivo debe llamarse {rule.file_name}")
         rules.append(rule)
     return rules
+
+
+def pending(directory: Path, rules: list[RuleFile]) -> tuple[int, int]:
+    """(rules whose file is missing or different, files of rules no longer in the list)."""
+    expected = {rule.file_name: render(rule).encode("utf-8") for rule in rules}
+    differ = sum(
+        1
+        for name, content in expected.items()
+        if not (directory / name).is_file() or (directory / name).read_bytes() != content
+    )
+    extra = sum(1 for path in rule_paths(directory) if path.name not in expected)
+    return differ, extra
 
 
 def write_all(directory: Path, rules: list[RuleFile]) -> tuple[int, int, int]:

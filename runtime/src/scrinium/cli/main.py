@@ -428,7 +428,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     logging.captureWarnings(True)
-    if args.command in {"check", "hooks"}:
+    if args.command in {"check", "hooks", "mirrors"}:
         return run_rule_command(args)
     if args.command == "rules":
         configure_logging(verbose=False)

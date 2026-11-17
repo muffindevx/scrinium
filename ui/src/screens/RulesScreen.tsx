@@ -22,6 +22,7 @@ import {
   type RuleImpact,
   type Relationship,
   type RuleSummary,
+  type RulebookSource,
   type RuleVersion,
   type VerificationStatus,
   cancelAnalysis,
@@ -30,6 +31,7 @@ import {
   getExtractionStatus,
   getNeighbours,
   getRule,
+  getRulebook,
   PENDING_STATEMENT_PREFIX,
   writeStatement,
   listRules,
@@ -765,6 +767,52 @@ function RuleGroup({
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`
 
+/** Reviewed rules not yet in the repository's .scrinium/rules/ (ADR-012): CI cannot see them. */
+function UnexportedNotice({
+  projectId,
+  projectName,
+  refresh,
+}: {
+  projectId: string
+  projectName: string
+  refresh: unknown
+}) {
+  const [sources, setSources] = useState<RulebookSource[]>([])
+  useEffect(() => {
+    getRulebook(projectId)
+      .then(setSources)
+      .catch(() => setSources([]))
+  }, [projectId, refresh])
+  const pending = sources.filter((s) => s.available && (s.unexported > 0 || s.extra > 0))
+  if (pending.length === 0) return null
+  const several = sources.length > 1
+  return (
+    <div role="status" className="grid gap-1 rounded-md border px-3 py-2 text-sm">
+      {pending.map((source) => (
+        <p key={source.source_id}>
+          {source.unexported > 0 && (
+            <>
+              {source.unexported === 1
+                ? "1 regla revisada no está exportada"
+                : `${source.unexported} reglas revisadas no están exportadas`}
+            </>
+          )}
+          {source.unexported > 0 && source.extra > 0 && " y "}
+          {source.extra > 0 &&
+            (source.extra === 1
+              ? "1 archivo de regla sobra"
+              : `${source.extra} archivos de reglas sobran`)}
+          {several && ` en ${source.name}`}. El check de CI no las ve hasta que ejecutes{" "}
+          <code className="font-mono text-xs">
+            scrinium rules export --project "{projectName}"{several && ` --source "${source.name}"`}
+          </code>{" "}
+          y hagas commit de <code className="font-mono text-xs">.scrinium/rules/</code>.
+        </p>
+      ))}
+    </div>
+  )
+}
+
 function RuleList(props: ScreenProps) {
   const { project, onSessionLost } = props
   const [rules, setRules] = useState<RuleSummary[] | null>(null)
@@ -843,6 +891,7 @@ function RuleList(props: ScreenProps) {
           }}
         />
       )}
+      <UnexportedNotice projectId={project.id} projectName={project.name} refresh={rules} />
       <div className="grid gap-3">
         <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
           <TabsList className="flex-wrap">
