@@ -852,7 +852,16 @@ export interface Changes {
   base: string
   head: string
   changed_files: string[]
-  rules: { rule_id: string; title: string; status: string; level: string; before: ChangeSide; after: ChangeSide | null }[]
+  rules: {
+    rule_id: string
+    title: string
+    status: string
+    level: string
+    before: ChangeSide
+    after: ChangeSide | null
+    processes?: string[]
+  }[]
+  processes_affected?: string[]
   new_decisions: (ChangeSide & { kind: string })[]
   unanchored: number
   seconds: number
@@ -921,6 +930,60 @@ export interface Triage {
 }
 export const triageTrace = async (projectId: string, trace: string) =>
   (await mutate(`/api/v1/projects/${projectId}/triage`, { trace })).json() as Promise<Triage>
+
+/** Coverage (phase 8.1). */
+export interface CoverageNode {
+  path: string
+  name: string
+  kind: "folder" | "file"
+  files: number
+  lines: number
+  decisions: number
+  verified: number
+  unverified: number
+  uncovered: number
+  rules: number
+}
+export interface Coverage {
+  path: string
+  children: CoverageNode[]
+  uncovered: { start_line: number; end_line: number; kind: string }[]
+  total: Omit<CoverageNode, "path" | "name" | "kind">
+  pending: number
+  layer_recall: { rules: number; inside_a_decision: number; sets: number }
+}
+export interface DocConflict {
+  rule_id: string
+  title: string
+  document: string
+  line: number
+  sentence: string
+  says: string[]
+  code: string[]
+  place: string
+}
+export const getDocConflicts = async (projectId: string) =>
+  (await getJson<{ conflicts: DocConflict[] }>(`/api/v1/projects/${projectId}/doc-conflicts`)).conflicts
+/** Processes from entry points (phase 8.3). */
+export interface Process {
+  name: string
+  entry: string
+  path: string
+  start_line: number
+  rules: number
+  steps: {
+    function: string
+    path: string
+    start_line: number
+    end_line: number
+    depth: number
+    rules: { id: string; title: string; verified: boolean }[]
+  }[]
+}
+export const getProcesses = async (projectId: string) =>
+  (await getJson<{ processes: Process[] }>(`/api/v1/projects/${projectId}/processes`)).processes
+export const getCoverage = (projectId: string, path: string) =>
+  getJson<Coverage>(`/api/v1/projects/${projectId}/coverage?${new URLSearchParams({ path })}`)
 
 /** ⌘K (phase 6.2): rules, functions, files and tickets by name. */
 export interface Palette {

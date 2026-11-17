@@ -15,6 +15,16 @@ _FIRST_COMMIT: Final = {
         "# Tienda de ejemplo\n\n"
         "Proyecto de juguete para probar Scrinium: pedidos, descuentos, envios y stock.\n"
     ),
+    # The policy as the business wrote it. Two sentences will disagree with the code (phase 8.2):
+    # free shipping moves to 40 EUR in the second commit, and discounts were always capped at
+    # 25 %, not 30 %.
+    "docs/politicas.md": (
+        "# Políticas de la tienda\n\n"
+        "El envío es gratis desde 50 EUR en la península; a las islas siempre se cobra.\n\n"
+        "Un pedido no reserva más de 10 unidades de un producto.\n\n"
+        "- Los descuentos sumados nunca pasan del 30 % del subtotal.\n"
+        "- Un cupón solo vale en pedidos de 30 EUR o más.\n"
+    ),
     "tienda/__init__.py": "",
     "tienda/descuentos.py": '''"""Descuentos que se aplican a un pedido."""
 

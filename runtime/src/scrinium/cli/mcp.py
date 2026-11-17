@@ -182,6 +182,18 @@ class Server:
         except GitError as error:
             raise ToolError(f"scrinium check could not run: {error}") from None
         payload: dict[str, Any] = json.loads(to_json(result))
+        if self._database is not None and payload["findings"]:
+            # Phase 8.4: the processes each changed rule is a step of, when Scrinium knows them.
+            from scrinium.application.knowledge.processes import processes, processes_by_rule
+
+            with self._database.session() as session:
+                try:
+                    project = self._project(session)
+                except ToolError:
+                    project = None
+                by_rule = processes_by_rule(processes(session, project.id)) if project else {}
+            for finding in payload["findings"]:
+                finding["processes"] = by_rule.get(finding["rule_id"], [])
         return {"notice": agents.DATA_NOTICE, **payload}
 
 

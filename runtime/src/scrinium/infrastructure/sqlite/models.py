@@ -413,6 +413,22 @@ class SourceRevision(Base):
     parser_version: Mapped[str] = mapped_column(String(50))
 
 
+class RevisionDecisions(Base):
+    """The decision nodes of one file revision (phase 8.1): computed once, since a revision
+    never changes. Coverage reads these instead of parsing every file."""
+
+    __tablename__ = "revision_decisions"
+
+    source_revision_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("source_revisions.id", ondelete="CASCADE"), primary_key=True
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    extractor_version: Mapped[str] = mapped_column(String(20))
+    lines: Mapped[int] = mapped_column(Integer)
+    # [[start_line, end_line, kind], ...] of each decision, by first line.
+    spans: Mapped[list[Any]] = mapped_column(JSON, default=list)
+
+
 class AuditEvent(Base):
     """Rows are only added: a migration trigger rejects any UPDATE."""
 

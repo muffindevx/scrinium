@@ -408,6 +408,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     tools_commands.add_parser("status", help="Muestra que esta instalado y donde.")
 
     commands.add_parser("doctor", help="Comprueba el equipo y dice como arreglar lo que falte.")
+    coverage_parser = commands.add_parser(
+        "coverage", help="Dónde decide el código y qué decisiones cubre una regla verificada."
+    )
+    coverage_parser.add_argument("--root", type=Path, default=Path(), help="El repositorio.")
+    coverage_parser.add_argument(
+        "--path", default="", help="Una carpeta o archivo del repositorio."
+    )
+    coverage_parser.add_argument("--json", action="store_true", help="Salida en JSON.")
     mcp_parser = commands.add_parser(
         "mcp", help="Servidor MCP (stdio) con las reglas de este repositorio para agentes."
     )
@@ -462,6 +470,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1 if _is_root() else run_rule_command(args)
     if args.command == "tools":
         return tools(args)
+    if args.command == "coverage":
+        from scrinium.cli.coverage import run_coverage
+
+        return run_coverage(args.root, args.path, args.json)
     if args.command == "mcp":
         from scrinium.cli.mcp import main as mcp
 

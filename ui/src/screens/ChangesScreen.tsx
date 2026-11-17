@@ -183,6 +183,11 @@ function ChangesResult({ result }: { result: Changes }) {
                   {where(change.before)}
                   {change.after && ` → ${where(change.after)}`}
                 </p>
+                {(change.processes?.length ?? 0) > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {t("Procesos afectados: {0}", (change.processes ?? []).join(", "))}
+                  </p>
+                )}
                 {change.level === "changed" && (
                   <p className="text-xs">
                     {t("Antes")}: <code>{values(change.before)}</code> · {t("Ahora")}: <code>{values(change.after)}</code>

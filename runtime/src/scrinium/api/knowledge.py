@@ -6,6 +6,7 @@ who reviewed on this machine. Without a name, the review is rejected.
 """
 
 import uuid
+from dataclasses import asdict
 from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
@@ -22,6 +23,8 @@ from scrinium.application.knowledge.architecture import architecture
 from scrinium.application.knowledge.common import KnowledgeError, KnowledgeNotFoundError
 from scrinium.application.knowledge.content import RuleContent
 from scrinium.application.knowledge.corrections import correct_rule
+from scrinium.application.knowledge.coverage import coverage
+from scrinium.application.knowledge.doc_conflicts import project_conflicts
 from scrinium.application.knowledge.entities import (
     Provenance,
     create_business_rule,
@@ -30,6 +33,7 @@ from scrinium.application.knowledge.entities import (
 )
 from scrinium.application.knowledge.evidence import record_human_review
 from scrinium.application.knowledge.inbox import health, inbox
+from scrinium.application.knowledge.processes import processes
 from scrinium.application.knowledge.rulebook import export_status
 from scrinium.application.retrieval import edges
 from scrinium.application.workspaces import local_workspace, record_audit, reviewer_name
@@ -345,6 +349,29 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
                 return architecture(session, project.id, path)
             except LookupError:
                 raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
+
+    @router.get("/api/v1/projects/{project_id}/coverage")
+    def project_coverage(
+        project_id: uuid.UUID, path: Annotated[str, Query(max_length=1000)] = ""
+    ) -> dict[str, Any]:
+        """Where the code decides and which decisions have a rule, one level (phase 8.1)."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            return coverage(session, project.id, path)
+
+    @router.get("/api/v1/projects/{project_id}/processes")
+    def project_processes(project_id: uuid.UUID) -> dict[str, Any]:
+        """Entry points and the rules a run goes through, in call order (phase 8.3). No AI."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            return {"processes": processes(session, project.id)}
+
+    @router.get("/api/v1/projects/{project_id}/doc-conflicts")
+    def project_doc_conflicts(project_id: uuid.UUID) -> dict[str, Any]:
+        """Where the project's documents and its code decide differently (phase 8.2)."""
+        with database.session() as session:
+            project = _project(session, project_id)
+            return {"conflicts": [asdict(c) for c in project_conflicts(session, project)]}
 
     @router.get("/api/v1/projects/{project_id}/symbols/{symbol_id}/neighbours")
     def symbol_neighbours(project_id: uuid.UUID, symbol_id: uuid.UUID) -> dict[str, Any]:

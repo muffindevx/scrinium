@@ -17,6 +17,8 @@ UI_ROUTES: Final = frozenset(
     {
         "bandeja",
         "cambios",
+        "cobertura",
+        "procesos",
         "reglas",
         "impacto",
         "versiones",

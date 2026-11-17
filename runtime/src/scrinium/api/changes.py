@@ -22,6 +22,7 @@ from scrinium.application.check.git import LOCAL, GitError, Repository, git
 from scrinium.application.check.history import Commit, rule_history
 from scrinium.application.ingestion import sources
 from scrinium.application.knowledge.anchoring import OldAnchor
+from scrinium.application.knowledge.processes import processes, processes_by_rule
 from scrinium.application.knowledge.rulebook import known_rules
 from scrinium.application.workspaces import local_workspace
 from scrinium.infrastructure.sqlite.database import Database
@@ -144,6 +145,8 @@ def build_changes_router(database: Database) -> APIRouter:
             source = _source(session, project_id, source_id)
             project = session.get_one(Project, project_id)
             rules = known_rules(session, project, source)
+            # Phase 8.4: the processes each rule is a step of.
+            by_rule = processes_by_rule(processes(session, project.id))
             session.expunge(source)
         repository = _repository(source)
         try:
@@ -152,7 +155,13 @@ def build_changes_router(database: Database) -> APIRouter:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown_ref") from None
         if format == "markdown":
             return PlainTextResponse(release_notes(result), media_type="text/markdown")
-        return {**describe(result), "source_id": str(source.id),
+        described = describe(result)
+        affected: list[str] = []
+        for change in described["rules"]:
+            change["processes"] = by_rule.get(change["rule_id"], [])
+            if change["level"] != "moved":
+                affected += [name for name in change["processes"] if name not in affected]
+        return {**described, "processes_affected": affected, "source_id": str(source.id),
                 "compared_at": datetime.now(UTC).isoformat()}  # fmt: skip
 
     @router.get("/api/v1/projects/{project_id}/rules/{entity_id}/history")

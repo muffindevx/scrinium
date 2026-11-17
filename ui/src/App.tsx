@@ -4,6 +4,7 @@ import {
   Cloud,
   FolderGit2,
   GitCompare,
+  Grid2x2,
   House,
   Inbox,
   LockKeyhole,
@@ -15,6 +16,7 @@ import {
   ShieldOff,
   Sparkles,
   TriangleAlert,
+  Workflow,
 } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
 import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from "react-router"
@@ -43,6 +45,8 @@ import {
 } from "@/lib/api"
 import { useFolderDrop } from "@/lib/folder-drop"
 import { ChangesScreen } from "@/screens/ChangesScreen"
+import { ProcessesScreen } from "@/screens/ProcessesScreen"
+import { CoverageScreen } from "@/screens/CoverageScreen"
 import { CommandPalette } from "@/screens/CommandPalette"
 import { HomeScreen } from "@/screens/HomeScreen"
 import { ImpactScreen } from "@/screens/ImpactScreen"
@@ -102,6 +106,8 @@ const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
     group: t("Cambios"),
     items: [
       { path: "/cambios", label: t("Cambios"), icon: GitCompare },
+      { path: "/procesos", label: t("Procesos"), icon: Workflow },
+      { path: "/cobertura", label: t("Cobertura"), icon: Grid2x2 },
       { path: "/impacto", label: t("Triaje"), icon: ScanSearch },
     ],
   },
@@ -358,6 +364,8 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                   />
                 }
               />
+              <Route path="/procesos" element={needsProject((c) => <ProcessesScreen key={c.id} {...props(c)} />)} />
+              <Route path="/cobertura" element={needsProject((c) => <CoverageScreen key={c.id} {...props(c)} />)} />
               <Route path="/cambios" element={needsProject((c) => <ChangesScreen key={c.id} {...props(c)} />)} />
               <Route path="/bandeja" element={needsProject((c) => <InboxScreen key={c.id} {...props(c)} />)} />
               <Route

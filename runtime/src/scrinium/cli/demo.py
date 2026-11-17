@@ -18,10 +18,16 @@ from pathlib import Path
 from typing import Final
 
 from scrinium.application.check.engine import check
-from scrinium.application.check.git import Repository
+from scrinium.application.check.git import Reader, Repository
 from scrinium.application.check.report import to_markdown
 from scrinium.application.check.rule_files import RULES_DIR, FileAnchor, RuleFile, write_all
 from scrinium.application.example import git, seed_repository
+from scrinium.application.knowledge.doc_conflicts import (
+    DocConflict,
+    KnownValues,
+    doc_conflicts,
+    enclosing_code,
+)
 from scrinium.infrastructure.decisions import anchor_for, parse_decisions
 
 DEFAULT_DIR: Final = "scrinium-demo"
@@ -64,6 +70,14 @@ _RULES: Final = (
         ("se piden más de 10 unidades de un producto",),
         ("el pedido se rechaza",),
         "Evita que un solo cliente agote el stock.",
+    ),
+    _Example(
+        "01950000-0000-7000-8000-000000000004",
+        "Los descuentos nunca pasan del 25 % del subtotal",
+        "Los descuentos sumados de un pedido nunca pasan del 25 % de su subtotal.",
+        "tienda/descuentos.py", "min(porcentaje, DESCUENTO_MAXIMO)",
+        ("hay descuentos de cliente y de cupón",), ("se aplica como mucho un 25 %",),
+        "Margen mínimo de la tienda.",
     ),
     _Example(
         "01950000-0000-7000-8000-000000000003",
@@ -148,6 +162,15 @@ def demo(folder: Path) -> int:
         2: "El check no pudo comprobar (codigo 2).",
     }[code]
     print(verdict)
+
+    _step(5, "Lo que dicen los documentos frente al codigo (en main):")
+    conflicts = _doc_conflicts(repo, rules)
+    for conflict in conflicts:
+        print(f"   - {conflict.document}:{conflict.line}: «{conflict.sentence}»")
+        print(f"     dice {', '.join(conflict.says)}; la regla «{conflict.title}» decide con "
+              f"{', '.join(conflict.code)} ({conflict.place})")  # fmt: skip
+    if not conflicts:
+        print("   Ningun documento contradice al codigo.")
     print(
         "\nPara seguir:\n"
         f"  - Ver las reglas en la consola: scrinium start, y anade {repo} como fuente.\n"
@@ -155,3 +178,27 @@ def demo(folder: Path) -> int:
         "  - Nada de esto uso un modelo, la GPU ni la red."
     )
     return 0 if code == 1 else code
+
+
+def _doc_conflicts(repo: Path, rules: list[RuleFile]) -> list[DocConflict]:
+    """The example's policy document against the rules' decisions on `main` (phase 8.2)."""
+    repository = Repository.at(repo)
+    reader = Reader(repository, repository.resolve("main"))
+    known = []
+    for rule in rules:
+        anchor = rule.anchors[0]
+        text = reader.read(anchor.path) or ""
+        found = anchor_for(parse_decisions(anchor.path, text), anchor.start_line, anchor.end_line)
+        if found is not None:
+            known.append(
+                KnownValues(
+                    rule.id,
+                    rule.title or "",
+                    rule.statement,
+                    found.literals,
+                    f"{anchor.path}:{found.start_line}",
+                    enclosing_code(anchor.path, text, found),
+                )
+            )
+    documents = [("docs/politicas.md", reader.read("docs/politicas.md") or "")]
+    return doc_conflicts(known, documents)

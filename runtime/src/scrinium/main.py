@@ -1,6 +1,7 @@
 """Building the local runtime's ASGI application."""
 
 import contextlib
+import uuid
 from collections.abc import Callable
 from concurrent.futures import Executor
 
@@ -30,6 +31,7 @@ from scrinium.application.analysis import extraction
 from scrinium.application.analysis.runs import AnalysisRunner
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion.sources import IngestionRunner, mark_interrupted_runs
+from scrinium.application.knowledge.coverage import prepare_coverage
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.application.workspaces import ensure_local_workspace
 from scrinium.core.config import ModelProvider, RuntimeConfig
@@ -163,9 +165,13 @@ def create_app(
     app.state.analyses = AnalysisRunner(database, llm_service, question_executor)
     analyses = app.state.analyses
     analyses.indexer = runner.indexer
-    runner.after_sync = lambda sync_run_id: extraction.refresh_after_sync(
-        database, llm_service, analyses, sync_run_id
-    )
+
+    def after_sync(sync_run_id: uuid.UUID) -> object:
+        # Coverage's decisions per file revision (phase 8.1), while the files are fresh.
+        prepare_coverage(database, sync_run_id)
+        return extraction.refresh_after_sync(database, llm_service, analyses, sync_run_id)
+
+    runner.after_sync = after_sync
     install_error_handlers(app)
     app.include_router(
         build_router(

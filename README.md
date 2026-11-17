@@ -148,6 +148,8 @@ In the console, ⌘K (Ctrl+K) searches rules, functions, files and tickets by na
 
 - **Changes** compares any two refs of a Git source (branch, tag, commit, or your local changes) with the engine of `scrinium check` and the project's rules: which rules change values, were edited, retired or moved, and which new decisions have no rule yet. It exports business release notes in Markdown.
 - **History** (in each rule) says since when its decision has its current values, and before that which ones, by bisection over the Git log of its file: no model, under 2 s for 300 commits.
+- **Coverage** shows where the code decides (guards, thresholds, tables, validations) and which decisions have a verified rule, a proposal or none, as tiles per folder; `scrinium coverage` prints the same from the repository and `.scrinium/rules/`, without the database. It also lists sentences in the project's documents whose numbers are not the ones the code decides with.
+- **Processes** start at each entry point (an `action_*` handler, an HTTP route, a scheduled job) and list the functions with rules a run goes through, in call order, without a model. Changes and the MCP `check_change` say which processes a changed rule belongs to.
 - **Triage** follows a pasted stack trace (Python, JavaScript or Java/Kotlin) to the project's functions, the rules cited in them, the file's recent commits and its earlier fixes.
 
 ### From source

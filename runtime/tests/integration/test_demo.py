@@ -12,7 +12,7 @@ from scrinium.cli.demo import demo, prepare
 def test_the_demo_breaks_a_rule_and_check_says_so(tmp_path: Path) -> None:
     repo = tmp_path / "demo"
     rules = prepare(repo)
-    assert len(rules) == 3
+    assert len(rules) == 4
     result = check(Repository.at(repo), "main")
     assert result.failed
     assert [finding.title for finding in result.findings] == [
@@ -53,3 +53,17 @@ def test_the_demo_command_runs_without_a_model(tmp_path: Path) -> None:
     assert "Cambia la regla" in result.stdout and "codigo 1" in result.stdout
     # It never touched the data directory.
     assert not (tmp_path / "data").exists()
+
+
+def test_the_demo_finds_the_seeded_document_contradictions(tmp_path: Path) -> None:
+    """Phase 8.2: the policy says 50 EUR and 30 %; the code decides with 40 and 0.25. The two
+    sentences that agree with the code are left alone."""
+    from scrinium.cli.demo import _doc_conflicts
+
+    repo = tmp_path / "demo"
+    rules = prepare(repo)
+    conflicts = _doc_conflicts(repo, rules)
+    assert [(c.line, c.says, c.code) for c in conflicts] == [
+        (3, ("50",), ("40",)),
+        (7, ("30 %",), ("0.25",)),
+    ]
