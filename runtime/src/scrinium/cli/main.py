@@ -25,6 +25,8 @@ from scrinium.application.analysis import extraction
 from scrinium.cli.control import attach, link, stop
 from scrinium.cli.doctor import doctor
 from scrinium.cli.maintenance import UNINSTALL_CONFIRMATION, clean, uninstall
+from scrinium.cli.rules import add_commands as add_rule_commands
+from scrinium.cli.rules import run as run_rule_command
 from scrinium.cli.tools import install_tools, show_tools
 from scrinium.cli.window import close_window, quiet_window_engine, run_window, window_available
 from scrinium.core import instances
@@ -422,8 +424,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--yes", action="store_true", help=f"No pedir que se escriba {UNINSTALL_CONFIRMATION}."
     )
 
+    add_rule_commands(commands)
+
     args = parser.parse_args(argv)
     logging.captureWarnings(True)
+    if args.command in {"check", "hooks"}:
+        return run_rule_command(args)
+    if args.command == "rules":
+        configure_logging(verbose=False)
+        return 1 if _is_root() else run_rule_command(args)
     if args.command == "tools":
         return tools(args)
     if args.command in {"doctor", "stop", "attach", "link", "clean", "uninstall"}:

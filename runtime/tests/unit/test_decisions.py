@@ -80,3 +80,20 @@ def test_anchor_prefers_the_guard_over_what_it_contains() -> None:
 
 def test_unsupported_languages_have_no_decisions() -> None:
     assert parse_decisions("notes.md", "if x > 3: raise") == []
+
+
+def test_a_collection_of_values_keeps_its_shape_whatever_its_size() -> None:
+    # Version 2: removing or swapping a state is the same decision with another value.
+    base = "def f(e):\n    if e.state in {'approved', 'posted', 'paid'}:\n        raise E()\n"
+    fewer = base.replace("'approved', ", "")
+    swapped = base.replace("approved", "draft")
+    reordered = base.replace("'approved', 'posted'", "'posted', 'approved'")
+
+    def guard(text: str) -> tuple[str, str]:
+        found = next(d for d in parse_decisions("a.py", text) if d.kind == "guard")
+        return found.shape, found.value
+
+    shapes = {guard(text)[0] for text in (base, fewer, swapped, reordered)}
+    assert len(shapes) == 1
+    assert len({guard(text)[1] for text in (base, fewer, swapped)}) == 3
+    assert guard(reordered) == guard(base)  # A set has no order.

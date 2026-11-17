@@ -36,6 +36,7 @@ const TASK_HELP: Record<AiTask, string> = {
   rule_statements: "Redactar el enunciado de cada regla.",
   consistency: "Buscar reglas duplicadas o contradictorias.",
   change_impact: "Revisar qué reglas toca un cambio de código.",
+  check_explain: "Explicar en una frase cómo cambia una regla en scrinium check --explain.",
 }
 
 function TaskRow({

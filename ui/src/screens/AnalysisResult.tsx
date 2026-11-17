@@ -71,6 +71,11 @@ function ExtractionResult({ analysis }: { analysis: Analysis }) {
           {strings(result.broken).length} ya no se cumplen.
         </p>
       )}
+      {Number(result.rules_value_changed) > 0 && (
+        <p className="font-medium">
+          {str(result.rules_value_changed)} reglas cambiaron: su código decide ahora con otros valores.
+        </p>
+      )}
       {Number(result.rules_code_removed) > 0 && (
         <Muted>{str(result.rules_code_removed)} reglas perdieron el código que las implementaba.</Muted>
       )}

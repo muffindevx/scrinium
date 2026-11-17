@@ -78,8 +78,9 @@ const PROFILE_LABELS: Record<keyof RuleVersion["profile"], string> = {
 }
 const REVIEW_LABELS: Record<string, string> = {
   source_deleted: "Revisar: se borró una fuente que la respaldaba",
+  rule_changed: "La regla cambió: el código decide con otros valores",
   code_changed: "Revisar: cambió el código que la implementa",
-  code_removed: "Revisar: se eliminó el código que la implementa",
+  code_removed: "Retirada: se eliminó el código que la implementa",
   code_contradicts: "El código ya no la cumple",
   possible_duplicate: "Revisar: posible duplicado",
   contradiction: "Revisar: contradice otra regla",

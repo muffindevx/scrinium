@@ -6,6 +6,7 @@ export const TASK_LABELS: Record<AiTask, string> = {
   rule_statements: "Redacción de reglas",
   consistency: "Revisión de consistencia",
   change_impact: "Impacto de cambios",
+  check_explain: "Explicación del check",
 }
 export const TASKS = Object.keys(TASK_LABELS) as AiTask[]
 

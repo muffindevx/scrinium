@@ -150,7 +150,8 @@ def test_changes_are_flagged_even_without_the_model(api: Api) -> None:
     api.runtime.chat.state = ModelStatus.UNAVAILABLE
     _change(api, COMMISSION.replace("> 100", "> 300"))
     assert api.runtime.chat.received == []
-    assert _rule(api)["review_reason"] == "code_changed"
+    # The same decision with another threshold: the rule changed (phase 2.1).
+    assert _rule(api)["review_reason"] == "rule_changed"
 
 
 def _verify(api: Api) -> None:
@@ -262,3 +263,80 @@ def test_a_rule_merged_by_title_gives_back_its_other_place(api: Api) -> None:
     assert [(e["locator"]["path"], e["locator"]["start_line"]) for e in evidence] == [
         ("src/pagos.py", 2)
     ]
+
+
+def test_a_verified_rule_whose_value_changed_waits_for_a_person(api: Api) -> None:
+    # Phase 2.1: the model may say the rule still holds; the flag stays until a person looks.
+    _verify(api)
+    api.runtime.chat.reply = _reply(existing=[{"ref": "R1", "verdict": "same"}])
+    _change(api, COMMISSION.replace("> 100", "> 150"))
+    assert _rule(api)["review_reason"] == "rule_changed"
+
+
+def test_an_edited_decision_is_to_review_not_changed(api: Api) -> None:
+    # The guard gained a condition: its shape changed, found only by similarity.
+    api.runtime.chat.state = ModelStatus.UNAVAILABLE
+    _change(api, COMMISSION.replace("if total > 100:", "if total > 100 and total < 10000:"))
+    assert _rule(api)["review_reason"] == "code_changed"
+
+
+def _exported(api: Api) -> list[Any]:
+    from sqlalchemy import select
+
+    from scrinium.application.knowledge.rulebook import verified_rules
+    from scrinium.infrastructure.sqlite.models import SourceConnection
+
+    with api.runtime.database.session() as session:
+        source = session.scalars(
+            select(SourceConnection).where(SourceConnection.project_id == uuid.UUID(api.project_id))
+        ).one()
+        return verified_rules(session, uuid.UUID(api.project_id), source.id)
+
+
+def test_only_verified_rules_are_exported_with_their_anchors(api: Api) -> None:
+    from scrinium.application.check.rule_files import parse, render
+
+    assert _exported(api) == []
+    _verify(api)
+    [rule] = _exported(api)
+    assert rule.id == _rule(api)["entity_id"] and rule.verified_by == "Ana"
+    assert [a.path for a in rule.anchors] == ["src/pagos.py"]
+    assert parse(render(rule)) == rule
+    text = render(rule)
+    assert "total" not in text  # No source code in a rule file: paths, lines, fingerprints.
+
+
+def test_verifying_again_moves_the_anchor_to_the_new_values(api: Api) -> None:
+    _verify(api)
+    [before] = _exported(api)
+    api.runtime.chat.reply = _reply(existing=[{"ref": "R1", "verdict": "same"}])
+    _change(api, COMMISSION.replace("> 100", "> 150"))
+    assert _rule(api)["review_reason"] == "rule_changed"
+    # The model said it holds; the file still carries what the person verified.
+    assert _exported(api)[0].anchors == before.anchors
+    _verify(api)
+    [after] = _exported(api)
+    assert _rule(api)["review_reason"] is None
+    assert after.anchors[0].shape == before.anchors[0].shape
+    assert after.anchors[0].value != before.anchors[0].value
+
+
+def test_check_explain_is_one_sentence_from_the_task_model(api: Api) -> None:
+    from scrinium.application.check.explain import Item, explain
+
+    entity_id = _rule(api)["entity_id"]
+    item = Item(
+        rule_id=entity_id, title="Comision por venta", path="src/pagos.py", start_line=2,
+        end_line=3, before="if total > 100:", after="if total > 150:",
+    )  # fmt: skip
+    api.runtime.chat.reply = json.dumps({"explanation": "El umbral pasa de  100 a 150."})
+    api.runtime.chat.received.clear()
+    found = explain(api.runtime.database, api.runtime.llm, [item])
+    assert [(e.rule_id, e.text) for e in found] == [(entity_id, "El umbral pasa de 100 a 150.")]
+    prompt = api.runtime.chat.received[0][1].content
+    assert "if total > 150:" in prompt and "Comision por venta" in prompt
+    # A rule this Scrinium does not know, or a model that is not there: nothing, no error.
+    unknown = item.model_copy(update={"rule_id": str(uuid.uuid4())})
+    assert explain(api.runtime.database, api.runtime.llm, [unknown]) == []
+    api.runtime.chat.state = ModelStatus.UNAVAILABLE
+    assert explain(api.runtime.database, api.runtime.llm, [item]) == []

@@ -1,6 +1,6 @@
 # ADR-012: Verified rules live in the repository, one file per rule
 
-**Status:** proposed, 2026-11-15. Needs the owner's acceptance before phase 3 (rules as code and mirrors) starts. Depends on [ADR-011](ADR-011-rule-identity.md).
+**Status:** proposed, 2026-11-15. Needs the owner's acceptance before phase 3 (rules as code and mirrors) starts. Depends on [ADR-011](ADR-011-rule-identity.md). Since 2026-11-16 (phase 2), the part of the file `scrinium check` reads is in use, brought forward with the owner's agreement: see [What phase 2 implements](#what-phase-2-implements).
 
 ## The question
 
@@ -70,6 +70,44 @@ Re-extraction skips any candidate whose shape matches a tombstone. If the code c
 
 `export → import → export` must produce identical files. A clean clone plus `import` must reproduce the verified rulebook.
 
+### What phase 2 implements
+
+`scrinium check` needs the anchors of the verified rules, and CI has no database, so the owner agreed (2026-11-16) to bring forward the part of the file the check reads and a basic export. Phase 3 completes the rest without changing these keys.
+
+```markdown
+---
+scrinium: 1
+id: 0193a1c2-7f00-7c3e-9a1b-2f6d4e8c1a55
+title: "Descuento VIP"
+status: verified
+verified_by: "Ana Pérez"
+verified_at: "2026-11-20T10:14:00Z"
+anchors:
+  - path: "src/billing/discount.ts"
+    symbol: "discountFor"
+    kind: guard
+    lines: [40, 44]
+    shape: "9f2c…e1"
+    value: "4b7a…07"
+    sketch: "1ed1…8c"
+    decisions: "2"
+---
+When a customer is VIP and the subtotal is 100 or more, the discount is 10 %.
+```
+
+How it differs from the sketch above, and why:
+
+- **`scrinium: 1`**, the format version: a reader that meets a newer one stops with an error instead of guessing.
+- **`title`**: the rule's name in the check's report, so a failing pull request says which rule without opening the file.
+- **No `source` key.** Each source has its own `.scrinium/rules/` (point 6 above: subfolders of a monorepo can be sources), so the folder says the source and paths are relative to it.
+- **`kind`, `sketch` and `decisions`**: the decision's kind, its MinHash sketch (to find it again after a real edit, as the rule watch does) and the version of the decision extractor. Fingerprints from another version are never compared as they are: `scrinium check` computes them again from the base commit (the code the file was written against), and the next export rewrites them.
+- **Strings in JSON quoting.** Valid YAML, and a fingerprint such as `0789` or `1e5` is never read as a number by any YAML reader.
+- **A strict reader.** The reader accepts only this subset (scalars and one list of flat mappings) and names the line of anything else. A broken rule file makes the check exit with 2 ("could not check"), never pass.
+
+`scrinium rules export` writes the latest human-verified version of each rule cited in the source; a later version the model proposed after a code change is not exported until a person verifies it, so the file keeps saying what a person agreed to. Provenance, WHEN and THEN, the reason, tombstones and `import` are phase 3.
+
+**Exit codes of `scrinium check`.** 0: no verified rule changed. 1: a verified rule's decision has other values and the same change does not update its file (with `--strict`, also a rule to review or retired). 2: the check could not run (no base in the clone, a broken rule file).
+
 ## What this enables
 
 - **`scrinium check` in CI without a server**: it reads `.scrinium/rules/`, parses only the changed files and compares fingerprints (phase 2).
@@ -103,7 +141,7 @@ Re-extraction skips any candidate whose shape matches a tombstone. If the code c
 ## What this does not cover
 
 - How identity and fingerprints are computed: [ADR-011](ADR-011-rule-identity.md).
-- Warning levels and exit codes of `scrinium check`: phase 2.
+- Warning levels of `scrinium check`: [internals](../scrinium-internals.md) (exit codes above).
 - Ticket links in the files: [ADR-014](ADR-014-ticket-connectors.md) decides what is stored.
 
 ## Consequences

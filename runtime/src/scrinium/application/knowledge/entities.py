@@ -66,6 +66,8 @@ FLOW_ENTITY_TYPES: Final = frozenset(
 _TYPED_ENTITIES: Final = FLOW_ENTITY_TYPES | {EntityType.BUSINESS_RULE}
 _GENERATED: Final = frozenset({VersionOrigin.SOURCE_EXTRACTION, VersionOrigin.DERIVED_ANALYSIS})
 _REVIEWED: Final = frozenset({VerificationStatus.HUMAN_VERIFIED, VerificationStatus.REJECTED})
+# The rule watch's reasons for drift (watch.py, which imports this module).
+_DRIFT_REASONS: Final = frozenset({"rule_changed", "code_changed"})
 # Methods the code checks. An LLM proposal never backs anything by itself.
 _CHECKED_METHODS: Final = (VerificationMethod.DIRECT_REFERENCE, VerificationMethod.STATIC_ANALYSIS)
 
@@ -464,6 +466,11 @@ def set_verification(
     if reviewer is not None:
         version.reviewed_by, version.reviewed_at = reviewer, utc_now()
     entity = get_in_project(session, KnowledgeEntity, project, version.knowledge_entity_id)
+    if status is VerificationStatus.HUMAN_VERIFIED and entity.review_reason in _DRIFT_REASONS:
+        # What the person verified is the code as it is now: anchors move there (phase 2.1).
+        from scrinium.application.knowledge.watch import cite_current
+
+        cite_current(session, project.id, version.id)
     if status is VerificationStatus.HUMAN_VERIFIED and (
         entity.lifecycle_status is EntityLifecycle.PROPOSED
     ):

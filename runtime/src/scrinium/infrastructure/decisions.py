@@ -17,6 +17,12 @@ Normalising drops comments and whitespace, renames local variables in order of a
 sorts the operands of commutative operators and turns `b > a` into `a < b`. So formatting,
 renaming a local or swapping operands changes neither fingerprint; changing a threshold
 changes `value` only.
+
+A collection or table made only of values (`{'approved', 'posted'}`, a list of selection pairs,
+a mapping of states to labels) has the shape of the kinds it holds, not of how many: adding or
+removing a state, an entry or a row is a change of `value` ("the rule changed"), like a new
+threshold. A set's values are sorted, and so are a table's entries by key: their order means
+nothing.
 """
 
 import hashlib
@@ -32,8 +38,10 @@ from tree_sitter import Node
 
 from scrinium.infrastructure.code_structure import _parser, language_for, parse_symbols
 
-# Raising it re-fingerprints every node: anchors computed with another version are not compared.
-DECISIONS_VERSION: Final = "1"
+# Raising it re-fingerprints every node. Anchors computed with another version are computed again
+# from the code they cite (the cited revision, or the base commit in `scrinium check`), never
+# compared as they are. Version 2: a collection of values has the same shape whatever its size.
+DECISIONS_VERSION: Final = "2"
 
 
 class Kind:
@@ -156,7 +164,48 @@ class _Canon:
             value = node.child_by_field_name("value")
             rendered = self(value) if value is not None else ""
             return f"{_text(node.child_by_field_name('name'))}={rendered}"
-        return self._operator(node) or self._generic(node)
+        return self._values(node) or self._operator(node) or self._generic(node)
+
+    def _pure(self, node: Node) -> bool:
+        """A literal, a constant, or a collection or table of those: values, no logic."""
+        if node.type in _LITERALS:
+            return True
+        if node.type == "identifier":
+            return bool(_CONSTANT_NAME.match(_text(node)))
+        if node.type in _COLLECTIONS:
+            return all(self._pure(item) for item in _items(node))
+        if node.type in _MAPPINGS:
+            for pair in _items(node):
+                key, value = pair.child_by_field_name("key"), pair.child_by_field_name("value")
+                if pair.type != "pair" or key is None or value is None:
+                    return False
+                if not (key.type in _PROPERTY_NAMES or self._pure(key)) or not self._pure(value):
+                    return False
+            return True
+        return False
+
+    def _values(self, node: Node) -> str | None:
+        """A collection or table of values: its shape is the kinds it holds (version 2)."""
+        if node.type not in _COLLECTIONS | _MAPPINGS or not self._pure(node):
+            return None
+        if node.type in _COLLECTIONS:
+            items = [self(item) for item in _items(node)]
+            if not self.keep_values:
+                return f"(values {' '.join(sorted(set(items)))})"
+            ordered = sorted(items) if node.type == "set" else items
+            return f"(values {node.type} {' '.join(ordered)})"
+        pairs = []
+        for pair in _items(node):
+            key, value = pair.child_by_field_name("key"), pair.child_by_field_name("value")
+            if key is None or value is None:
+                continue  # Not possible after _pure; it keeps the types narrow.
+            name = _text(key) if key.type in _PROPERTY_NAMES and self.keep_values else (
+                "STR" if key.type in _PROPERTY_NAMES else self(key)
+            )  # fmt: skip
+            pairs.append(f"{name}:{self(value)}")
+        if not self.keep_values:
+            return f"(table {' '.join(sorted(set(pairs)))})"
+        return f"(table {' '.join(sorted(pairs))})"
 
     def _operator(self, node: Node) -> str | None:
         """Binary comparisons and logic: flip `>`, sort commutative operands."""
@@ -286,6 +335,10 @@ _WRAPPERS: Final = frozenset(
     {"parenthesized_expression", "conditional_expression", "ternary_expression"}
 )
 _MAX_GUARD_LINES: Final = 40
+
+
+def _items(node: Node) -> list[Node]:
+    return [child for child in node.named_children if "comment" not in child.type]
 
 
 def _children(node: Node) -> list[Node]:
@@ -703,12 +756,20 @@ def _parse_sql(text: str) -> list[Decision]:
 # --- Entry points -----------------------------------------------------------------------------
 
 
+_CODE_LANGUAGES: Final = frozenset({"python", "typescript", "tsx", "javascript"})
+
+
+def supports(path: str) -> bool:
+    """Whether decisions are found in files like this one."""
+    return path.lower().endswith(".sql") or language_for(path) in _CODE_LANGUAGES
+
+
 def parse_decisions(path: str, text: str) -> list[Decision]:
     """The decisions of a code file, by first line; [] for languages without support."""
     if path.lower().endswith(".sql"):
         return _parse_sql(text)
     language = language_for(path)
-    if language not in {"python", "typescript", "tsx", "javascript"}:
+    if language not in _CODE_LANGUAGES:
         return []
     return sorted(_parse_code(path, text, language), key=lambda d: (d.start_line, d.end_line))
 

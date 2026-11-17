@@ -38,6 +38,8 @@ class AiTask(StrEnum):
     RULE_STATEMENTS = "rule_statements"
     CONSISTENCY = "consistency"
     CHANGE_IMPACT = "change_impact"
+    # One sentence on how a verified rule drifted, for `scrinium check --explain` (phase 2.4).
+    CHECK_EXPLAIN = "check_explain"
 
 
 class ConnectionStatus(StrEnum):

@@ -38,7 +38,7 @@ dependencies = [
 window = ["pywebview[qt]>=6; sys_platform == 'linux'"]
 
 [project.scripts]
-scrinium = "scrinium.cli.main:main"
+scrinium = "scrinium.cli.entry:main"
 
 [tool.uv]
 # anthropic's jiter 0.19.0 was eight days old when the SDK was added (2026-11-14).

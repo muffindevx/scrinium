@@ -141,9 +141,13 @@ def anchor_of(path: str, revision: SourceRevision, start: int, end: int) -> dict
 
 def anchored_locator(session: Session, evidence: EvidenceRecord) -> dict[str, Any]:
     """The citation's locator with its source and anchor. Citations from before anchors
-    (ADR-011, 1.6) get them derived from their cited revision, which never changes: the same
-    result as if they had been stored, without rewriting evidence (it is append-only)."""
+    (ADR-011, 1.6), or whose anchor another version of the decision extractor computed, get it
+    derived from their cited revision, which never changes: the same result as if it had been
+    stored, without rewriting evidence (it is append-only)."""
     locator = dict(evidence.locator or {})
+    stored = locator.get("anchor")
+    if isinstance(stored, dict) and str(stored.get("version")) != DECISIONS_VERSION:
+        del locator["anchor"]
     if evidence.source_revision_id is None or ("anchor" in locator and "source_id" in locator):
         return locator
     revision = session.get(SourceRevision, evidence.source_revision_id)

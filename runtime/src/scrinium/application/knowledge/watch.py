@@ -9,10 +9,18 @@ For each rule it looks at the latest citation in each file and the functions it 
 - the function or the file is gone: "Review: code removed".
 
 A citation with an anchor (ADR-011) is followed by its decision instead of its function
-(`reanchor`): the same decision with the same value, wherever it moved, keeps the rule as it is
-and is cited again at its new lines; another value flags it; a decision found nowhere flags it as
-changed while its function exists, and as removed otherwise. A file renamed without edits is
-found by its content.
+(`reanchor`), and the drift has three levels (phase 2.1):
+
+- **value:** the same decision (same shape) with other values, "the rule changed": the threshold,
+  the state or the table now says something else. It is the level `scrinium check` fails on;
+- **shape:** the decision was edited in place (found only by similarity) or is gone while its
+  function is still there, "review": the rule may still hold;
+- **removed:** neither the decision nor its function is there, "retired".
+
+The same decision with the same value, wherever it moved, keeps the rule as it is and is cited
+again at its new lines; a change elsewhere in its function marks nothing. A file renamed without
+edits is found by its content. A citation without an anchor (no decision node there) is compared
+by function, and its cited lines still being in the function, word for word, mark nothing.
 """
 
 import uuid
@@ -22,7 +30,7 @@ from typing import Final
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from scrinium.application.knowledge.anchoring import Match, OldAnchor, reanchor
+from scrinium.application.knowledge.anchoring import FUZZY, Match, OldAnchor, reanchor
 from scrinium.application.knowledge.common import KnowledgeError
 from scrinium.application.knowledge.evidence import anchored_locator, cite_source, decisions_of
 from scrinium.application.knowledge.files import file_key, source_of
@@ -41,10 +49,16 @@ from scrinium.infrastructure.sqlite.models import (
     SourceRevision,
 )
 
+# The three levels of drift, most urgent first.
+REVIEW_RULE_CHANGED: Final = "rule_changed"
 REVIEW_CODE_CHANGED: Final = "code_changed"
 REVIEW_CODE_REMOVED: Final = "code_removed"
 REVIEW_CODE_CONTRADICTS: Final = "code_contradicts"
-WATCH_REASONS: Final = frozenset({REVIEW_CODE_CHANGED, REVIEW_CODE_REMOVED})
+WATCH_REASONS: Final = frozenset({REVIEW_RULE_CHANGED, REVIEW_CODE_CHANGED, REVIEW_CODE_REMOVED})
+
+# Level of a changed citation.
+VALUE: Final = "value"
+SHAPE: Final = "shape"
 
 
 @dataclass(frozen=True)
@@ -56,6 +70,7 @@ class ChangedCode:
     symbol: str
     start_line: int
     end_line: int
+    level: str = SHAPE
 
 
 @dataclass
@@ -67,8 +82,17 @@ class WatchedRule:
     changed: list[ChangedCode] = field(default_factory=list)
     removed: bool = False
 
+    @property
+    def reason(self) -> str | None:
+        """The review reason of its most urgent drift; None if nothing drifted."""
+        if any(change.level == VALUE for change in self.changed):
+            return REVIEW_RULE_CHANGED
+        if self.changed:
+            return REVIEW_CODE_CHANGED
+        return REVIEW_CODE_REMOVED if self.removed else None
 
-def _latest_citations(session: Session, version_id: uuid.UUID) -> list[EvidenceRecord]:
+
+def latest_citations(session: Session, version_id: uuid.UUID) -> list[EvidenceRecord]:
     """The latest citation in each file: earlier ones are history."""
     rows = session.execute(
         select(EvidenceRecord, SourceRevision)
@@ -181,10 +205,12 @@ def _compare_anchored(
         revision = followed.revisions[match.path]
         if match.value_changed(anchor):
             decision = match.decision
+            # Found by similarity, the decision itself was edited: its shape changed.
+            level = SHAPE if match.how == FUZZY else VALUE
             rule.changed.append(
                 ChangedCode(
                     revision.id, _path(revision), decision.symbol or "", decision.start_line,
-                    decision.end_line,
+                    decision.end_line, level,
                 )
             )  # fmt: skip
         else:
@@ -228,6 +254,20 @@ def _recite(session: Session, project_id: uuid.UUID, followed: _Followed) -> Non
             continue
 
 
+def cite_current(session: Session, project_id: uuid.UUID, version_id: uuid.UUID) -> int:
+    """A person verified a rule whose code drifted: its version is cited again where each
+    decision is now, with the values it has now, so the next drift is measured from what the
+    person saw (phase 2.1). Returns how many citations moved."""
+    followed = _follow(session, project_id, latest_citations(session, version_id))
+    by_id = {evidence.id: evidence for evidence in latest_citations(session, version_id)}
+    followed.recite = [
+        (by_id[key], match) for key, match in followed.matches.items() if key in by_id
+    ]
+    _recite(session, project_id, followed)
+    session.flush()
+    return len(followed.recite)
+
+
 def _compare(session: Session, evidence: EvidenceRecord, rule: WatchedRule) -> bool:
     """Compares a citation with the current code. True if the cited code still exists."""
     cited = session.get(SourceRevision, evidence.source_revision_id)
@@ -252,6 +292,7 @@ def _compare(session: Session, evidence: EvidenceRecord, rule: WatchedRule) -> b
         excerpt = evidence.excerpt or ""
         return bool(excerpt) and excerpt in (current.text_content or "")
     current_symbols = {s.qualified_name: s for s in _symbols(session, current_id)}
+    current_lines: list[str] | None = None
     found = False
     for symbol in covering:
         now = current_symbols.get(symbol.qualified_name)
@@ -259,6 +300,12 @@ def _compare(session: Session, evidence: EvidenceRecord, rule: WatchedRule) -> b
             continue
         found = True
         if now.logic_hash != symbol.logic_hash:
+            if current_lines is None:
+                current_text = session.get_one(SourceRevision, current_id).text_content or ""
+                current_lines = current_text.splitlines()
+            body = current_lines[now.start_line - 1 : now.end_line]
+            if _still_cites(evidence.excerpt or "", body):
+                continue  # The function changed elsewhere: the cited lines are intact.
             rule.changed.append(
                 ChangedCode(
                     current_id, cited.metadata_.get("path", ""), now.qualified_name,
@@ -266,6 +313,15 @@ def _compare(session: Session, evidence: EvidenceRecord, rule: WatchedRule) -> b
                 )
             )  # fmt: skip
     return found
+
+
+def _still_cites(excerpt: str, body: list[str]) -> bool:
+    """Whether the cited lines are still in the function, word for word (indentation aside)."""
+    cited = [line.strip() for line in excerpt.splitlines() if line.strip()]
+    if not cited:
+        return False
+    lines = [line.strip() for line in body if line.strip()]
+    return any(lines[i : i + len(cited)] == cited for i in range(len(lines) - len(cited) + 1))
 
 
 def detect_changes(session: Session, project_id: uuid.UUID) -> list[WatchedRule]:
@@ -292,7 +348,7 @@ def detect_changes(session: Session, project_id: uuid.UUID) -> list[WatchedRule]
         if version is None:
             continue
         content = session.get(BusinessRuleVersion, version.id)
-        citations = _latest_citations(session, version.id)
+        citations = latest_citations(session, version.id)
         if content is None or not citations:
             continue
         rule = WatchedRule(entity.id, version.id, content.title, content.statement)
@@ -308,11 +364,9 @@ def detect_changes(session: Session, project_id: uuid.UUID) -> list[WatchedRule]
             for evidence in citations
         ]
         rule.removed = not any(still_there)
-        if rule.changed:
-            entity.review_reason = REVIEW_CODE_CHANGED
-            watched.append(rule)
-        elif rule.removed:
-            entity.review_reason = REVIEW_CODE_REMOVED
+        reason = rule.reason
+        if reason is not None:
+            entity.review_reason = reason
             watched.append(rule)
         elif entity.review_reason in WATCH_REASONS:
             # The code went back to what it was (or was re-anchored): nothing left to review.

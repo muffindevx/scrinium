@@ -808,7 +808,13 @@ export const mergeRules = async (projectId: string, keepId: string, duplicateId:
 // Remote model providers and each project's consent (ADR-010). The API key is sent once, on
 // registration, and never comes back: only whether there is one and its last characters.
 export type ProviderKind = "openai_compatible" | "anthropic"
-export type AiTask = "questions" | "rule_map" | "rule_statements" | "consistency" | "change_impact"
+export type AiTask =
+  | "questions"
+  | "rule_map"
+  | "rule_statements"
+  | "consistency"
+  | "change_impact"
+  | "check_explain"
 
 export interface ModelProvider {
   id: string

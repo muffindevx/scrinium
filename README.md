@@ -109,6 +109,12 @@ For the window on Linux, install `"scrinium[window] @ file://$PWD/dist/scrinium-
   - leftovers from stopped processes.
 
   It shows how much space it frees and asks for confirmation. It never touches projects, rules or questions.
+- **Verified rules in the repository and in CI.**
+  - `scrinium rules export` writes the verified rules of a source into its `.scrinium/rules/`, one file per rule: paths, lines and fingerprints, never code. Commit the folder. `--project` and `--source` choose when there are several.
+  - `scrinium check --base main` fails (exit code 1) when the change gives a verified rule's decision other values and does not update that rule's file too. It needs no Scrinium data, no model and no network, and takes under a second on a typical change. `--format sarif` is for code-scanning annotations, `json` for scripts; Markdown is the default. `--include-local` also checks what is not committed; `--staged`, only what is staged for the next commit. In CI, clone with the base branch (`fetch-depth: 0` on GitHub Actions).
+  - Edits that may matter but keep the values (a guard that gained a condition) and rules whose code is gone are warnings; `--strict` fails on them too.
+  - `scrinium hooks install` runs the check before each commit, on what the commit records (`--staged`); `scrinium hooks uninstall` removes it. An existing shell hook keeps working: Scrinium adds its own marked block and removes only that.
+  - `--explain` asks the running Scrinium for one sentence per changed rule ("the threshold goes from 100 to 150"), with the model of the project's "Explicación del check" task. It is only a comment: the exit code does not change.
 - **Uninstalling.** `scrinium uninstall` stops Scrinium and deletes everything: data, tools, models, keyring credentials and the program. It asks you to type BORRAR. uv stays, because other programs may use it.
 
 ### From source

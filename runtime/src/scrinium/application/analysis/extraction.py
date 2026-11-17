@@ -63,6 +63,7 @@ from scrinium.application.knowledge.split import split_title_merges
 from scrinium.application.knowledge.tickets import label_rules
 from scrinium.application.knowledge.watch import (
     REVIEW_CODE_CONTRADICTS,
+    REVIEW_RULE_CHANGED,
     WatchedRule,
     detect_changes,
 )
@@ -413,6 +414,7 @@ def select_work(
         "failed_before": state.failed,
         "pending": len(fragments),
         "rules_to_review": sum(1 for rule in watched if rule.changed),
+        "rules_value_changed": sum(1 for rule in watched if rule.reason == REVIEW_RULE_CHANGED),
         "rules_code_removed": sum(1 for rule in watched if rule.removed and not rule.changed),
     }
     return fragments, stats
@@ -694,6 +696,13 @@ def _reviewed_version(session: Session, entity_id: uuid.UUID) -> KnowledgeEntity
     )
 
 
+def _verified(session: Session, entity_id: uuid.UUID) -> bool:
+    reviewed = _reviewed_version(session, entity_id)
+    return (
+        reviewed is not None and reviewed.verification_status is VerificationStatus.HUMAN_VERIFIED
+    )
+
+
 def _cite_rule(
     session: Session,
     project: Project,
@@ -784,6 +793,9 @@ def apply_verdicts(
         entity = session.get(KnowledgeEntity, item.rule.entity_id)
         if entity is None:
             continue
+        # A verified rule whose values changed waits for a person: the model's verdict is
+        # recorded, but it does not clear the flag (phase 2.1).
+        held = entity.review_reason == REVIEW_RULE_CHANGED and _verified(session, entity.id)
         try:
             version_id = item.rule.version_id
             role = EvidenceRole.SUPPORTS
@@ -798,7 +810,7 @@ def apply_verdicts(
                 )  # fmt: skip
                 version, _ = add_rule_version(session, project, entity.id, content, provenance)
                 version_id = version.knowledge_entity_version_id
-                entity.review_reason = None
+                entity.review_reason = REVIEW_RULE_CHANGED if held else None
                 outcome["adjusted"].append(str(entity.id))
             elif item.verdict == "broken":
                 # The contradicting citation anchors the rule to the new code: it is not asked again
@@ -807,8 +819,12 @@ def apply_verdicts(
                 entity.review_reason = REVIEW_CODE_CONTRADICTS
                 outcome["broken"].append(str(entity.id))
             else:
-                entity.review_reason = None
+                entity.review_reason = REVIEW_RULE_CHANGED if held else None
                 outcome["kept"].append(str(entity.id))
+            if held and role is EvidenceRole.SUPPORTS and version_id == item.rule.version_id:
+                # The verified version is not cited at the new code: its drift is measured from
+                # what the person verified until a person verifies again (cite_current).
+                continue
             cite_source(
                 session, project, entity_id=entity.id, revision_id=fragment.revision_id,
                 start_line=fragment.start_line, end_line=fragment.end_line, role=role,

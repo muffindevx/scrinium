@@ -1,4 +1,5 @@
-"""Control routes for the command line: `scrinium stop`, `attach` and `link`.
+"""Control routes for the command line: `scrinium stop`, `attach`, `link` and
+`check --explain`.
 
 LocalGuardMiddleware protects them: the instance-registry key and no Origin.
 """
@@ -11,10 +12,14 @@ from typing import Any, Final
 
 from fastapi import APIRouter, Request, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
+from scrinium.application.ai.service import LlmService
+from scrinium.application.check.explain import MAX_ITEMS, Item, explain
 from scrinium.core.config import RuntimeConfig
 from scrinium.core.log_hub import HUB
 from scrinium.core.session import LAUNCH_TOKEN_TTL_SECONDS, LocalSessionManager
+from scrinium.infrastructure.sqlite.database import Database
 
 # Short: when Scrinium stops, the thread waiting here finishes right away.
 _HEARTBEAT_SECONDS: Final = 2
@@ -22,8 +27,31 @@ _HEARTBEAT_SECONDS: Final = 2
 logger = logging.getLogger("scrinium.control")
 
 
-def build_control_router(config: RuntimeConfig, sessions: LocalSessionManager) -> APIRouter:
+class ExplainBody(BaseModel):
+    items: list[Item] = Field(max_length=MAX_ITEMS)
+
+
+def build_control_router(
+    config: RuntimeConfig,
+    sessions: LocalSessionManager,
+    database: Database | None = None,
+    llm: LlmService | None = None,
+) -> APIRouter:
     router = APIRouter()
+
+    @router.post("/control/check-explain")
+    def check_explain(body: ExplainBody) -> dict[str, Any]:
+        """One sentence per drift found by `scrinium check` (phase 2.4). Only a comment: the
+        check decided before asking, and its exit code does not depend on this."""
+        if database is None or llm is None:
+            return {"explanations": []}
+        found = explain(database, llm, body.items)
+        return {
+            "explanations": [
+                {"rule_id": e.rule_id, "path": e.path, "start_line": e.start_line, "text": e.text}
+                for e in found
+            ]
+        }
 
     @router.post("/control/launch-link")
     def launch_link() -> dict[str, Any]:
