@@ -144,6 +144,10 @@ Answers are JSON in tiers of trust: `verified` (a person confirmed them), `unver
 
 In the console, ⌘K (Ctrl+K) searches rules, functions, files and tickets by name.
 
+### Clone by URL
+
+A Git source can also be an `https://` address: Scrinium clones only the latest commit of the main branch into its data directory, runs nothing from the repository (no checkout, no hooks), and uses this machine's Git credentials for private repositories. Each sync fetches the branch's latest commit first; that is the only network access of a sync, and only for sources added this way.
+
 ### Changes, history and triage
 
 - **Changes** compares any two refs of a Git source (branch, tag, commit, or your local changes) with the engine of `scrinium check` and the project's rules: which rules change values, were edited, retired or moved, and which new decisions have no rule yet. It exports business release notes in Markdown.

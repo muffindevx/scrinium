@@ -1,5 +1,6 @@
 """HTTP boundaries of the local runtime. Anything not explicitly allowed is rejected."""
 
+import hashlib
 import hmac
 import logging
 import time
@@ -235,3 +236,64 @@ class BodyLimitMiddleware:
             return await receive()
 
         await self.app(scope, replay, send)
+
+
+class ETagMiddleware:
+    """Weak ETags on the API's JSON answers to GET (phase 9.4).
+
+    The body is fingerprinted once it is built; if the browser already holds that version
+    (`If-None-Match`), the answer is a 304 with no body. Streams (server-sent events, exports)
+    and anything that is not JSON pass through untouched. It saves the transfer and the
+    console's re-rendering of large lists; the server still builds the answer.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if (
+            scope["type"] != "http"
+            or scope["method"] != "GET"
+            or not scope["path"].startswith("/api/")
+            or scope["path"].endswith("/events")
+        ):
+            await self.app(scope, receive, send)
+            return
+        asked = next(
+            (value.decode() for key, value in scope["headers"] if key == b"if-none-match"), None
+        )
+        start: Message | None = None
+        chunks: list[bytes] = []
+        passthrough = False
+
+        async def capture(message: Message) -> None:
+            nonlocal start, passthrough
+            if passthrough:
+                await send(message)
+                return
+            if message["type"] == "http.response.start":
+                headers = dict(message.get("headers", []))
+                json_answer = headers.get(b"content-type", b"").startswith(b"application/json")
+                if message["status"] != 200 or not json_answer:
+                    passthrough = True
+                    await send(message)
+                    return
+                start = message
+                return
+            chunks.append(message.get("body", b""))
+            if message.get("more_body"):
+                return
+            body = b"".join(chunks)
+            tag = f'W/"{hashlib.blake2b(body, digest_size=16).hexdigest()}"'
+            opened = start or {"type": "http.response.start", "status": 200, "headers": []}
+            answer = [(k, v) for k, v in opened.get("headers", []) if k != b"content-length"]
+            answer.append((b"etag", tag.encode()))
+            if asked is not None and tag in {value.strip() for value in asked.split(",")}:
+                await send({"type": "http.response.start", "status": 304, "headers": answer})
+                await send({"type": "http.response.body", "body": b""})
+                return
+            answer.append((b"content-length", str(len(body)).encode()))
+            await send({**opened, "headers": answer})
+            await send({"type": "http.response.body", "body": body})
+
+        await self.app(scope, receive, capture)

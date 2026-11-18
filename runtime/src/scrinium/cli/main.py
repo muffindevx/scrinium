@@ -22,6 +22,7 @@ import uvicorn
 
 from scrinium import __version__
 from scrinium.application.analysis import extraction
+from scrinium.application.privacy.erasure import retry_pending_purges
 from scrinium.cli.control import attach, link, stop
 from scrinium.cli.doctor import doctor
 from scrinium.cli.maintenance import UNINSTALL_CONFIRMATION, clean, uninstall
@@ -280,6 +281,13 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
     launch_url = f"{config.allowed_origin}/auth/launch?token={sessions.issue_launch_token()}"
 
     app = create_app(config, sessions, database, environment)
+    # Jobs a closed Scrinium left halfway (phase 9.2): back to the queue, then run.
+    app.state.jobs.recover()
+    app.state.ingestion.submit_jobs()
+    # Purges a failed deletion left to do (R3): before anything else reads the files.
+    if retry_pending_purges(database, app.state.ingestion.indexer):
+        print("Quedan purgas pendientes de un borrado anterior; se reintentaran al arrancar.",
+              file=sys.stderr, flush=True)  # fmt: skip
     # Rule extractions left halfway at shutdown: they resume by themselves.
     if app.state.analyses.llm.status() is ModelStatus.READY:
         extraction.resume_pending(database, app.state.analyses.llm, app.state.analyses)

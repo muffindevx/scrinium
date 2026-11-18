@@ -106,7 +106,9 @@ def resolve_root(kind: SourceKind, raw_path: str, data_dir: Path) -> Path:
         raise SourceError(SourceErrorCode.WRONG_OWNER)
     data = data_dir.resolve()
     # Scrinium does not index itself: the database would end up inside its own index.
-    if data.is_relative_to(root) or root.is_relative_to(data):
+    # A clone Scrinium made by URL (phase 9.6) lives under the data directory on purpose.
+    clones = data / "clones"
+    if (data.is_relative_to(root) or root.is_relative_to(data)) and not root.is_relative_to(clones):
         raise SourceError(SourceErrorCode.CONTAINS_SCRINIUM_DATA)
     if kind is SourceKind.FOLDER and not folder_reader.folders_supported():
         raise SourceError(SourceErrorCode.FOLDERS_UNSUPPORTED)

@@ -26,6 +26,21 @@ export function usePolledAnalysis(analysisId: string | null, onSessionLost: (err
     if (!analysisId) return
     let stopped = false
     let timer: number | undefined
+    // Server-sent events (phase 9.4): the server says when it changes. If the stream cannot
+    // open or breaks, it falls back to asking every POLL_MS.
+    let source: EventSource | null = null
+    if (typeof EventSource !== "undefined") {
+      source = new EventSource(`/api/v1/analyses/${analysisId}/events`)
+      source.addEventListener("analysis", (event) => {
+        if (!stopped) setAnalysis(JSON.parse((event as MessageEvent<string>).data) as Analysis)
+      })
+      source.addEventListener("end", () => source?.close())
+      source.onerror = () => {
+        source?.close()
+        source = null
+        if (!stopped) void load()
+      }
+    }
     const load = () =>
       getAnalysis(analysisId)
         .then((loaded) => {
@@ -36,9 +51,10 @@ export function usePolledAnalysis(analysisId: string | null, onSessionLost: (err
         .catch((error: unknown) => {
           if (!stopped && !(error instanceof ApiError)) onSessionLost(error)
         })
-    void load()
+    if (!source) void load()
     return () => {
       stopped = true
+      source?.close()
       window.clearTimeout(timer)
     }
   }, [analysisId, onSessionLost])

@@ -39,6 +39,9 @@ class GitErrorCode(StrEnum):
     NOT_A_REPOSITORY = "not_a_git_repository"
     NOT_REPOSITORY_ROOT = "not_repository_root"
     EMPTY_REPOSITORY = "empty_repository"
+    # A partial clone (`--filter=blob:none`) without the file's content: Scrinium never
+    # downloads it (2.4). The person runs `git fetch` or clones in full.
+    PARTIAL_CLONE = "partial_clone"
     FAILED = "git_failed"
 
 
@@ -203,6 +206,8 @@ class GitRepository:
                 stdin.write(blob.encode("ascii") + b"\n")
                 stdin.flush()
                 header = stdout.readline().decode("ascii").split()
+                if len(header) == 2 and header[1] == "missing" and self.is_partial():
+                    raise GitError(GitErrorCode.PARTIAL_CLONE)
                 if len(header) != 3 or header[1] != "blob":
                     raise GitError(GitErrorCode.FAILED)
                 data = stdout.read(int(header[2]))
@@ -212,6 +217,16 @@ class GitRepository:
             stdin.close()
             process.kill()
             process.wait(timeout=_TIMEOUT_SECONDS)
+
+    def is_partial(self) -> bool:
+        """A partial clone: a promisor remote or `extensions.partialClone` in its config."""
+        try:
+            config = self._run(
+                "config", "--get-regexp", r"^(extensions\.partialclone|remote\..*\.promisor)$"
+            )
+        except GitError:
+            return False
+        return bool(config.strip())
 
     def tags(self) -> list[Tag]:
         """Tags pointing to a commit. Those that are not valid UTF-8 or point to something else

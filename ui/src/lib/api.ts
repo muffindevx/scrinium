@@ -101,6 +101,8 @@ export interface SourceRequest {
   exclude_patterns: string[]
   /** Generated code (`@generated`, `DO NOT EDIT`, `*.pb.go`…) is left out unless true. */
   include_generated?: boolean
+  /** Phase 9.6: an https URL that Scrinium clones instead of a folder (Git only). */
+  url?: string
 }
 
 export interface SourcePreview {
@@ -143,6 +145,11 @@ export interface Source {
   active_files: number
   last_successful_sync_at: string | null
   latest_sync: SyncRun | null
+  remote_url?: string | null
+  branch?: string | null
+  indexed_commit?: string | null
+  head_commit?: string | null
+  head_moved?: boolean
 }
 
 export class SessionRequiredError extends Error {}
@@ -181,8 +188,34 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   return response
 }
 
+// ETags (phase 9.4): the API answers 304 when the console already holds that version. The
+// copies live only in this tab's memory: API answers are `no-store`, so nothing reaches the
+// browser's disk cache.
+const MAX_REMEMBERED = 200
+const remembered = new Map<string, { etag: string; body: unknown }>()
+
 async function getJson<T>(path: string): Promise<T> {
-  return (await request(path)).json() as Promise<T>
+  const known = path === "/api/v1/session" ? undefined : remembered.get(path)
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    headers: known ? { "If-None-Match": known.etag } : undefined,
+  })
+  if (response.status === 304 && known) return known.body as T
+  if (response.status === 401) throw new SessionRequiredError()
+  if (!response.ok) throw await apiError(response)
+  const body = (await response.json()) as T
+  const etag = response.headers.get("ETag")
+  if (etag && path !== "/api/v1/session") {
+    remembered.delete(path)
+    remembered.set(path, { etag, body })
+    if (remembered.size > MAX_REMEMBERED) remembered.delete(remembered.keys().next().value as string)
+  }
+  return body
+}
+
+/** Forgets what was remembered (after signing out or wiping data). */
+export function forgetRemembered() {
+  remembered.clear()
 }
 
 export const getSecurityStatus = () => getJson<SecurityStatus>("/api/v1/system/security-status")
@@ -204,7 +237,10 @@ async function mutate(path: string, body?: unknown, method = "POST"): Promise<Re
   })
 }
 
-export const logout = () => mutate("/api/v1/session/logout")
+export const logout = () => {
+  forgetRemembered()
+  return mutate("/api/v1/session/logout")
+}
 export const createProject = async (project: NewProject) =>
   (await mutate("/api/v1/projects", project)).json() as Promise<Project>
 

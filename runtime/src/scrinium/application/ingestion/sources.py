@@ -12,6 +12,7 @@ from sqlalchemy import Select, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from scrinium.application.analysis.extraction_queue import delete_tasks_of_revisions
+from scrinium.application.ingestion import clone
 from scrinium.application.ingestion.plan import Plan, SourceError, build_plan, resolve_root
 from scrinium.application.ingestion.policy import SourceKind
 from scrinium.application.knowledge.deletion import (
@@ -170,6 +171,7 @@ def create_source(
     data_dir: Path,
     request_id: str | None,
     include_generated: bool = False,
+    remote_url: str | None = None,
 ) -> tuple[SourceConnection, SyncRun]:
     root = resolve_root(kind, raw_path, data_dir)
     connection = SourceConnection(
@@ -182,8 +184,12 @@ def create_source(
             "root": str(root),
             "exclude_patterns": patterns,
             "include_generated": include_generated,
+            # Cloned by URL (phase 9.6): fetched before each sync. Never a credential.
+            **({"remote_url": remote_url} if remote_url else {}),
         },
     )
+    if remote_url:
+        connection.display_name = remote_url.rsplit("/", 1)[-1].removesuffix(".git") or root.name
     session.add(connection)
     session.flush()
     record_audit(
@@ -364,16 +370,20 @@ def run_sync(database: Database, run_id: uuid.UUID, data_dir: Path) -> None:
             return
         run.status = SyncStatus.RUNNING
         run.started_at = utc_now()
-        settings = settings_of(_connection(session, run.source_connection_id))
+        connection = _connection(session, run.source_connection_id)
+        settings = settings_of(connection)
+        remote_url = (connection.configuration or {}).get("remote_url")
 
     error: str | None = None
     plan: Plan | None = None
     try:
         root = resolve_root(settings.kind, str(settings.root), data_dir)
+        if remote_url:
+            clone.refresh(root)  # the only network access of a sync, for URL sources only
         plan = build_plan(
             settings.kind, root, settings.exclude_patterns, settings.include_generated
         )
-    except (SourceError, GitError) as failure:
+    except (SourceError, GitError, clone.CloneError) as failure:
         error = str(failure)
     except Exception as failure:
         # Type only: the message could contain paths or source content.
@@ -453,6 +463,9 @@ class IngestionRunner:
         self._executor = executor or ThreadPoolExecutor(max_workers=1, thread_name_prefix="sync")
         # What to do after each sync (rule watch); the application sets it.
         self.after_sync: Callable[[uuid.UUID], object] | None = None
+        # The durable queue (phase 9.2): the work after a sync goes there, and runs on this
+        # same worker, so SQLite has one writer. Without it, the work runs directly.
+        self.jobs: Any = None
 
     def submit(self, run_id: uuid.UUID) -> None:
         self._executor.submit(self._run, run_id)
@@ -465,11 +478,22 @@ class IngestionRunner:
 
     def _run(self, run_id: uuid.UUID) -> None:
         self._guarded(lambda: run_sync(self._database, run_id, self._data_dir))
+        if self.jobs is not None:
+            # Rows, not memory: if Scrinium closes now, they run at the next start.
+            self.jobs.enqueue("after_sync", {"sync_run_id": str(run_id)}, priority=5)
+            self.jobs.enqueue("embed_pending", {}, priority=1)
+            self._guarded(self.jobs.run_ready)
+            return
         after = self.after_sync
         if after is not None:
             self._guarded(lambda: after(run_id))
         # Vectors, after each sync: it is the slow part and can fail without a model.
         self._guarded(self.indexer.embed_pending)
+
+    def submit_jobs(self) -> None:
+        """At startup: what the queue still holds, on the sync worker."""
+        if self.jobs is not None:
+            self._executor.submit(self._guarded, self.jobs.run_ready)
 
     @staticmethod
     def _guarded(task: Callable[[], object]) -> None:

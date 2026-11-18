@@ -193,10 +193,25 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
         verification: VerificationStatus | None = None,
         lifecycle: EntityLifecycle | None = None,
         q: Annotated[str | None, Query(max_length=200)] = None,
+        limit: Annotated[int | None, Query(ge=1, le=1000)] = None,
+        cursor: Annotated[str | None, Query(max_length=600)] = None,
     ) -> dict[str, Any]:
+        """All the rules, or a page of `limit` after `cursor` (phase 9.4): `next_cursor` is the
+        cursor of the following page, null on the last one. The order is by name, then id."""
         with database.session() as session:
             project = _project(session, project_id)
-            return {"rules": views.list_rules(session, project, verification, lifecycle, q)}
+            rules = views.list_rules(session, project, verification, lifecycle, q)
+        if limit is None:
+            return {"rules": rules}
+        rules.sort(key=lambda rule: (rule["name"], rule["entity_id"]))
+        try:
+            after = views.read_cursor(cursor) if cursor else None
+        except ValueError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid_cursor") from None
+        page = [r for r in rules if after is None or (r["name"], r["entity_id"]) > after][:limit]
+        more = len(page) == limit and page[-1] is not rules[-1]
+        next_cursor = views.make_cursor(page[-1]["name"], page[-1]["entity_id"]) if more else None
+        return {"rules": page, "next_cursor": next_cursor}
 
     @router.post("/api/v1/projects/{project_id}/rules", status_code=status.HTTP_201_CREATED)
     def create_rule(project_id: uuid.UUID, body: NewRuleBody, request: Request) -> dict[str, Any]:

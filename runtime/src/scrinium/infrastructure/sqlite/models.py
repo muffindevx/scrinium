@@ -413,6 +413,30 @@ class SourceRevision(Base):
     parser_version: Mapped[str] = mapped_column(String(50))
 
 
+class Job(Base):
+    """A durable background job (phase 9.2, R7): it survives a restart, runs once per input
+    while pending (`key`), by priority, with a lease and retries."""
+
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(String(50))
+    # SHA-256 of kind and payload: a second request for the same work joins the pending one.
+    key: Mapped[str] = mapped_column(String(64), index=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    # queued, leased, done, failed
+    status: Mapped[str] = mapped_column(String(10), default="queued", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    max_attempts: Mapped[int] = mapped_column(Integer, default=3)
+    run_after: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+    leased_until: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # The exception's type only: a message could hold paths or source text.
+    last_error: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+
+
 class RevisionDecisions(Base):
     """The decision nodes of one file revision (phase 8.1): computed once, since a revision
     never changes. Coverage reads these instead of parsing every file."""

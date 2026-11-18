@@ -8,7 +8,9 @@ What it cannot guarantee: copies the file system or the SSD keep in freed blocks
 backups made earlier, and exports already downloaded.
 """
 
+import logging
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -22,6 +24,7 @@ from scrinium.application.knowledge.deletion import (
     entity_fate,
     forget_project_knowledge,
 )
+from scrinium.application.privacy import pending_purge
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.application.workspaces import local_workspace, record_audit
 from scrinium.domain.enums import AnalysisStatus, AnalysisType, AuditResult, SyncStatus
@@ -56,6 +59,8 @@ _RUNNING_SYNC: Final = (SyncStatus.QUEUED, SyncStatus.RUNNING)
 _RUNNING_ANALYSIS: Final = (AnalysisStatus.QUEUED, AnalysisStatus.RUNNING)
 # Never deleted: the local workspace is unique and the profile is a fixed row.
 _KEPT_TABLES: Final = frozenset({"workspaces", "local_profile"})
+
+logger = logging.getLogger("scrinium.privacy")
 
 
 class WorkInProgressError(RuntimeError):
@@ -117,6 +122,55 @@ def source_deletion_impact(session: Session, source_id: uuid.UUID) -> dict[str, 
     }
 
 
+def _purge_step(database: Database, indexer: Indexer, kind: str, target: uuid.UUID | None) -> None:
+    """The second phase of a deletion: vectors of that source, that project or all, then the
+    database files."""
+    if kind == "source" and target is not None:
+        indexer.delete_source(target)
+    elif kind == "project" and target is not None:
+        indexer.vector_index.delete_project(target)
+    elif kind == "all":
+        indexer.vector_index.reset()
+    database.purge()
+
+
+def _after_commit(
+    database: Database, indexer: Indexer, kind: str, target: uuid.UUID | None
+) -> None:
+    """The disk purge after a committed deletion; a failure is remembered, never raised: the
+    rows are gone already, and the person sees the deletion done (R3)."""
+    try:
+        _purge_step(database, indexer, kind, target)
+    except Exception:
+        logger.warning("purge_failed kind=%s", kind)
+        pending_purge.remember(database.data_dir, kind, target)
+
+
+def vacuum(database: Database) -> None:
+    """Compacts the database file after a large deletion (2.2): the freed pages, already zeroed
+    by `secure_delete`, leave the file. A failure only leaves the file larger."""
+    try:
+        with database.engine.connect() as connection:
+            connection.exec_driver_sql("VACUUM")
+    except Exception:
+        logger.info("vacuum_skipped")
+
+
+def retry_pending_purges(database: Database, indexer: Indexer) -> int:
+    """At startup: the purges a failed deletion left to do (R3). Returns how many remain."""
+    if database.data_dir is None:
+        return 0
+
+    def step(kind: str) -> Callable[[Any], None]:
+        def run(target: Any) -> None:
+            _purge_step(database, indexer, kind, target)
+
+        return run
+
+    steps = {kind: step(kind) for kind in ("source", "project", "all")}
+    return pending_purge.run_pending(database.data_dir, steps)
+
+
 def purge(database: Database, indexer: Indexer) -> None:
     """Second phase: removes from disk what was already deleted in the database."""
     indexer.vector_index.purge()
@@ -135,9 +189,8 @@ def delete_source(
         summary = sources.delete_source(
             session, source_id, request_id, delete_citing, delete_reviewed
         )
-    # After committing: if it fails, orphan vectors remain, which search discards.
-    indexer.delete_source(source_id)
-    database.purge()
+    # After committing: if it fails, it is recorded and done again at the next start (R3).
+    _after_commit(database, indexer, "source", source_id)
     return summary
 
 
@@ -179,8 +232,8 @@ def delete_project(
             session, project.workspace_id, "project.delete", "project", str(project.id),
             AuditResult.SUCCESS, request_id, dict(summary),
         )  # fmt: skip
-    indexer.vector_index.delete_project(project_id)
-    database.purge()
+    _after_commit(database, indexer, "project", project_id)
+    vacuum(database)
     return summary
 
 
@@ -220,8 +273,8 @@ def wipe_workspace(
         except Exception:
             counts["secrets_not_deleted"] = counts.get("secrets_not_deleted", 0) + 1
     counts["secrets_deleted"] = len(secrets) - counts.get("secrets_not_deleted", 0)
-    indexer.vector_index.reset()
-    database.purge()
+    _after_commit(database, indexer, "all", None)
+    vacuum(database)
     with database.session() as session:
         record_audit(
             session, workspace_id, "workspace.wipe", "workspace", str(workspace_id),

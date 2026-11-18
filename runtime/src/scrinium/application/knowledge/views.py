@@ -5,6 +5,8 @@ never the LLM, and each edge says where it comes from: observed in a source, bac
 by a test, inferred (no evidence, or proposed by the LLM) or confirmed by a person.
 """
 
+import base64
+import json
 import uuid
 from typing import Any, Final
 
@@ -481,3 +483,21 @@ def flow_detail(session: Session, project: Project, entity_id: uuid.UUID) -> dic
         "entity_type": entity.entity_type.value,
         "lifecycle_status": entity.lifecycle_status.value, "versions": versions,
     }  # fmt: skip
+
+
+def make_cursor(name: str, entity_id: str) -> str:
+    """An opaque position in the rules list: after this name and id (phase 9.4)."""
+    raw = json.dumps([name, entity_id], ensure_ascii=False).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
+
+
+def read_cursor(cursor: str) -> tuple[str, str]:
+    """Raises ValueError for a cursor this API did not make."""
+    padded = cursor + "=" * (-len(cursor) % 4)
+    try:
+        name, entity_id = json.loads(base64.urlsafe_b64decode(padded))
+    except (ValueError, TypeError):
+        raise ValueError("invalid cursor") from None
+    if not isinstance(name, str) or not isinstance(entity_id, str):
+        raise ValueError("invalid cursor")
+    return name, entity_id

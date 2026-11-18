@@ -160,7 +160,17 @@ function SourceRow({
         </span>
         <StatusBadge tone={tone}>{label}</StatusBadge>
       </div>
-      <code className="truncate text-xs text-muted-foreground">{source.root}</code>
+      <code className="truncate text-xs text-muted-foreground">{source.remote_url ?? source.root}</code>
+      {source.kind === "git_repository" && source.indexed_commit && (
+        <p className="text-xs text-muted-foreground">
+          {t("Rama {0} · commit indexado {1}", source.branch ?? "—", source.indexed_commit.slice(0, 8))}
+        </p>
+      )}
+      {source.head_moved && (
+        <p role="status" className="text-xs text-amber-700 dark:text-amber-400">
+          {t("El repositorio avanzó desde la última sincronización: sincroniza para ver lo nuevo.")}
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         {source.kind === "git_repository" ? t("Repositorio Git") : t("Carpeta de documentos")} ·{" "}
         {source.active_files} {t("archivos ·")} {syncSummary(source)}
@@ -311,6 +321,19 @@ export function SourcesCard({
       .finally(() => setBusy(false))
   }
 
+  const cloneUrl = () => {
+    setBusy(true)
+    setError(null)
+    createSource(selected, { ...input, path: "", url: path.trim() })
+      .then(() => {
+        setPath("")
+        setPatterns("")
+        refresh()
+      })
+      .catch(handleError)
+      .finally(() => setBusy(false))
+  }
+
   const index = () => {
     setBusy(true)
     setError(null)
@@ -379,11 +402,22 @@ export function SourcesCard({
               value={path}
               onChange={(event) => setPath(event.target.value)}
             />
-            {looksLikeUrl && (
+            {looksLikeUrl && kind === "git_repository" && path.trim().startsWith("https://") ? (
+              <div role="status" className="grid gap-2 rounded-md border border-sky-500/30 bg-sky-500/5 p-3 text-xs">
+                <p>
+                  {t("Es la dirección del repositorio en un servidor. Scrinium puede clonarlo en su directorio de datos: solo el último commit de la rama principal, sin ejecutar nada del repositorio. Si es privado, usa las credenciales de Git de este equipo.")}
+                </p>
+                <div>
+                  <Button type="button" size="sm" disabled={busy} onClick={cloneUrl}>
+                    {busy ? t("Clonando…") : t("Clonar y sincronizar")}
+                  </Button>
+                </div>
+              </div>
+            ) : looksLikeUrl ? (
               <p role="alert" className="text-xs text-amber-700 dark:text-amber-400">
                 {t("Eso es la dirección del repositorio en un servidor. Escribe la ruta de la carpeta del proyecto en este equipo, por ejemplo /home/tu-usuario/repos/mi-aplicacion.")}
               </p>
-            )}
+            ) : null}
             <p className="text-xs text-muted-foreground">
               {kind === "git_repository"
                 ? t("La carpeta de tu proyecto en este equipo, que use Git (tiene una carpeta .git). Scrinium lee lo confirmado en la rama actual; no se conecta a GitHub ni a ningún otro servidor.")

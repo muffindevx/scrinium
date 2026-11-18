@@ -4,14 +4,18 @@ Analyses are requested here and run on another thread; the response is 202, then
 GET /api/v1/analyses/{id}. Everything they return is a proposal with its verification status.
 """
 
+import asyncio
 import uuid
+from collections.abc import AsyncIterator
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Final, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
+from starlette.concurrency import run_in_threadpool
 
 from scrinium.application.ai.providers import ProviderError, consent_for_task
 from scrinium.application.analysis import (
@@ -61,6 +65,12 @@ from scrinium.infrastructure.sqlite.models import (
 Dialect = Literal[
     "", "postgres", "mysql", "sqlite", "tsql", "oracle", "bigquery", "snowflake", "duckdb"
 ]
+
+
+# Server-sent events (phase 9.4): how often the state is read, and a keep-alive comment.
+_EVENT_SECONDS: Final = 1.0
+_KEEPALIVE_SECONDS: Final = 15.0
+_LIVE: Final = frozenset({AnalysisStatus.QUEUED.value, AnalysisStatus.RUNNING.value})
 
 
 class _Body(BaseModel):
@@ -364,6 +374,41 @@ def build_analyses_router(
 
     @router.get("/api/v1/analyses/{analysis_id}")
     def read(analysis_id: uuid.UUID) -> AnalysisDetail:
+        with database.session() as session:
+            return _detail(session, _run(session, analysis_id))
+
+    @router.get("/api/v1/analyses/{analysis_id}/events")
+    async def events(analysis_id: uuid.UUID, request: Request) -> StreamingResponse:
+        """Server-sent events (phase 9.4): the analysis each time it changes, until it ends.
+        The console listens instead of asking every second; it still can, if this fails."""
+        with database.session() as session:
+            _run(session, analysis_id)  # 404 before the stream starts
+
+        async def stream() -> AsyncIterator[str]:
+            last = ""
+            waited = 0.0
+            while not await request.is_disconnected():
+                detail = await run_in_threadpool(_read_detail, analysis_id)
+                body = detail.model_dump_json()
+                if body != last:
+                    last = body
+                    yield f"event: analysis\ndata: {body}\n\n"
+                if detail.status not in _LIVE:
+                    yield "event: end\ndata: {}\n\n"
+                    return
+                await asyncio.sleep(_EVENT_SECONDS)
+                waited += _EVENT_SECONDS
+                if waited >= _KEEPALIVE_SECONDS:
+                    waited = 0.0
+                    yield ": sigue\n\n"  # a comment keeps proxies and the browser listening
+
+        return StreamingResponse(
+            stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        )
+
+    def _read_detail(analysis_id: uuid.UUID) -> AnalysisDetail:
         with database.session() as session:
             return _detail(session, _run(session, analysis_id))
 

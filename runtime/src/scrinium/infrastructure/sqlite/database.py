@@ -61,8 +61,10 @@ def alembic_config() -> Config:
 
 
 class Database:
-    def __init__(self, engine: Engine) -> None:
+    def __init__(self, engine: Engine, data_dir: Path | None = None) -> None:
         self.engine = engine
+        # Where the database lives: deletion records a pending purge there (R3).
+        self.data_dir = data_dir
         self._sessions = sessionmaker(engine, expire_on_commit=False)
 
     @classmethod
@@ -77,7 +79,7 @@ class Database:
         event.listen(engine, "connect", _configure_connection)
         with engine.connect() as connection:
             connection.exec_driver_sql("PRAGMA journal_mode = WAL")
-        database = cls(engine)
+        database = cls(engine, data_dir)
         database.migrate()
         return database
 
@@ -108,7 +110,7 @@ class Database:
             current = set(MigrationContext.configure(connection).get_current_heads())
         if current != heads:
             raise IncompatibleDatabaseError
-        return cls(engine)
+        return cls(engine, data_dir)
 
     def migrate(self) -> None:
         config = alembic_config()

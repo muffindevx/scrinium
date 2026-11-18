@@ -15,12 +15,14 @@ import gzip
 import json
 import os
 import uuid
-from collections.abc import Callable
+import zlib
+from collections.abc import Callable, Iterator
 from datetime import date, datetime
 from enum import Enum
 from typing import Any, Final
 
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from sqlalchemy import select
@@ -38,8 +40,10 @@ SCRYPT_N: Final = 2**17
 SCRYPT_R: Final = 8
 SCRYPT_P: Final = 1
 _DERIVED_TABLES: Final = frozenset(
-    {"content_chunks", "code_symbols", "code_edges", "extraction_tasks", "ai_cache"}
-)
+    {"content_chunks", "code_symbols", "code_edges", "extraction_tasks", "ai_cache",
+     # Recomputed after a restore: coverage's decisions and the queue of pending work.
+     "revision_decisions", "jobs"}
+)  # fmt: skip
 _SECRET_COLUMNS: Final = {
     "source_connections": frozenset({"secret_ref"}),
     # A provider's key stays in this machine's keyring; restored, it must be typed again.
@@ -147,3 +151,95 @@ def export_workspace(session: Session, passphrase: str | None) -> tuple[bytes, b
     if passphrase is None:
         return json.dumps(document, ensure_ascii=False, indent=1).encode(), False
     return encrypt(document, passphrase), True
+
+
+# --- Streaming (R1) ------------------------------------------------------------------------
+# The same file as `export_workspace`, written piece by piece: rows are read in batches, the
+# JSON is produced table by table, and when encrypted it is gzipped and encrypted with
+# incremental AES-GCM (the same cipher and tag as `encrypt`, so `decrypt` opens it). Memory stays
+# flat whatever the size of the workspace.
+
+_BATCH: Final = 500
+_CHUNK: Final = 64 * 1024
+
+
+def _json_chunks(session: Session) -> Iterator[str]:
+    yield (
+        '{"format": ' + json.dumps(FORMAT) + ', "format_version": ' + str(FORMAT_VERSION)
+        + ', "scrinium_version": ' + json.dumps(__version__)
+        + ', "created_at": ' + json.dumps(utc_now().isoformat())
+        + ', "excluded": ' + json.dumps(
+            ["content_chunks, code_symbols, code_edges y ai_cache (se regeneran)",
+             "vectores (se regeneran)",
+             "secret_ref (credenciales del keyring de este equipo)"], ensure_ascii=False)
+        + ', "tables": {'
+    )  # fmt: skip
+    first_table = True
+    for table in Base.metadata.sorted_tables:
+        if table.name in _DERIVED_TABLES:
+            continue
+        hidden = _SECRET_COLUMNS.get(table.name, frozenset())
+        columns = [column for column in table.columns if column.name not in hidden]
+        yield ("" if first_table else ", ") + json.dumps(table.name) + ": ["
+        first_table = False
+        first_row = True
+        result = session.execute(select(*columns).execution_options(yield_per=_BATCH))
+        for row in result.mappings():
+            data = {key: _jsonable(value) for key, value in row.items()}
+            yield ("" if first_row else ", ") + json.dumps(data, ensure_ascii=False)
+            first_row = False
+        yield "]"
+    yield "}}"
+
+
+def _batched(pieces: Iterator[str]) -> Iterator[bytes]:
+    buffer: list[str] = []
+    size = 0
+    for piece in pieces:
+        buffer.append(piece)
+        size += len(piece)
+        if size >= _CHUNK:
+            yield "".join(buffer).encode()
+            buffer, size = [], 0
+    if buffer:
+        yield "".join(buffer).encode()
+
+
+def stream_export(session: Session, passphrase: str | None) -> Iterator[bytes]:
+    """The export as a stream of bytes. Check the passphrase first: errors cannot be raised
+    once the response has started."""
+    plain = _batched(_json_chunks(session))
+    if passphrase is None:
+        yield from plain
+        return
+    salt, nonce = os.urandom(16), os.urandom(12)
+    header = {
+        "format": ENCRYPTED_FORMAT, "format_version": FORMAT_VERSION, "cipher": "AES-256-GCM",
+        "kdf": {"name": "scrypt", "n": SCRYPT_N, "r": SCRYPT_R, "p": SCRYPT_P,
+                "salt": base64.b64encode(salt).decode()},
+        "nonce": base64.b64encode(nonce).decode(), "compression": "gzip",
+    }  # fmt: skip
+    key = _key(passphrase, salt, SCRYPT_N, SCRYPT_R, SCRYPT_P)
+    encryptor = Cipher(algorithms.AES(key), modes.GCM(nonce)).encryptor()
+    encryptor.authenticate_additional_data(_header_bytes(header))
+    compressor = zlib.compressobj(9, zlib.DEFLATED, 31)  # 31: gzip framing
+    yield ('{"header": ' + json.dumps(header) + ', "ciphertext": "').encode()
+    pending = b""
+
+    def encoded(data: bytes, final: bool = False) -> bytes:
+        nonlocal pending
+        pending += data
+        cut = len(pending) if final else len(pending) - len(pending) % 3
+        out, pending = base64.b64encode(pending[:cut]), pending[cut:]
+        return out
+
+    for chunk in plain:
+        yield encoded(encryptor.update(compressor.compress(chunk)))
+    tail = encryptor.update(compressor.flush()) + encryptor.finalize()
+    yield encoded(tail + encryptor.tag, final=True)
+    yield b'"}'
+
+
+def check_passphrase(passphrase: str | None) -> None:
+    if passphrase is not None and len(passphrase) < MIN_PASSPHRASE:
+        raise ExportError("passphrase_too_short")

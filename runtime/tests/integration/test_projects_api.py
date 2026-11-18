@@ -141,7 +141,9 @@ def test_form_posts_are_not_accepted_as_json(runtime: Runtime) -> None:
 def test_ready_reports_the_database(runtime: Runtime) -> None:
     response = runtime.client.get("/ready")
     assert response.status_code == 200
-    assert response.json() == {"status": "ready", "database": "ok"}
+    body = response.json()
+    assert body["status"] == "ready" and body["database"] == "ok" and body["vectors"] == "ok"
+    assert body["purges_pending"] == 0 and {"embeddings", "chat"} <= set(body)
     assert response.headers["cache-control"] == "no-store"
 
 
@@ -149,7 +151,8 @@ def test_ready_fails_when_the_database_is_unavailable(runtime: Runtime) -> None:
     runtime.database.is_ready = lambda: False  # type: ignore[method-assign]
     response = runtime.client.get("/ready")
     assert response.status_code == 503
-    assert response.json() == {"status": "not_ready", "database": "unavailable"}
+    body = response.json()
+    assert body["status"] == "not_ready" and body["database"] == "unavailable"
 
 
 def test_security_status_counts_real_connections(runtime: Runtime) -> None:

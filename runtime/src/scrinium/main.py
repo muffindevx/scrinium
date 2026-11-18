@@ -17,6 +17,7 @@ from scrinium.api.errors import install_error_handlers
 from scrinium.api.knowledge import build_knowledge_router
 from scrinium.api.middleware import (
     BodyLimitMiddleware,
+    ETagMiddleware,
     LocalGuardMiddleware,
     RequestContextMiddleware,
 )
@@ -31,6 +32,7 @@ from scrinium.application.analysis import extraction
 from scrinium.application.analysis.runs import AnalysisRunner
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion.sources import IngestionRunner, mark_interrupted_runs
+from scrinium.application.jobs import JobQueue
 from scrinium.application.knowledge.coverage import prepare_coverage
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.application.workspaces import ensure_local_workspace
@@ -140,6 +142,8 @@ def create_app(
         title="Scrinium", version=__version__, docs_url=None, redoc_url=None, openapi_url=None
     )
     # The limit sits inside the guard: a request without a session is rejected unread.
+    # Innermost: it fingerprints the answer the routes built, after the guard let it through.
+    app.add_middleware(ETagMiddleware)
     app.add_middleware(BodyLimitMiddleware)
     app.add_middleware(LocalGuardMiddleware, config=config, sessions=sessions)
     # The last one added is the outermost: it also covers the guard's rejections.
@@ -172,6 +176,14 @@ def create_app(
         return extraction.refresh_after_sync(database, llm_service, analyses, sync_run_id)
 
     runner.after_sync = after_sync
+    runner.jobs = JobQueue(
+        database,
+        {
+            "after_sync": lambda payload: after_sync(uuid.UUID(payload["sync_run_id"])),
+            "embed_pending": lambda _payload: runner.indexer.embed_pending(),
+        },
+    )
+    app.state.jobs = runner.jobs
     install_error_handlers(app)
     app.include_router(
         build_router(

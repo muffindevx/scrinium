@@ -5,10 +5,12 @@ mistake must not be enough to lose the data.
 """
 
 import uuid
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from starlette.concurrency import run_in_threadpool
 
@@ -102,20 +104,28 @@ def build_privacy_router(
 
     @router.post("/api/v1/privacy/export")
     def export_data(body: ExportBody, request: Request) -> Response:
+        """Streamed table by table (R1): memory stays flat with any amount of data."""
+        try:
+            export.check_passphrase(body.passphrase)
+        except export.ExportError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
+        encrypted = body.passphrase is not None
         with database.session() as session:
-            try:
-                content, encrypted = export.export_workspace(session, body.passphrase)
-            except export.ExportError as error:
-                raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
             # No password or content: only that an export happened and whether it was encrypted.
             record_audit(
                 session, local_workspace(session).id, "workspace.export", "workspace", None,
                 AuditResult.SUCCESS, _request_id(request), {"encrypted": encrypted},
             )  # fmt: skip
+
+        def content() -> Iterator[bytes]:
+            # Its own read-only transaction, open while the response is written.
+            with database.scratch() as session:
+                yield from export.stream_export(session, body.passphrase)
+
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
         name = f"scrinium-{stamp}.{'scrinium' if encrypted else 'json'}"
-        return Response(
-            content,
+        return StreamingResponse(
+            content(),
             media_type="application/octet-stream" if encrypted else "application/json",
             headers={
                 "Content-Disposition": f'attachment; filename="{name}"',

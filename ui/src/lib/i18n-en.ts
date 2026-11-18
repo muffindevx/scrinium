@@ -1,6 +1,16 @@
 // English for the console (phase 5.5). Key: the Spanish text in t(); a key missing here shows
 // in Spanish. `make i18n` lists the keys without a translation.
 export const EN: Record<string, string> = {
+  "Rama {0} · commit indexado {1}": "Branch {0} · indexed commit {1}",
+  "El repositorio avanzó desde la última sincronización: sincroniza para ver lo nuevo.": "The repository moved on since the last sync: sync to see what is new.",
+  "Es la dirección del repositorio en un servidor. Scrinium puede clonarlo en su directorio de datos: solo el último commit de la rama principal, sin ejecutar nada del repositorio. Si es privado, usa las credenciales de Git de este equipo.": "That is the repository's address on a server. Scrinium can clone it into its data directory: only the latest commit of the main branch, running nothing from the repository. If it is private, it uses this machine's Git credentials.",
+  "Clonando…": "Cloning…",
+  "Clonar y sincronizar": "Clone and sync",
+  "Solo direcciones https:// a un servidor con nombre, sin usuario ni contraseña en la dirección.": "Only https:// addresses to a named server, with no user or password in the address.",
+  "No se pudo clonar: revisa la dirección, la red o tus credenciales de Git.": "Could not clone: check the address, the network or your Git credentials.",
+  "No se pudo traer el último commit del servidor: revisa la red o tus credenciales de Git.": "Could not fetch the latest commit from the server: check the network or your Git credentials.",
+  "La búsqueda por significado se está reconstruyendo: {0} de {1} fragmentos ya tienen vector. Mientras tanto, se busca por palabras.": "Search by meaning is being rebuilt: {0} of {1} chunks have a vector so far. Meanwhile, search goes by words.",
+  "Es un clon parcial y faltan archivos en este equipo. Scrinium no los descarga: ejecuta git fetch o clona el repositorio entero.": "It is a partial clone and some files are not on this machine. Scrinium does not download them: run git fetch or clone the whole repository.",
   "Procesos afectados: {0}": "Affected processes: {0}",
   "Desde cada punto de entrada (una acción, una ruta, una tarea programada), las funciones con reglas por las que pasa, en el orden en que se llaman. Sale del código, sin IA.": "From each entry point (an action, a route, a scheduled job), the functions with rules it goes through, in the order they are called. It comes from the code, with no AI.",
   "Todavía no hay procesos": "No processes yet",

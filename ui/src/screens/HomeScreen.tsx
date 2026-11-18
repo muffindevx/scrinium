@@ -15,11 +15,13 @@ import { sourceTone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
 import {
   type AiSetup,
+  type IndexStatus,
   type Project,
   type RulebookHealth,
   type SecurityStatus,
   type Source,
   getHealth,
+  getIndexStatus,
   listSources,
 } from "@/lib/api"
 import { relativeTime } from "@/lib/time"
@@ -96,14 +98,17 @@ export function HomeScreen({
 }) {
   const [sources, setSources] = useState<Source[] | null>(null)
   const [rules, setRules] = useState<RulebookHealth | null>(null)
+  // R2: after a restore (or a first sync) the vectors are rebuilt in the background.
+  const [index, setIndex] = useState<IndexStatus | null>(null)
   const { error, fail } = useErrors(onSessionLost)
 
   const load = useCallback(() => {
     if (!project) return
-    Promise.all([listSources(project.id), getHealth(project.id)])
-      .then(([loadedSources, loadedRules]) => {
+    Promise.all([listSources(project.id), getHealth(project.id), getIndexStatus(project.id)])
+      .then(([loadedSources, loadedRules, loadedIndex]) => {
         setSources(loadedSources)
         setRules(loadedRules)
+        setIndex(loadedIndex)
       })
       .catch(fail)
   }, [project, fail])
@@ -176,6 +181,15 @@ export function HomeScreen({
       </header>
       <ErrorText>{error}</ErrorText>
       {firstRun}
+      {index && index.provider === "ready" && index.chunks > 0 && index.embedded < index.chunks && (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t(
+            "La búsqueda por significado se está reconstruyendo: {0} de {1} fragmentos ya tienen vector. Mientras tanto, se busca por palabras.",
+            index.embedded,
+            index.chunks,
+          )}
+        </p>
+      )}
 
       {sources !== null && (!hasSources || drop !== null) && (
         <QuickStart

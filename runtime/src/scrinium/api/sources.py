@@ -4,13 +4,15 @@ import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any, Final
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from scrinium.application.ingestion import sources
+from scrinium.application.ingestion import clone, sources
 from scrinium.application.ingestion.plan import Plan, SourceError
 from scrinium.application.ingestion.policy import (
     MAX_USER_PATTERNS,
@@ -22,7 +24,7 @@ from scrinium.application.privacy import erasure
 from scrinium.application.workspaces import local_workspace
 from scrinium.core.config import RuntimeConfig
 from scrinium.domain.enums import ConnectionStatus, SyncStatus, SyncTrigger
-from scrinium.infrastructure.local_files.git_reader import GitError
+from scrinium.infrastructure.local_files.git_reader import GitError, GitRepository
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import SourceConnection, SyncRun
 
@@ -35,7 +37,9 @@ class SourceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: SourceKind
-    path: str = Field(min_length=1, max_length=4096)
+    path: str = Field(default="", max_length=4096)
+    # Phase 9.6: an https URL to clone instead of a folder on this machine (Git only).
+    url: str | None = Field(default=None, max_length=2000)
     exclude_patterns: list[str] = Field(default_factory=list, max_length=MAX_USER_PATTERNS)
     # Generated code (`@generated`, `DO NOT EDIT`, `*.pb.go`…) is left out unless asked for.
     include_generated: bool = False
@@ -100,6 +104,12 @@ class SourceResponse(BaseModel):
     active_files: int
     last_successful_sync_at: datetime | None
     latest_sync: SyncRunResponse | None
+    # Git sources: the branch, the commit indexed, and whether the repository moved on since.
+    remote_url: str | None = None
+    branch: str | None = None
+    indexed_commit: str | None = None
+    head_commit: str | None = None
+    head_moved: bool = False
 
 
 class SourceListResponse(BaseModel):
@@ -168,7 +178,41 @@ def _source_response(session: DbSession, connection: SourceConnection) -> Source
         active_files=sources.count_active_items(session, connection.id),
         last_successful_sync_at=connection.last_successful_sync_at,
         latest_sync=SyncRunResponse.model_validate(run) if run else None,
+        **_git_position(session, connection, settings.kind, settings.root),
     )
+
+
+def _git_position(
+    session: DbSession, connection: SourceConnection, kind: SourceKind, root: Path
+) -> dict[str, Any]:
+    """Which branch and commit were indexed, and whether HEAD has moved since (phase 9.6)."""
+    if kind is not SourceKind.GIT_REPOSITORY:
+        return {}
+    indexed = session.scalars(
+        select(SyncRun.cursor_after)
+        .where(
+            SyncRun.source_connection_id == connection.id,
+            SyncRun.status == SyncStatus.SUCCEEDED,
+        )
+        .order_by(SyncRun.created_at.desc())
+        .limit(1)
+    ).first()
+    head_file = root / ".git" / "HEAD"
+    branch = None
+    try:
+        reference = head_file.read_text(encoding="utf-8").strip()
+        if reference.startswith("ref: refs/heads/"):
+            branch = reference.removeprefix("ref: refs/heads/")
+        head = GitRepository(root).head()
+    except (OSError, GitError):
+        head = None
+    return {
+        "remote_url": (connection.configuration or {}).get("remote_url"),
+        "branch": branch,
+        "indexed_commit": indexed,
+        "head_commit": head,
+        "head_moved": bool(indexed and head and indexed != head),
+    }
 
 
 @contextmanager
@@ -213,17 +257,31 @@ def build_sources_router(
     def create_source(
         project_id: uuid.UUID, body: SourceRequest, request: Request
     ) -> CreatedSourceResponse:
+        path, remote_url = body.path, None
+        if body.url:
+            if body.kind is not SourceKind.GIT_REPOSITORY:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, "url_needs_git")
+            with database.session() as session, _http_errors():
+                sources.project_of(session, project_id)  # 404 before anything is downloaded
+            try:
+                remote_url = clone.check_url(body.url)
+                path = str(clone.clone(remote_url, config.data_dir))
+            except clone.CloneError as error:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, error.code) from None
+        elif not path:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "path_not_absolute")
         # Own transaction: the sync starts once the source is stored.
         with _http_errors(), database.session() as session:
             connection, run = sources.create_source(
                 session,
                 sources.project_of(session, project_id),
                 body.kind,
-                body.path,
+                path,
                 body.exclude_patterns,
                 config.data_dir,
                 _request_id(request),
                 body.include_generated,
+                remote_url,
             )
             run_id, connection_id = run.id, connection.id
         runner.submit(run_id)

@@ -24,6 +24,7 @@ from scrinium.application.ai.setup import read_setup
 from scrinium.application.engine import engine_info
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion.sources import IngestionRunner
+from scrinium.application.privacy import pending_purge
 from scrinium.core.config import LOOPBACK_HOST, RuntimeConfig
 from scrinium.core.data_dir import DataDirPermissions
 from scrinium.core.disk_encryption import DiskEncryption
@@ -41,6 +42,12 @@ class HealthResponse(BaseModel):
 class ReadyResponse(BaseModel):
     status: Literal["ready", "not_ready"]
     database: Literal["ok", "unavailable"]
+    # R8: the vector index is required; the models are reported, not required (the writing
+    # model may be a provider, and search falls back to words without embeddings).
+    vectors: Literal["ok", "unavailable"] = "ok"
+    embeddings: str = "unavailable"
+    chat: str = "unavailable"
+    purges_pending: int = 0
 
 
 class SessionResponse(BaseModel):
@@ -225,9 +232,18 @@ def build_router(
 
     @router.get("/ready", response_model=ReadyResponse)
     def ready() -> JSONResponse:
-        ok = database.is_ready()
+        database_ok = database.is_ready()
+        vectors_ok = runner.indexer.vector_index.is_ready()
+        ok = database_ok and vectors_ok
         body = ReadyResponse(
-            status="ready" if ok else "not_ready", database="ok" if ok else "unavailable"
+            status="ready" if ok else "not_ready",
+            database="ok" if database_ok else "unavailable",
+            vectors="ok" if vectors_ok else "unavailable",
+            embeddings=runner.indexer.provider_status().value,
+            chat=llm.status().value,
+            purges_pending=(
+                len(pending_purge.pending(config.data_dir)) if config.data_dir.is_dir() else 0
+            ),
         )
         return JSONResponse(body.model_dump(), status_code=200 if ok else 503)
 

@@ -42,6 +42,8 @@ class VectorIndex(Protocol):
 
     def purge(self) -> None: ...
 
+    def is_ready(self) -> bool: ...
+
 
 def _table_name(model_id: str, dimension: int) -> str:
     digest = hashlib.sha256(model_id.encode()).hexdigest()[:12]
@@ -141,6 +143,15 @@ class LanceVectorIndex:
                 self._db.open_table(name).optimize(
                     cleanup_older_than=timedelta(0), delete_unverified=True
                 )
+
+    def is_ready(self) -> bool:
+        """The vector store opens and lists its tables (R8)."""
+        try:
+            with self._lock:
+                self._names()
+        except Exception:
+            return False
+        return True
 
     def reset(self) -> None:
         with self._lock:
