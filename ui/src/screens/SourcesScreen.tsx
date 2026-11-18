@@ -2,6 +2,7 @@ import { t } from "@/lib/i18n"
 import { PageHeader } from "@/components/page"
 import type { Project, Workspace } from "@/lib/api"
 import { ProjectsCard } from "@/ProjectsCard"
+import { TicketConnections } from "@/screens/TicketConnections"
 import { SourcesCard } from "@/SourcesCard"
 
 export function SourcesScreen({
@@ -24,6 +25,7 @@ export function SourcesScreen({
         description={t("Los proyectos y lo que Scrinium lee de cada uno: repositorios y carpetas de este equipo, con lo que se excluye y por qué.")}
       />
       {project && <SourcesCard key={project.id} projects={[project]} onSessionLost={onSessionLost} />}
+      {project && <TicketConnections key={`tickets-${project.id}`} project={project} onSessionLost={onSessionLost} />}
       <ProjectsCard
         workspace={workspace}
         projects={projects}

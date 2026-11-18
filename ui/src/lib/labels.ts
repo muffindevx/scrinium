@@ -128,6 +128,15 @@ export const ERROR_LABELS: Record<string, string> = {
   confirmation_mismatch: t("La confirmación no coincide."),
   work_in_progress: t("Hay una sincronización o un análisis en marcha. Espera a que termine."),
   rule_exists: t("Ya hay una regla con ese título en el proyecto."),
+  // Ticket trackers (ADR-014).
+  invalid_token: t("Esa clave no parece una clave de API de Linear."),
+  token_rejected: t("Linear rechazó la clave: puede estar caducada, revocada o sin acceso de lectura."),
+  rate_limited: t("Linear pide esperar antes de más consultas. Prueba en unos minutos."),
+  tracker_unavailable: t("Linear no responde ahora. Prueba más tarde."),
+  tracker_bad_response: t("Linear respondió algo que Scrinium no entiende."),
+  invalid_scope: t("Elige al menos un equipo de los que la clave puede ver."),
+  no_scope: t("Elige primero qué equipos lee este proyecto."),
+  isolated_mode: t("El modo aislado no permite conectar servicios externos."),
 }
 
 export function errorMessage(code: string | null | undefined, fallback = t("No se pudo completar.")) {

@@ -1256,3 +1256,96 @@ export type ModelChoice = string | undefined
 
 export const listAiRequests = async (projectId: string) =>
   (await getJson<{ requests: AiRequestRecord[] }>(`/api/v1/projects/${projectId}/ai/requests`)).requests
+
+// Ticket trackers (phase 10, ADR-014): read-only, Linear first. The token goes to the keyring and
+// never comes back: an answer only says whether there is one and its last four characters.
+export type TrackerTeam = { id: string; key: string; name: string }
+
+export type TicketConnection = {
+  id: string
+  project_id: string
+  provider: "linear"
+  host: string
+  display_name: string
+  status: "pending" | "active" | "error" | "revoked" | "disabled"
+  auth: "api_key" | "oauth"
+  has_token: boolean
+  key_hint: string
+  scope: TrackerTeam[]
+  last_sync_at: string | null
+  last_sweep_at: string | null
+  last_error: string | null
+  tickets: number | null
+  created_at: string
+}
+
+export type TicketLinkLevel = "confirmed" | "explicit" | "mentioned" | "inferred"
+
+export type TicketInfo = {
+  id: string
+  key: string
+  previous_keys: string[]
+  title: string
+  type: string
+  status: string
+  status_category: "" | "open" | "started" | "done" | "canceled"
+  labels: string[]
+  url: string
+  opened_at: string | null
+  changed_at: string | null
+  closed_at: string | null
+  deleted: boolean
+}
+
+export type RuleTicket = TicketInfo & { level: TicketLinkLevel; commits: string[] }
+
+export type RuleTickets = { tickets: RuleTicket[]; unmatched_keys: string[] }
+
+const trackers = (projectId: string) => `/api/v1/projects/${projectId}/ticket-connections`
+
+export const listTicketConnections = (projectId: string) =>
+  getJson<{ connections: TicketConnection[] }>(trackers(projectId))
+
+export async function connectLinear(projectId: string, token: string) {
+  const response = await mutate(trackers(projectId), { provider: "linear", token })
+  return (await response.json()) as TicketConnection & { teams: TrackerTeam[] }
+}
+
+export const getTrackerTeams = (projectId: string, connectionId: string) =>
+  getJson<{ teams: TrackerTeam[] }>(`${trackers(projectId)}/${connectionId}/teams`)
+
+export async function setTrackerScope(projectId: string, connectionId: string, teamIds: string[]) {
+  const response = await mutate(`${trackers(projectId)}/${connectionId}/scope`, { team_ids: teamIds }, "PUT")
+  return (await response.json()) as TicketConnection & { tickets_removed: number }
+}
+
+export async function syncTickets(projectId: string, connectionId: string) {
+  return (await (await mutate(`${trackers(projectId)}/${connectionId}/sync`)).json()) as TicketConnection
+}
+
+export async function removeTicketConnection(projectId: string, connectionId: string) {
+  const response = await mutate(`${trackers(projectId)}/${connectionId}`, undefined, "DELETE")
+  return (await response.json()) as {
+    tickets_deleted: number
+    links_deleted: number
+    token_deleted: number
+    revoke_at_provider: boolean
+  }
+}
+
+export const searchTickets = (projectId: string, query: string) =>
+  getJson<{ tickets: TicketInfo[] }>(
+    `/api/v1/projects/${projectId}/tickets?${new URLSearchParams({ q: query, limit: "10" })}`,
+  )
+
+export const getRuleTickets = (projectId: string, entityId: string) =>
+  getJson<RuleTickets>(`/api/v1/projects/${projectId}/rules/${entityId}/tickets`)
+
+export async function linkRuleTicket(projectId: string, entityId: string, ticketId: string) {
+  const path = `/api/v1/projects/${projectId}/rules/${entityId}/tickets`
+  return (await (await mutate(path, { ticket_id: ticketId })).json()) as RuleTickets
+}
+
+export async function unlinkRuleTicket(projectId: string, entityId: string, ticketId: string) {
+  await mutate(`/api/v1/projects/${projectId}/rules/${entityId}/tickets/${ticketId}`, undefined, "DELETE")
+}

@@ -44,6 +44,7 @@ import {
 } from "@/lib/api"
 import { ASSESSMENT_LABELS, errorMessage } from "@/lib/labels"
 import { RuleHistory } from "@/screens/RuleHistory"
+import { RuleTickets } from "@/screens/RuleTickets"
 import { useBackTarget, useErrors } from "@/screens/hooks"
 import { ModelPicker } from "@/screens/ModelPicker"
 import { AnalysisDetail, ErrorText, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
@@ -1397,6 +1398,7 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
         </Section>
       )}
       <RuleImpactSection impact={rule.impact} />
+      <RuleTickets projectId={project.id} entityId={entityId} onSessionLost={onSessionLost} />
       <RuleHistory projectId={project.id} entityId={entityId} onSessionLost={onSessionLost} />
       {rule.versions.map((version, index) => (
         <VersionBlock
