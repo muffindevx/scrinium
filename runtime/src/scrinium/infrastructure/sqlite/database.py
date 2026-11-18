@@ -18,13 +18,29 @@ DATABASE_FILENAME: Final = "scrinium.sqlite3"
 MIGRATIONS_DIR: Final = Path(__file__).resolve().parent / "migrations"
 
 
-# Tables the models do not describe: the FTS5 index and its internal tables.
-_UNMODELED_TABLE_PREFIX: Final = "content_chunks_fts"
+# Tables the models do not describe: the FTS5 index, the vector index (phase 9.1) and their
+# internal tables.
+_UNMODELED_TABLE_PREFIXES: Final = ("content_chunks_fts", "vec_", "vecf_")
 
 
 def include_in_autogenerate(name: str | None, type_: str, _parents: object) -> bool:
     """Alembic filter: only compares what the models describe."""
-    return not (type_ == "table" and name is not None and name.startswith(_UNMODELED_TABLE_PREFIX))
+    unmodeled = name is not None and name.startswith(_UNMODELED_TABLE_PREFIXES)
+    return not (type_ in {"table", "index"} and unmodeled)
+
+
+def _load_vectors(dbapi_connection: sqlite3.Connection) -> None:
+    """sqlite-vec on every connection (phase 9.1): the vector tables live in this database.
+    Without the package, the rest of Scrinium still works and search goes by words."""
+    try:
+        import sqlite_vec  # type: ignore[import-untyped]
+    except ImportError:
+        return
+    dbapi_connection.enable_load_extension(True)
+    try:
+        sqlite_vec.load(dbapi_connection)
+    finally:
+        dbapi_connection.enable_load_extension(False)
 
 
 class IncompatibleDatabaseError(RuntimeError):
@@ -36,6 +52,7 @@ class BrokenMigrationError(RuntimeError):
 
 
 def _configure_connection(dbapi_connection: sqlite3.Connection, _record: Any) -> None:
+    _load_vectors(dbapi_connection)
     cursor = dbapi_connection.cursor()
     try:
         # SQLite does not enforce foreign keys unless asked on every connection.
@@ -97,6 +114,7 @@ class Database:
         )
 
         def configure(dbapi_connection: sqlite3.Connection, _record: Any) -> None:
+            _load_vectors(dbapi_connection)
             cursor = dbapi_connection.cursor()
             try:
                 cursor.execute("PRAGMA busy_timeout = 5000")

@@ -1,7 +1,7 @@
 """Deletion of sources, projects and the workspace, and a summary of what is stored.
 
 Deleting has two phases. First, in a transaction, the rows are deleted. Then, once committed,
-the disk is purged: LanceDB vectors (deleting creates a new version and the old ones remain),
+the disk is purged: vectors (in SQLite since phase 9.1),
 FTS5 segments and the SQLite WAL. Without the second phase, deleted data would stay in the files.
 
 What it cannot guarantee: copies the file system or the SSD keep in freed blocks,
@@ -52,7 +52,7 @@ from scrinium.infrastructure.sqlite.models import (
     SyncRun,
     Workspace,
 )
-from scrinium.infrastructure.vector_index.lance import VECTOR_DIRNAME
+from scrinium.infrastructure.vector_index.base import LEGACY_VECTOR_DIRNAME
 
 WIPE_CONFIRMATION: Final = "BORRAR TODO"
 _RUNNING_SYNC: Final = (SyncStatus.QUEUED, SyncStatus.RUNNING)
@@ -318,7 +318,7 @@ def stored_data(session: Session, data_dir: Path) -> StoredData:
         "workspaces": count(Workspace),
     }
     database = data_dir / DATABASE_FILENAME
-    vectors = data_dir / VECTOR_DIRNAME
+    vectors = data_dir / LEGACY_VECTOR_DIRNAME
     return StoredData(
         counts,
         {

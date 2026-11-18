@@ -41,7 +41,7 @@ All of it goes in its data directory (`~/.local/share/scrinium` on Linux). Files
 | Knowledge model: rules, flows, entities and their versions, relationships, releases and snapshots. Extraction with the local LLM proposes rules, always unverified | SQLite | Until you delete the project or everything. Rules the LLM took from a single source go with it |
 | Evidence: path, commit, lines and an excerpt copied from the cited revision, with recognizable secrets redacted | SQLite (`evidence_records`) | Until you delete the cited source |
 | Diff, SQL, release and bug analyses: a short description, the hash of the input, and a result with paths, lines, commits, and table and column names. The diff and the SQL are not stored. From Git history, the subject of candidate commits is stored, redacted | SQLite (`analysis_runs`, `findings`) | Until you delete each analysis |
-| Chunk vectors | `vectors/` in the data directory (LanceDB) | Same as the source; can be rebuilt |
+| Chunk vectors | The same SQLite database (sqlite-vec: int8 for candidates, float32 for the exact order) | Same as the source; can be rebuilt |
 | Local workspace, local profile (the name you sign reviews with) and projects | SQLite | Until you delete the project or all data |
 | Project selected in the UI (its identifier only) | Browser `localStorage` | Until you clear the site's data |
 | Audit log: action, resource, result, request ID and project key. Never descriptions, content or secrets | SQLite, append only | Same |
@@ -64,9 +64,9 @@ All of it goes in its data directory (`~/.local/share/scrinium` on Linux). Files
 - **After deleting, Scrinium purges the disk:**
   - SQLite overwrites deleted data with zeros (`secure_delete`) and truncates the WAL;
   - the FTS5 index is rewritten;
-  - LanceDB removes its old versions.
+  - vectors are rows of the same database, zeroed like the rest.
 
-  What remains is the random identifier of what was deleted, in the audit log and in LanceDB's operation log. Never its content.
+  What remains is the random identifier of what was deleted, in the audit log. Never its content.
 - **Restore** (with an empty workspace) accepts an exported file, encrypted or not.
   - It checks the whole file before writing: format, version, tables, columns, vocabularies and relationships.
   - If anything fails, it restores nothing.

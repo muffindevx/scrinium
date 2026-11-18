@@ -27,7 +27,7 @@ from scrinium.infrastructure.sqlite.models import (
     SourceItem,
     SourceRevision,
 )
-from scrinium.infrastructure.vector_index.lance import VectorIndex, VectorRow
+from scrinium.infrastructure.vector_index.base import VectorIndex, VectorRow
 
 logger = logging.getLogger("scrinium.retrieval")
 

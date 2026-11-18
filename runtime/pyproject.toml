@@ -11,7 +11,6 @@ dependencies = [
     "cryptography>=44",
     "fastapi>=0.115",
     "keyring>=25",
-    "lancedb>=0.41",
     "platformdirs>=4.3",
     "pydantic>=2.9",
     # Scrinium's window. On Linux it needs Qt, which is heavy: it goes in the `window` extra.
@@ -20,6 +19,7 @@ dependencies = [
     "sqlglot>=25",
     # Structural map of the code (functions, classes, calls) for rule extraction.
     # Pinned: 0.26.1 is from today (2026-11-09); upgrade after a few weeks.
+    "sqlite-vec==0.1.9",
     "tree-sitter==0.26.0",
     "tree-sitter-c-sharp>=0.23",
     "tree-sitter-go>=0.23",

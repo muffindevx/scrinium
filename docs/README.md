@@ -35,7 +35,7 @@ Architecture decision records: what was decided, how, why, and the alternatives 
 | ADR | Decision |
 |---|---|
 | [ADR-001](decisions/ADR-001-local-first.md) | Local-first, for one person |
-| [ADR-002](decisions/ADR-002-storage.md) | SQLite, FTS5 and embedded LanceDB |
+| [ADR-002](decisions/ADR-002-storage.md) | SQLite, FTS5 and embedded vectors (sqlite-vec since phase 9.1) |
 | [ADR-003](decisions/ADR-003-local-runtime-security.md) | Security of the local runtime |
 | [ADR-004](decisions/ADR-004-ai-data-egress.md) | Local AI by default, and data egress |
 | [ADR-005](decisions/ADR-005-stack.md) | Languages and tools |

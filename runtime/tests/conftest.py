@@ -25,7 +25,7 @@ from scrinium.infrastructure.llm.switchable import SwitchableChat
 from scrinium.infrastructure.local_http import ModelError, ModelStatus
 from scrinium.infrastructure.secret_store import KeyringSecretStore
 from scrinium.infrastructure.sqlite.database import Database
-from scrinium.infrastructure.vector_index.lance import LanceVectorIndex
+from scrinium.infrastructure.vector_index.sqlite_vec import SqliteVecIndex
 from scrinium.main import create_app, open_runtime
 
 TEST_PORT = 48123
@@ -193,7 +193,7 @@ def make_runtime(tmp_path: Path) -> Iterator[Callable[..., Runtime]]:
         sessions = LocalSessionManager()
         database, environment = open_runtime(config, memory_secret_store())
         databases.append(database)
-        indexer = Indexer(database, FakeEmbeddings(), LanceVectorIndex(config.data_dir))
+        indexer = Indexer(database, FakeEmbeddings(), SqliteVecIndex(database))
         runner = IngestionRunner(database, config.data_dir, indexer, InlineExecutor())
         chat = FakeChat()
         app = create_app(config, sessions, database, environment, runner, chat, InlineExecutor())

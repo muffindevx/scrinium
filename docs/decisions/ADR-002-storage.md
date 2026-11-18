@@ -1,9 +1,10 @@
-# ADR-002: SQLite, FTS5 and embedded LanceDB
+# ADR-002: SQLite, FTS5 and embedded vectors
 
 **Status:** accepted, 2026-11-06.
 
 - SQLite with synchronous SQLAlchemy and Alembic: implemented on 2026-11-07.
 - FTS5 and LanceDB: implemented on 2026-11-07.
+- 2026-11-17 (phase 9.1): vectors moved from LanceDB to **sqlite-vec** 0.1.9 inside the same database: int8 vectors in a `vec0` table, partitioned by project, give 4× candidates, and the float32 vectors reorder them exactly by cosine. One transactional store; LanceDB's folder is deleted on first start and its vectors rebuilt. Installed size: 482 MB → 78 MB. 20 000 vectors of 1 024 dimensions: search p95 40 ms; recall@10 against an exact search ≥ 95 % (test).
 - Code-symbol search added later (see "How it works").
 
 ## The question

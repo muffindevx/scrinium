@@ -1,7 +1,7 @@
 """A purge that failed after a confirmed deletion is retried at the next start (R3).
 
 Deleting has two phases (`erasure`): the rows go in a transaction, then the disk is purged
-(vectors, FTS5 segments, the WAL). If the second phase fails (the disk is full, LanceDB is
+(vectors, FTS5 segments, the WAL). If the second phase fails (the disk is full, the database is
 locked), the rows are already gone but copies may remain in the files. What was left to do is
 written to `pending-purge.json` in the data directory and done again when Scrinium starts, until
 it succeeds. The file holds only ids, never content.

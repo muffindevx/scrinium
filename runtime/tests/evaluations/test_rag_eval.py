@@ -24,7 +24,7 @@ from scrinium.core.config import (
 from scrinium.core.session import LocalSessionManager
 from scrinium.infrastructure.embeddings.ollama import OllamaEmbeddings
 from scrinium.infrastructure.llm.ollama import OllamaChat
-from scrinium.infrastructure.vector_index.lance import LanceVectorIndex
+from scrinium.infrastructure.vector_index.sqlite_vec import SqliteVecIndex
 from scrinium.main import create_app, open_runtime
 from tests.conftest import ORIGIN, TEST_PORT, InlineExecutor, Runtime, memory_secret_store
 from tests.integration.test_ingestion import commit_all, git, write
@@ -91,7 +91,7 @@ def real_runtime(tmp_path: Path) -> Iterator[Runtime]:
     indexer = Indexer(
         database,
         OllamaEmbeddings(default_ollama_url(), default_embedding_model()),
-        LanceVectorIndex(config.data_dir),
+        SqliteVecIndex(database),
     )
     runner = IngestionRunner(database, config.data_dir, indexer, InlineExecutor())
     chat = OllamaChat(default_ollama_url(), default_llm_model())

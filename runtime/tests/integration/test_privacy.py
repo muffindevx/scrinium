@@ -2,7 +2,6 @@
 analyses, delete a project and the workspace, and export encrypted."""
 
 import json
-import re
 import uuid
 from pathlib import Path
 
@@ -48,20 +47,37 @@ def _with_marker(api: Api) -> None:
 def test_deleting_a_source_removes_its_text_from_disk(api: Api) -> None:
     _with_marker(api)
     data_dir = api.runtime.config.data_dir
-    # Before: the text is in SQLite (revision, chunk, FTS5) and the id in the vectors.
+    # Before: the text is in SQLite (revision, chunk, FTS5) and so are the vectors (phase 9.1).
     assert _files_containing(data_dir, MARKER)
-    assert _files_containing(data_dir / "vectors", api.source_id)
+    assert _vectors_of_source(api) > 0
 
     path = f"/api/v1/sources/{api.source_id}"
     assert api.runtime.client.delete(path, headers=api.headers).status_code == 204
-    # After: not in the database, nor the WAL, nor old LanceDB versions.
+    # After: not in the database, nor the WAL; no vector of the source is left.
     assert _files_containing(data_dir, MARKER) == []
-    # The only things naming the source: the audit log (that it was deleted, no content) and the
-    # record of LanceDB's delete operation, which keeps the filter with the id. No vector.
-    holders = _files_containing(data_dir, api.source_id)
-    assert holders[0] == "scrinium.sqlite3"
-    assert all(re.search(r"/_(transactions|versions)/", path) for path in holders[1:])
-    assert not any("/data/" in path for path in holders)
+    assert _vectors_of_source(api) == 0
+    # The only file naming the source: the database, for the audit log (that it was deleted).
+    assert _files_containing(data_dir, api.source_id) == ["scrinium.sqlite3"]
+
+
+def _vectors_of_source(api: Api) -> int:
+    with api.runtime.database.engine.connect() as connection:
+        tables = [
+            row[0]
+            for row in connection.exec_driver_sql(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'vecf_%'"
+            )
+        ]
+        return sum(
+            int(
+                connection.exec_driver_sql(
+                    f"SELECT count(*) FROM {table} WHERE source_id = ?",  # noqa: S608
+                    (api.source_id,),
+                ).scalar()
+                or 0
+            )
+            for table in tables
+        )
 
 
 def test_source_deletion_drops_extracted_rules_and_marks_the_rest(api: Api) -> None:

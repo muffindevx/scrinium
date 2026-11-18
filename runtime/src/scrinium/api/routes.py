@@ -359,7 +359,7 @@ def build_router(
                 "Workspace, proyectos y registro de auditoria, en SQLite",
                 "Texto de los archivos indexados de tus fuentes, en SQLite",
                 "Fragmentos e indice de busqueda textual (FTS5), en SQLite",
-                "Vectores de los fragmentos (LanceDB), en el directorio de datos",
+                "Vectores de los fragmentos (sqlite-vec), en la misma base SQLite",
             ],
         )
 

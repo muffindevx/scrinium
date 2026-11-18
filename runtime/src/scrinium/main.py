@@ -52,7 +52,7 @@ from scrinium.infrastructure.local_http import LocalHttpClient, ModelError
 from scrinium.infrastructure.secret_store import KeyringSecretStore, SecretStore
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.tools.manifest import CHAT_MODEL, EMBEDDING_MODEL
-from scrinium.infrastructure.vector_index.lance import LanceVectorIndex
+from scrinium.infrastructure.vector_index.sqlite_vec import SqliteVecIndex, retire_legacy_vectors
 
 
 def open_runtime(
@@ -150,7 +150,9 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
     embeddings, local_llm = local_models(config)
     if runner is None:
-        indexer = Indexer(database, embeddings, LanceVectorIndex(config.data_dir))
+        # Phase 9.1: vectors in SQLite; LanceDB's old folder is deleted and rebuilt here.
+        retire_legacy_vectors(database, config.data_dir)
+        indexer = Indexer(database, embeddings, SqliteVecIndex(database))
         runner = IngestionRunner(database, config.data_dir, indexer)
     app.state.ingestion = runner
     # require_local (inside LlmService) rejects any provider that is not local.
