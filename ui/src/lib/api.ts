@@ -984,7 +984,9 @@ export const triageTrace = async (projectId: string, trace: string) =>
 export interface CoverageNode {
   path: string
   name: string
-  kind: "folder" | "file"
+  kind: "folder" | "file" | "domain"
+  // Domains only: named in .scrinium/domains.yaml, or proposed from folders.
+  declared?: boolean
   files: number
   lines: number
   decisions: number
@@ -1002,6 +1004,9 @@ export interface Coverage {
   total: Omit<CoverageNode, "path" | "name" | "kind">
   pending: number
   layer_recall: { rules: number; inside_a_decision: number; sets: number }
+  domain?: string | null
+  by_domain?: boolean
+  domain_errors?: string[]
 }
 export interface DocConflict {
   rule_id: string
@@ -1033,8 +1038,14 @@ export interface Process {
 }
 export const getProcesses = async (projectId: string) =>
   (await getJson<{ processes: Process[] }>(`/api/v1/projects/${projectId}/processes`)).processes
-export const getCoverage = (projectId: string, path: string) =>
-  getJson<Coverage>(`/api/v1/projects/${projectId}/coverage?${new URLSearchParams({ path })}`)
+export const getCoverage = (projectId: string, path: string, byDomain = false, domain: string | null = null) =>
+  getJson<Coverage>(
+    `/api/v1/projects/${projectId}/coverage?${new URLSearchParams({
+      path,
+      ...(byDomain ? { by_domain: "true" } : {}),
+      ...(domain !== null ? { domain } : {}),
+    })}`,
+  )
 
 /** ⌘K (phase 6.2): rules, functions, files and tickets by name. */
 export interface Palette {

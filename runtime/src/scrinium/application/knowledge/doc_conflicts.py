@@ -8,6 +8,18 @@ document and the code disagree. A sentence with some of its numbers in the code 
 it may simply say more than the rule.
 
 No model and no network. It finds disagreements; which side is right is a person's call.
+
+**Precision** (tuned on a real repository's 19 documents, where every finding was wrong):
+
+- only prose is read: not tables, headings or code blocks, and not documents that are a run's
+  output (a timestamp in the name, or under `results/`, `reports/`…);
+- what only looks like a quantity is removed first: paths and routes, URLs, dates and times,
+  versions, ticket keys, numbers with leading zeros (`0003`) or glued to letters (`qwen3`);
+- like is compared with like: a rule that decides with numbers against the sentence's numbers,
+  one that decides with names (`'succeeded'`) against its `names`;
+- the rule's words come from its title and statement, not from identifiers it quotes
+  (`MAX_BATCH_EVENTS` says nothing about batches), and a match needs a word of the title, or
+  three shared words.
 """
 
 import re
@@ -18,10 +30,34 @@ from typing import Any, Final
 from scrinium.application.analysis.rule_checks import unanchored_terms
 
 MIN_SHARED: Final = 2
+# Without any word of the rule's title, a sentence needs this many shared words to be about it.
+MIN_SHARED_WITHOUT_TITLE: Final = 3
 MAX_FINDINGS: Final = 200
+# Documents that record a run rather than state a policy.
+_RUN_OUTPUT: Final = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}|(?:^|/)(?:results?|reports?|outputs?|snapshots?|__snapshots__"
+    r"|fixtures?|coverage)/|(?:^|/)changelog[^/]*$",
+    re.IGNORECASE,
+)
+# What only looks like a quantity, removed before the numbers are read.
+_NOT_QUANTITY: Final = re.compile(
+    r"https?://\S+|\]\([^)]*\)|\S*/\S*"  # URLs, link targets, paths and routes
+    r"|\b\d{4}-\d{2}-\d{2}\S*|\b\d{1,2}:\d{2}(?::\d{2})?\b"  # dates and times
+    r"|\bv\d+(?:\.\d+)*\b|\b\d+\.\d+\.\d+\S*|@\d+"  # versions
+    r"|\b[A-Z][A-Z0-9]*-\d+\b|§\s*\d+"  # ticket keys, sections
+    r"|\b0\d+\b"  # identifiers with leading zeros
+    r"|\b(?=[0-9a-f]*\d)(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}\b"  # commit hashes
+    r"|\b[A-Za-z_]+\d+\w*\b|\b\d+[A-Za-z_]+\w*\b"  # numbers glued to letters
+)
+# Identifiers a statement quotes: their words are the code's, not the rule's subject.
+_IDENTIFIER: Final = re.compile(
+    r"`[^`]*`|'[^'\s]*'|\"[^\"\s]*\"|\b[A-Za-z]+(?:_[A-Za-z0-9]+)+\b|\b[a-z]+[A-Z]\w*\b"
+)
+_NUMERIC: Final = re.compile(r"^-?\d+(?:\.\d+)?$")
 _SENTENCE: Final = re.compile(r"(?<=[.!?;])\s+")
 _WORD: Final = re.compile(r"[a-z]{4,}")
-_HAS_NUMBER: Final = re.compile(r"\d")
+# A number, or a `name` (a rule may decide with names: statuses, roles, codes).
+_HAS_NUMBER: Final = re.compile(r"\d|`[A-Za-z_]")
 _STOP: Final = frozenset(
     {
         "para", "como", "cuando", "desde", "hasta", "pero", "sobre", "entre", "este", "esta",
@@ -71,15 +107,28 @@ def _words(text: str) -> set[str]:
     return {_stem(w) for w in _WORD.findall(plain) if w not in _STOP}
 
 
+def is_run_output(path: str) -> bool:
+    return _RUN_OUTPUT.search(path) is not None
+
+
 def _sentences(text: str) -> list[tuple[int, str]]:
-    """(line, sentence) of each sentence with a number. A paragraph wrapped over several
-    lines is joined first, and keeps its first line."""
+    """(line, sentence) of each prose sentence with a number or a `name`. A paragraph wrapped
+    over several lines is joined first, and keeps its first line. Tables, headings, code blocks
+    and HTML comments are not prose: their numbers are data, titles or examples."""
     found = []
     paragraph: list[str] = []
     first = 0
+    fenced = False
     for number, raw in enumerate([*text.splitlines(), ""], 1):
         line = raw.strip()
-        starts_item = line[:1] in "-*#>" or line[:2].rstrip(".").isdigit()
+        if line.startswith(("```", "~~~")):
+            fenced = not fenced
+            line = ""
+        elif fenced or line.startswith(("|", "#", "<!--", "[")) or raw.startswith("    "):
+            # A table row, a heading, a comment, a link definition or an indented code block
+            # ends the paragraph and is not read.
+            line = ""
+        starts_item = line[:1] in "-*>" or line[:2].rstrip(".").isdigit()
         if not line or (starts_item and paragraph):
             joined = " ".join(paragraph)
             for sentence in _SENTENCE.split(joined):
@@ -94,24 +143,54 @@ def _sentences(text: str) -> list[tuple[int, str]]:
     return found
 
 
+def _comparable(sentence: str, rule: KnownValues) -> tuple[list[str], list[str]]:
+    """(what the sentence says, what of it the code does not hold), of the same kind as the
+    rule's values: numbers against a rule that decides with numbers, `names` against one that
+    decides with names."""
+    cleaned = _NOT_QUANTITY.sub(" ", sentence)
+    numeric = any(_NUMERIC.match(value) for value in rule.values)
+    names = " ".join(value for value in rule.values if not _NUMERIC.match(value))
+    says = unanchored_terms(cleaned, (), "")  # every number and `name` of the sentence
+    missing = unanchored_terms(cleaned, rule.values, f"{rule.code}\n{names}")
+
+    def same_kind(term: str) -> bool:
+        is_number = term[:1].isdigit()
+        return is_number if numeric else not is_number and bool(names)
+
+    return [t for t in says if same_kind(t)], [t for t in missing if same_kind(t)]
+
+
+def _about(words: set[str], rule_words: set[str], title_words: set[str]) -> int:
+    """How many words the sentence shares with the rule; 0 when that is not enough."""
+    shared = len(words & rule_words)
+    if shared < MIN_SHARED or (not words & title_words and shared < MIN_SHARED_WITHOUT_TITLE):
+        return 0
+    return shared
+
+
 def doc_conflicts(rules: list[KnownValues], documents: list[tuple[str, str]]) -> list[DocConflict]:
-    vocab = [(rule, _words(f"{rule.title} {rule.statement}")) for rule in rules if rule.values]
+    vocab = [
+        (rule, _words(f"{rule.title} {_IDENTIFIER.sub(' ', rule.statement)}"), _words(rule.title))
+        for rule in rules
+        if rule.values
+    ]
     conflicts = []
     for path, text in documents:
+        if is_run_output(path):
+            continue
         for line, sentence in _sentences(text):
-            words = _words(sentence)
+            words = _words(_NOT_QUANTITY.sub(" ", sentence))
             scored = sorted(
-                ((len(words & known), rule) for rule, known in vocab),
+                ((_about(words, known, title), rule) for rule, known, title in vocab),
                 key=lambda pair: -pair[0],
             )
-            if not scored or scored[0][0] < MIN_SHARED:
+            if not scored or scored[0][0] == 0:
                 continue
             best = scored[0][0]
             for shared, rule in scored:
                 if shared < best:
                     break
-                says = unanchored_terms(sentence, (), "")  # every number of the sentence
-                missing = unanchored_terms(sentence, rule.values, rule.code)
+                says, missing = _comparable(sentence, rule)
                 if says and len(missing) == len(says):
                     conflicts.append(
                         DocConflict(

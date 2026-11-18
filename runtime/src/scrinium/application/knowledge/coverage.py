@@ -17,11 +17,13 @@ import posixpath
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Final
 
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from scrinium.application.knowledge.domains import Domains, load_domains
 from scrinium.application.trackers.evidence import bug_tickets_by_rule
 from scrinium.domain.enums import (
     EntityLifecycle,
@@ -206,14 +208,42 @@ def _file_counts(file: _File, cited: list[Cited]) -> tuple[_Counts, list[list[An
     return counts, spans
 
 
-def coverage(session: Session, project_id: uuid.UUID, path: str = "") -> dict[str, Any]:
+def _domains(session: Session, project_id: uuid.UUID) -> dict[str, Domains]:
+    """Each source's domains (`.scrinium/domains.yaml` in its folder, read from disk)."""
+    found = {}
+    for connection in session.scalars(
+        select(SourceConnection).where(SourceConnection.project_id == project_id)
+    ):
+        root = (connection.configuration or {}).get("root")
+        # Keyed like `_File.source_id`, which raw SQL returns without dashes.
+        found[connection.id.hex] = load_domains(Path(root)) if root else Domains()
+    return found
+
+
+def coverage(
+    session: Session,
+    project_id: uuid.UUID,
+    path: str = "",
+    domain: str | None = None,
+    by_domain: bool = False,
+) -> dict[str, Any]:
     """The children of `path` (a source name first when there are several sources, then
-    folders and files) with their counts, and the totals."""
+    folders and files) with their counts, and the totals.
+
+    `by_domain`: at the top, the children are the domains (proposed from folders or declared in
+    `.scrinium/domains.yaml`). `domain`: only that domain's files, then folders as usual."""
     files = _code_files(session, project_id)
     pending = 0
     if any(f.lines is None for f in files):
         pending = ensure_decisions(session, project_id)
         files = _code_files(session, project_id)
+    domains = _domains(session, project_id) if by_domain or domain is not None else {}
+    domain_of: dict[tuple[str, str], tuple[str, bool]] = {
+        (f.source_id, f.path): domains.get(uuid.UUID(f.source_id).hex, Domains()).of(f.path)
+        for f in files
+    } if domains else {}  # fmt: skip
+    if domain is not None:
+        files = [f for f in files if domain_of[(f.source_id, f.path)][0] == domain]
     cited = _citations(session, project_id)
     bugs_of = bug_tickets_by_rule(session, project_id)
     several = len({f.source_id for f in files}) > 1
@@ -222,6 +252,7 @@ def coverage(session: Session, project_id: uuid.UUID, path: str = "") -> dict[st
     kinds: dict[str, str] = {}
     total = _Counts()
     uncovered_here: list[dict[str, Any]] = []
+    declared_names: dict[str, bool] = {}
     for file in files:
         if file.lines is None:
             continue
@@ -231,6 +262,12 @@ def coverage(session: Session, project_id: uuid.UUID, path: str = "") -> dict[st
             counts.bugs |= bugs_of.get(rule, set())
         total.add(counts)
         if prefix and not (shown == prefix or shown.startswith(f"{prefix}/")):
+            continue
+        if by_domain and domain is None:
+            name, declared = domain_of[(file.source_id, file.path)]
+            children[name].add(counts)
+            kinds[name] = "domain"
+            declared_names.setdefault(name, declared)
             continue
         rest = shown[len(prefix) + 1 :] if prefix else shown
         if not rest:  # `path` is this file: list its decisions without a rule
@@ -253,6 +290,11 @@ def coverage(session: Session, project_id: uuid.UUID, path: str = "") -> dict[st
                     "path": name,
                     "name": posixpath.basename(name),
                     "kind": kinds[name],
+                    **(
+                        {"declared": declared_names.get(name, False)}
+                        if kinds[name] == "domain"
+                        else {}
+                    ),
                     **counts.as_dict(),
                 }
                 for name, counts in children.items()
@@ -262,6 +304,9 @@ def coverage(session: Session, project_id: uuid.UUID, path: str = "") -> dict[st
         "uncovered": uncovered_here,
         "total": total.as_dict(),
         "pending": sum(1 for f in files if f.lines is None) if pending else 0,
+        "domain": domain,
+        "by_domain": by_domain,
+        "domain_errors": sorted({d.error for d in domains.values() if d.error}),
         "layer_recall": LAYER_RECALL,
     }
 

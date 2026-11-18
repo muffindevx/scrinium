@@ -367,12 +367,16 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
 
     @router.get("/api/v1/projects/{project_id}/coverage")
     def project_coverage(
-        project_id: uuid.UUID, path: Annotated[str, Query(max_length=1000)] = ""
+        project_id: uuid.UUID,
+        path: Annotated[str, Query(max_length=1000)] = "",
+        domain: Annotated[str | None, Query(max_length=100)] = None,
+        by_domain: bool = False,
     ) -> dict[str, Any]:
-        """Where the code decides and which decisions have a rule, one level (phase 8.1)."""
+        """Where the code decides and which decisions have a rule, one level (phase 8.1), by
+        folder or by domain."""
         with database.session() as session:
             project = _project(session, project_id)
-            return coverage(session, project.id, path)
+            return coverage(session, project.id, path, domain, by_domain)
 
     @router.get("/api/v1/projects/{project_id}/processes")
     def project_processes(project_id: uuid.UUID) -> dict[str, Any]:

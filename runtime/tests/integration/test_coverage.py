@@ -88,3 +88,37 @@ def test_changes_say_which_processes_a_rule_change_touches(api: Api) -> None:
     ).json()
     [change] = found["rules"]
     assert change["processes"] == ["cobrar"] and found["processes_affected"] == ["cobrar"]
+
+
+def _by_domain(api: Api, domain: str | None = None, path: str = "") -> Any:
+    params: dict[str, Any] = {"by_domain": "true", "path": path}
+    if domain is not None:
+        params["domain"] = domain
+    response = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/coverage", params=params)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_coverage_by_domain_proposed_and_declared(api: Api) -> None:
+    # Only a generic folder (src/): the proposal is that folder.
+    proposed = _by_domain(api)
+    assert [(c["name"], c["kind"], c["declared"]) for c in proposed["children"]] == [
+        ("src", "domain", False)
+    ]
+    # A person names a domain for one file; the rest keep their proposal.
+    (api.repo / ".scrinium").mkdir(exist_ok=True)
+    (api.repo / ".scrinium" / "domains.yaml").write_text(
+        'scrinium: 1\ndomains:\n  - name: "Pagos"\n    path: "src/pagos.py"\n', encoding="utf-8"
+    )
+    raw = _by_domain(api)
+    declared = {c["name"]: c for c in raw["children"]}
+    assert declared["Pagos"]["declared"] is True and declared["Pagos"]["files"] == 1
+    assert declared["src"]["declared"] is False and declared["src"]["files"] == 1
+    # Inside a domain, folders and files as usual, only its own.
+    inside = _by_domain(api, "Pagos")
+    assert [c["name"] for c in inside["children"]] == ["src"]
+    assert [c["name"] for c in _by_domain(api, "Pagos", "src")["children"]] == ["pagos.py"]
+    # A broken file is reported and the proposals stay.
+    (api.repo / ".scrinium" / "domains.yaml").write_text("domains: [x]\n", encoding="utf-8")
+    broken = _by_domain(api)
+    assert broken["domain_errors"] and [c["name"] for c in broken["children"]] == ["src"]
