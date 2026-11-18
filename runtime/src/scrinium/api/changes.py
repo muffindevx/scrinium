@@ -24,6 +24,7 @@ from scrinium.application.ingestion import sources
 from scrinium.application.knowledge.anchoring import OldAnchor
 from scrinium.application.knowledge.processes import processes, processes_by_rule
 from scrinium.application.knowledge.rulebook import known_rules
+from scrinium.application.trackers.evidence import change_tickets_of
 from scrinium.application.workspaces import local_workspace
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import Project, SourceConnection
@@ -153,9 +154,25 @@ def build_changes_router(database: Database) -> APIRouter:
             result = compare(repository, base, head, rules)
         except GitError:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown_ref") from None
+        # Phase 10.5: the tickets the change names, resolved against the connected tracker.
+        with database.session() as session:
+            resolved = change_tickets_of(
+                session, project_id, [(list(c.tickets), list(c.commits)) for c in result.rules]
+            )
         if format == "markdown":
-            return PlainTextResponse(release_notes(result), media_type="text/markdown")
+            named = [
+                [(row["key"], row["ticket"]["title"] if row["ticket"] else None) for row in rows]
+                for rows in resolved
+            ]
+            return PlainTextResponse(release_notes(result, named), media_type="text/markdown")
         described = describe(result)
+        missing = 0
+        for change, rule, tickets in zip(described["rules"], result.rules, resolved, strict=True):
+            change["tickets"] = tickets
+            change["without_ticket"] = rule.needs_ticket and not tickets
+            missing += change["without_ticket"]
+        described["without_ticket"] = missing
+        described["branch"] = result.branch
         affected: list[str] = []
         for change in described["rules"]:
             change["processes"] = by_rule.get(change["rule_id"], [])

@@ -10,6 +10,7 @@ from typing import Any, Final
 
 from scrinium import __version__
 from scrinium.application.check.engine import CHANGED, REMOVED, REVIEW, CheckResult, Finding
+from scrinium.application.check.tickets import TicketRef
 
 SARIF_SCHEMA: Final = "https://json.schemastore.org/sarif-2.1.0.json"
 _KINDS: Final = {"error": "fail", "warning": "review", "note": "informational"}
@@ -43,6 +44,9 @@ def to_json(result: CheckResult) -> str:
         "stale_anchors": result.stale,
         "seconds": round(result.seconds, 3),
         "errors": result.errors,
+        "require_ticket": result.require_ticket,
+        "branch": result.branch,
+        "without_ticket": [f.rule_id for f in result.without_ticket],
         "findings": [
             {
                 "rule_id": f.rule_id,
@@ -50,6 +54,7 @@ def to_json(result: CheckResult) -> str:
                 "level": f.level,
                 "severity": f.severity,
                 "message": f.message,
+                "tickets": [_ticket(ref) for ref in f.tickets],
                 "path": _where(result, f)[0],
                 "start_line": _where(result, f)[1],
                 "end_line": _where(result, f)[2],
@@ -72,6 +77,18 @@ def to_json(result: CheckResult) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
 
 
+def _ticket(ref: TicketRef) -> dict[str, str]:
+    return {"key": ref.key, "origin": ref.origin, "where": ref.where}
+
+
+def _ticket_note(finding: Finding) -> str:
+    if finding.tickets:
+        return "Tickets: " + ", ".join(ref.key for ref in finding.tickets) + "."
+    if finding.needs_ticket:
+        return "Ningún commit ni la rama nombran un ticket para este cambio de regla."
+    return ""
+
+
 def to_sarif(result: CheckResult) -> str:
     rules: dict[str, dict[str, Any]] = {}
     results = []
@@ -87,6 +104,9 @@ def to_sarif(result: CheckResult) -> str:
         )
         path, start, end = _where(result, finding)
         message = finding.message
+        note = _ticket_note(finding)
+        if note:
+            message += f" {note}"
         explanation = result.explanations.get(finding.key)
         if explanation:
             message += f"\n\n{explanation}"
@@ -107,7 +127,10 @@ def to_sarif(result: CheckResult) -> str:
                 "partialFingerprints": {
                     "scriniumAnchor/v1": f"{finding.rule_id}:{finding.anchor.shape}",
                 },
-                "properties": {"scriniumLevel": finding.level},
+                "properties": {
+                    "scriniumLevel": finding.level,
+                    "tickets": [ref.key for ref in finding.tickets],
+                },
             }
         )  # fmt: skip
     sarif = {
@@ -162,11 +185,25 @@ def to_markdown(result: CheckResult) -> str:
             f"{len(warnings)} para revisar ({_count(result.rules, 'regla', 'reglas')}, "
             f"{_count(result.changed_files, 'archivo cambiado', 'archivos cambiados')})."
         )
-        lines += ["", "| Nivel | Regla | Dónde |", "|---|---|---|"]
+        lines += ["", "| Nivel | Regla | Dónde | Tickets |", "|---|---|---|---|"]
         for finding in result.findings:
             path, start, end = _where(result, finding)
             title = finding.title.replace("|", "\\|")
-            lines.append(f"| {_LEVEL_TITLES[finding.level]} | {title} | `{path}:{start}-{end}` |")
+            keys = ", ".join(ref.key for ref in finding.tickets)
+            if not keys:
+                keys = "**sin ticket**" if finding.needs_ticket else "—"
+            lines.append(
+                f"| {_LEVEL_TITLES[finding.level]} | {title} | `{path}:{start}-{end}` | {keys} |"
+            )
+        missing = result.without_ticket
+        if missing:
+            verb = "falla por eso" if result.require_ticket else "aviso"
+            lines += [
+                "",
+                f"**{_count(len(missing), 'regla cambia', 'reglas cambian')} sin ticket** "
+                f"({verb}): ningún commit del cambio que toca su archivo ni la rama "
+                f"`{result.branch or '—'}` nombra uno.",
+            ]
         explained = [
             (f, result.explanations[f.key]) for f in result.findings if f.key in result.explanations
         ]

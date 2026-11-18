@@ -61,6 +61,14 @@ def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]"
         help="Fallar también con reglas para revisar o retiradas, no solo con las que cambian.",
     )
     check_parser.add_argument(
+        "--require-ticket",
+        action="store_true",
+        help=(
+            "Fallar si una regla cambia y ningún commit que toca su archivo ni el nombre de la "
+            "rama nombran un ticket (gobierno y cumplimiento)."
+        ),
+    )
+    check_parser.add_argument(
         "--explain",
         action="store_true",
         help=(
@@ -199,6 +207,7 @@ def run_check(args: argparse.Namespace) -> int:
         result = check(
             repository, base, include_local=args.include_local, staged=args.staged,
             strict=args.strict,
+            require_ticket=args.require_ticket,
         )  # fmt: skip
     except GitError as error:
         print(f"scrinium check: {error}", file=sys.stderr)

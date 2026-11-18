@@ -7,7 +7,6 @@ asked for the rule; the person reading the rule decides.
 """
 
 import logging
-import re
 import uuid
 from collections import defaultdict
 from pathlib import Path
@@ -20,6 +19,7 @@ from scrinium.application.ingestion.sources import settings_of
 from scrinium.application.knowledge.entities import latest_version
 from scrinium.application.knowledge.views import first_code_citation
 from scrinium.domain.enums import EntityType
+from scrinium.domain.ticket_keys import tickets_in
 from scrinium.infrastructure.local_files.git_reader import GitError, GitRepository
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
@@ -31,16 +31,6 @@ from scrinium.infrastructure.sqlite.models import (
 
 logger = logging.getLogger("scrinium.tickets")
 
-# Jira-style keys (PROJ-123) and issue numbers (#123). A pull request merge names its own
-# number, not a ticket: "Merge pull request #12" does not count.
-_KEY: Final = re.compile(r"\b[A-Z][A-Z0-9]{1,9}-[1-9]\d*\b")
-_ISSUE: Final = re.compile(r"(?<![\w&])#[1-9]\d*\b")
-_MERGE_PR: Final = re.compile(r"\bpull request #\d+", re.IGNORECASE)
-# Names that look like keys and are not tickets: encodings, algorithms and standards.
-_NOT_TICKETS: Final = frozenset(
-    {"UTF", "ISO", "SHA", "MD", "AES", "RSA", "TLS", "SSL", "HTTP", "IPV", "PEP", "RFC", "ECMA",
-     "ES", "WCAG", "CP", "WINDOWS", "X", "COVID"}
-)  # fmt: skip
 MAX_TICKETS: Final = 10
 MAX_COMMITS: Final = 20
 # A rule whose citation is labelled at this commit and these lines is not looked up again.
@@ -48,14 +38,6 @@ _CHECKED: Final = "tickets_checked"
 # Bumped when what is stored changes: v2 adds the commits (phase 10.4), so every rule is
 # looked up once more.
 _CHECK_VERSION: Final = "v2"
-
-
-def tickets_in(message: str) -> list[str]:
-    """The ticket keys a commit message names, in order of appearance, without repeats."""
-    text = _MERGE_PR.sub(" ", message)
-    keys = [m.group(0) for m in _KEY.finditer(text) if m.group(0).split("-")[0] not in _NOT_TICKETS]
-    found = keys + [match.group(0) for match in _ISSUE.finditer(text)]
-    return list(dict.fromkeys(found))
 
 
 def label_rules(database: Database, project_id: uuid.UUID) -> int:

@@ -118,6 +118,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
               found.total.unverified,
               found.total.uncovered,
             )}
+            {(found.total.bugs ?? 0) > 0 && ` ${t("Sus reglas tienen {0} tickets de bug.", found.total.bugs ?? 0)}`}
             {found.pending > 0 && ` ${t("Faltan {0} archivos por analizar; vuelve en un momento.", found.pending)}`}
           </Muted>
           <div className="flex flex-wrap gap-1" role="list" aria-label={t("Carpetas y archivos")}>
@@ -150,6 +151,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
                   </span>
                   <span className="text-muted-foreground">
                     {child.decisions} · {percent(value)}
+                    {(child.bugs ?? 0) > 0 && ` · ${child.bugs === 1 ? t("1 bug") : t("{0} bugs", child.bugs ?? 0)}`}
                   </span>
                 </button>
               )

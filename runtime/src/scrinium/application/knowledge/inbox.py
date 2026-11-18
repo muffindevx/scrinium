@@ -5,8 +5,8 @@ item. The order is the value of the information a review gives:
 
     score = impact * uncertainty / cost
 
-- **impact:** how many rules depend on it (N7), how often its file changed in the last 90 days
-  and its criticality;
+- **impact:** how many rules depend on it (N7), how often its file changed in the last 90 days,
+  its criticality and how many bug tickets point to it (phase 10.5);
 - **uncertainty:** 1 if nobody reviewed it; higher when a verified rule drifted (its values
   changed); lower when it is in a group of near-identical rules one of which a person
   confirmed;
@@ -36,6 +36,7 @@ from sqlalchemy.orm import Session
 
 from scrinium.application.analysis.rule_checks import unanchored_terms
 from scrinium.application.knowledge.evidence import decisions_of
+from scrinium.application.trackers.evidence import bug_tickets_by_rule
 from scrinium.domain.enums import (
     Criticality,
     EntityLifecycle,
@@ -79,6 +80,8 @@ _PENDING_PREFIX: Final = "Pendiente de redactar."
 _NOW_REASONS: Final = frozenset({"rule_changed", "code_changed", "code_contradicts"})
 _SIMILAR: Final = 0.75
 _BANDS: Final = 8
+# One bug weighs like a step of criticality; ten weigh about five (logarithmic).
+_BUG_WEIGHT: Final = 2.0
 
 
 @dataclass
@@ -282,6 +285,11 @@ def inbox(session: Session, project: Project, offset: int = 0, limit: int = 100)
         if rule.citation is not None and rule.citation.source_revision_id is not None
     }
     churn = _churn(session, cited_revisions)
+    # Phase 10.5: bugs filed against a rule make reviewing it worth more.
+    bugs = {
+        entity_id: len(tickets)
+        for entity_id, tickets in bug_tickets_by_rule(session, project.id).items()
+    }
     groups = _groups(rules)
     members: dict[uuid.UUID, list[_Rule]] = defaultdict(list)
     for rule in rules:
@@ -313,6 +321,7 @@ def inbox(session: Session, project: Project, offset: int = 0, limit: int = 100)
             + dependents.get(rule.entity_id, 0)
             + math.log1p(churn.get(revision_id, 0) if revision_id else 0)
             + _CRITICALITY.get(rule.criticality, 2.0)
+            + _BUG_WEIGHT * math.log1p(bugs.get(str(rule.entity_id), 0))
         )
         uncertainty = _UNCERTAINTY.get(reason or "", 1.0)
         if confirmed and reason is None:
@@ -331,7 +340,7 @@ def inbox(session: Session, project: Project, offset: int = 0, limit: int = 100)
                 "score": round(impact * uncertainty / cost, 3),
                 "parts": {
                     "impact": round(impact, 2), "uncertainty": uncertainty,
-                    "cost": round(cost, 2),
+                    "cost": round(cost, 2), "bugs": bugs.get(str(rule.entity_id), 0),
                 },
                 "citation": None if cited is None else {
                     "revision_id": str(cited.source_revision_id),

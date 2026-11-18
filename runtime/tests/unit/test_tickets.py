@@ -1,6 +1,6 @@
 """IMP-2: ticket keys named by commit messages."""
 
-from scrinium.application.knowledge.tickets import tickets_in
+from scrinium.domain.ticket_keys import tickets_in
 
 
 def test_jira_keys_and_issue_numbers_are_found_once_each() -> None:

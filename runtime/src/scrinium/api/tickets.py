@@ -21,6 +21,7 @@ from scrinium.application.trackers.connections import (
     TrackerSetupError,
     default_client,
 )
+from scrinium.application.trackers.triage import triage_ticket
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import KnowledgeEntity, Project, Ticket
 from scrinium.infrastructure.tickets.linear import (
@@ -215,12 +216,16 @@ def build_tickets_router(
         return {**summary, "revoke_at_provider": True}
 
     @router.get("/api/v1/projects/{project_id}/tickets")
-    def search(project_id: uuid.UUID, q: str = "", limit: int = 20) -> dict[str, Any]:
-        """Tickets by key or title, to link one to a rule by hand."""
+    def search(
+        project_id: uuid.UUID, q: str = "", limit: int = 20, bugs: bool = False
+    ) -> dict[str, Any]:
+        """Tickets by key or title, to link one to a rule by hand or to triage a bug."""
         text = q.strip()[:100]
         with database.session() as session:
             _project(session, project_id)
             query = select(Ticket).where(Ticket.project_id == project_id)
+            if bugs:
+                query = query.where(Ticket.ticket_type == "bug")
             if text:
                 escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
                 pattern = f"%{escaped}%"
@@ -236,6 +241,17 @@ def build_tickets_router(
                 )
             )
             return {"tickets": [evidence.describe_ticket(ticket) for ticket in rows]}
+
+    @router.get("/api/v1/projects/{project_id}/tickets/{ticket_id}/triage")
+    def triage(project_id: uuid.UUID, ticket_id: uuid.UUID) -> dict[str, Any]:
+        """A bug ticket to its commits, files, rules and similar resolved bugs (phase 10.5).
+        Local only: the database and Git."""
+        with database.session() as session:
+            _project(session, project_id)
+            try:
+                return triage_ticket(session, project_id, ticket_id)
+            except LookupError:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found") from None
 
     def _rule(session: Any, project_id: uuid.UUID, entity_id: uuid.UUID) -> KnowledgeEntity:
         project = _project(session, project_id)

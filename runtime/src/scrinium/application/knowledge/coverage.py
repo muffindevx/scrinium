@@ -22,6 +22,7 @@ from typing import Any, Final
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
+from scrinium.application.trackers.evidence import bug_tickets_by_rule
 from scrinium.domain.enums import (
     EntityLifecycle,
     EntityType,
@@ -55,6 +56,8 @@ class _Counts:
     unverified: int = 0
     uncovered: int = 0
     rules: set[str] = field(default_factory=set)
+    # Bug tickets of the rules here (phase 10.5): a set, so a folder counts each bug once.
+    bugs: set[str] = field(default_factory=set)
 
     def add(self, other: "_Counts") -> None:
         self.files += other.files
@@ -64,11 +67,13 @@ class _Counts:
         self.unverified += other.unverified
         self.uncovered += other.uncovered
         self.rules |= other.rules
+        self.bugs |= other.bugs
 
     def as_dict(self) -> dict[str, Any]:
         return {"files": self.files, "lines": self.lines, "decisions": self.decisions,
                 "verified": self.verified, "unverified": self.unverified,
-                "uncovered": self.uncovered, "rules": len(self.rules)}  # fmt: skip
+                "uncovered": self.uncovered, "rules": len(self.rules),
+                "bugs": len(self.bugs)}  # fmt: skip
 
 
 @dataclass(frozen=True)
@@ -210,6 +215,7 @@ def coverage(session: Session, project_id: uuid.UUID, path: str = "") -> dict[st
         pending = ensure_decisions(session, project_id)
         files = _code_files(session, project_id)
     cited = _citations(session, project_id)
+    bugs_of = bug_tickets_by_rule(session, project_id)
     several = len({f.source_id for f in files}) > 1
     prefix = path.strip("/")
     children: dict[str, _Counts] = defaultdict(_Counts)
@@ -221,6 +227,8 @@ def coverage(session: Session, project_id: uuid.UUID, path: str = "") -> dict[st
             continue
         shown = f"{file.source_name}/{file.path}" if several else file.path
         counts, spans = _file_counts(file, cited.get(file.path, []))
+        for rule in counts.rules:
+            counts.bugs |= bugs_of.get(rule, set())
         total.add(counts)
         if prefix and not (shown == prefix or shown.startswith(f"{prefix}/")):
             continue

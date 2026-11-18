@@ -17,12 +17,29 @@ base is **new**: a possible rule nobody has written yet. No model, no network.
 
 import time
 from collections.abc import Hashable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Final
 
-from scrinium.application.check.engine import CHANGED, MOVED, REMOVED, REVIEW, _symbol_exists
-from scrinium.application.check.git import ADDED, DELETED, RENAMED, Reader, Repository
+from scrinium.application.check.engine import (
+    CHANGED,
+    MOVED,
+    REMOVED,
+    REVIEW,
+    RULE_CHANGES,
+    _symbol_exists,
+)
+from scrinium.application.check.git import (
+    ADDED,
+    DELETED,
+    LOCAL,
+    RENAMED,
+    GitError,
+    Reader,
+    Repository,
+    git,
+)
 from scrinium.application.check.rule_files import FileAnchor
+from scrinium.application.check.tickets import TicketRef, change_tickets, current_branch
 from scrinium.application.knowledge.anchoring import FUZZY, OldAnchor, reanchor
 from scrinium.infrastructure.decisions import Decision, parse_decisions, supports
 
@@ -59,6 +76,14 @@ class RuleChange:
     level: str
     before: Side
     after: Side | None
+    # What the change names for it (phase 10.5): its files' commits and the head branch.
+    tickets: tuple[TicketRef, ...] = ()
+    # The commits in the range that touched its files: a tracker may link them explicitly.
+    commits: tuple[str, ...] = ()
+
+    @property
+    def needs_ticket(self) -> bool:
+        return self.level in RULE_CHANGES
 
 
 @dataclass
@@ -70,6 +95,7 @@ class ChangesResult:
     new_decisions: list[tuple[str, str, Side]] = field(default_factory=list)  # (kind, path, side)
     unanchored: int = 0
     seconds: float = 0.0
+    branch: str | None = None
 
 
 def _parsed(reader: Reader, prefix: str, paths: set[str]) -> dict[str, list[Decision]]:
@@ -173,6 +199,19 @@ def compare(repository: Repository, base: str, head: str, rules: list[KnownRule]
                 Side.of(then.path, then.decision) if then is not None else None,
             )
         )
+    result.branch = current_branch(repository) if head == LOCAL else _branch_named(repository, head)
+    found = change_tickets(
+        repository, base_commit, head,
+        {f"{prefix}{p}" for c in result.rules for p in _paths(c)}, result.branch,
+    )  # fmt: skip
+    result.rules = [
+        replace(
+            change,
+            tickets=tuple(found.for_paths(*(f"{prefix}{p}" for p in _paths(change)))),
+            commits=tuple(found.commits_for(*(f"{prefix}{p}" for p in _paths(change)))),
+        )
+        for change in result.rules
+    ]
     order = {CHANGED: 0, REVIEW: 1, REMOVED: 2, MOVED: 3}
     result.rules.sort(key=lambda c: (order[c.level], c.before.path, c.before.start_line))
 
@@ -186,6 +225,22 @@ def compare(repository: Repository, base: str, head: str, rules: list[KnownRule]
     return result
 
 
+def _branch_named(repository: Repository, ref: str) -> str | None:
+    """`ref` when it names a branch; a commit or a tag has no branch name to read keys from."""
+    try:
+        git(repository.top, "show-ref", "--verify", "--quiet", f"refs/heads/{ref}")
+    except GitError:
+        return None
+    return ref
+
+
+def _paths(change: RuleChange) -> list[str]:
+    paths = [change.before.path]
+    if change.after is not None and change.after.path != change.before.path:
+        paths.append(change.after.path)
+    return paths
+
+
 _NOTE_LEVELS: Final = {
     CHANGED: "Cambian",
     REVIEW: "Se editaron (revisar)",
@@ -193,8 +248,17 @@ _NOTE_LEVELS: Final = {
 }
 
 
-def release_notes(result: ChangesResult) -> str:
-    """Business release notes (phase 7.2): what the rules decide differently, in Markdown."""
+def release_notes(
+    result: ChangesResult, tickets: list[list[tuple[str, str | None]]] | None = None
+) -> str:
+    """Business release notes (phase 7.2): what the rules decide differently, in Markdown, with
+    each change's tickets (phase 10.5). `tickets` follows `result.rules`: (key, title or None),
+    as resolved against the connected tracker; without it, the keys Git names."""
+    named_by_rule = {
+        id(change): tickets[number] if tickets is not None
+        else [(ref.key, None) for ref in change.tickets]
+        for number, change in enumerate(result.rules)
+    }  # fmt: skip
     lines = [f"# Cambios de negocio: {result.base} → {result.head}", ""]
     for level, heading in _NOTE_LEVELS.items():
         changes = [c for c in result.rules if c.level == level]
@@ -207,7 +271,15 @@ def release_notes(result: ChangesResult) -> str:
                 before = ", ".join(change.before.values) or "—"
                 after = ", ".join(change.after.values) or "—"
                 line += f": antes `{before}`, ahora `{after}`"
-            lines.append(f"{line} ({change.before.path}:{change.before.start_line})")
+            line += f" ({change.before.path}:{change.before.start_line})"
+            named = named_by_rule[id(change)]
+            if named:
+                line += " — " + ", ".join(
+                    f"{key} «{title}»" if title else key for key, title in named
+                )
+            elif change.needs_ticket:
+                line += " — sin ticket"
+            lines.append(line)
         lines.append("")
     if result.new_decisions:
         lines += [

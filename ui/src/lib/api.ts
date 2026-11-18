@@ -672,7 +672,8 @@ export type InboxItem = {
   review_reason: string | null
   criticality: string
   score: number
-  parts: { impact: number; uncertainty: number; cost: number }
+  // `bugs`: bug tickets pointing to the rule (phase 10.5); they raise its impact.
+  parts: { impact: number; uncertainty: number; cost: number; bugs?: number }
   citation: { revision_id: string; path: string; start_line: number; end_line: number } | null
   now: { revision_id: string; path: string; start_line: number; end_line: number } | null
   group: { key: string; size: number; confirmed: boolean; members: string[] } | null
@@ -884,6 +885,13 @@ export interface ChangeSide {
   symbol: string | null
   values: string[]
 }
+export interface ChangeTicket {
+  key: string
+  level: "explicit" | "mentioned"
+  origin: "commit" | "branch" | "linear"
+  where: string
+  ticket: TicketInfo | null
+}
 export interface Changes {
   base: string
   head: string
@@ -896,8 +904,13 @@ export interface Changes {
     before: ChangeSide
     after: ChangeSide | null
     processes?: string[]
+    // Phase 10.5: the tickets the change names for this rule, resolved when a tracker knows them.
+    tickets?: ChangeTicket[]
+    without_ticket?: boolean
   }[]
   processes_affected?: string[]
+  without_ticket?: number
+  branch?: string | null
   new_decisions: (ChangeSide & { kind: string })[]
   unanchored: number
   seconds: number
@@ -979,6 +992,8 @@ export interface CoverageNode {
   unverified: number
   uncovered: number
   rules: number
+  // Distinct bug tickets of the rules here (phase 10.5).
+  bugs?: number
 }
 export interface Coverage {
   path: string
@@ -1349,3 +1364,25 @@ export async function linkRuleTicket(projectId: string, entityId: string, ticket
 export async function unlinkRuleTicket(projectId: string, entityId: string, ticketId: string) {
   await mutate(`/api/v1/projects/${projectId}/rules/${entityId}/tickets/${ticketId}`, undefined, "DELETE")
 }
+
+export type TicketTriage = {
+  ticket: TicketInfo
+  commits: {
+    sha: string
+    date: string
+    author: string
+    subject: string
+    level: "explicit" | "mentioned"
+    files: string[]
+  }[]
+  rules: { id: string; title: string; path: string; start_line: number; end_line: number; commits: string[] }[]
+  similar: (TicketInfo & { similarity: number })[]
+}
+
+export const searchBugTickets = (projectId: string, query: string) =>
+  getJson<{ tickets: TicketInfo[] }>(
+    `/api/v1/projects/${projectId}/tickets?${new URLSearchParams({ q: query, limit: "20", bugs: "true" })}`,
+  )
+
+export const triageTicket = (projectId: string, ticketId: string) =>
+  getJson<TicketTriage>(`/api/v1/projects/${projectId}/tickets/${ticketId}/triage`)

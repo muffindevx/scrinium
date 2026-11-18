@@ -193,3 +193,90 @@ def _json_list(values: list[str]) -> str:
     import json
 
     return json.dumps(values)
+
+
+def change_tickets_of(
+    session: Session, project_id: uuid.UUID, changes: list[tuple[list[Any], list[str]]]
+) -> list[list[dict[str, Any]]]:
+    """For each rule change (its ticket refs from Git, its commits in the range): the tickets,
+    each once, explicit before mentioned, with the stored ticket when the tracker knows it.
+
+    A ref is anything with `key`, `origin` and `where` (`check.tickets.TicketRef`)."""
+    keys = list(dict.fromkeys(ref.key for refs, _ in changes for ref in refs))
+    known = tickets_by_key(session, project_id, keys)
+    shas = list(dict.fromkeys(sha for _, commits in changes for sha in commits))
+    linked: dict[str, list[Ticket]] = {}
+    for start in range(0, len(shas), 500):
+        for link, ticket in session.execute(
+            select(TicketLink, Ticket)
+            .join(Ticket, Ticket.id == TicketLink.ticket_id)
+            .where(
+                TicketLink.project_id == project_id,
+                TicketLink.from_kind == COMMIT,
+                TicketLink.from_ref.in_(shas[start : start + 500]),
+            )
+        ):
+            linked.setdefault(link.from_ref, []).append(ticket)
+    answer = []
+    for refs, commits in changes:
+        rows: dict[str, dict[str, Any]] = {}
+        for sha in commits:
+            for ticket in linked.get(sha, []):
+                rows.setdefault(ticket.key, {
+                    "key": ticket.key, "level": TicketLinkLevel.EXPLICIT.value,
+                    "origin": "linear", "where": sha, "ticket": describe_ticket(ticket),
+                })  # fmt: skip
+        for ref in refs:
+            named = known.get(ref.key)
+            shown = named.key if named is not None else ref.key
+            rows.setdefault(shown, {
+                "key": shown, "level": TicketLinkLevel.MENTIONED.value, "origin": ref.origin,
+                "where": ref.where, "ticket": describe_ticket(named) if named else None,
+            })  # fmt: skip
+        answer.append(list(rows.values()))
+    return answer
+
+
+def bug_tickets_by_rule(session: Session, project_id: uuid.UUID) -> dict[str, set[str]]:
+    """Each rule's bug tickets (annex C.5, item 4), by the same paths as `rule_tickets`: keys its
+    commits name (current or old), commits the tracker links, and links a person made. Deleted
+    tickets do not count. A handful of queries for the whole project, never one per rule."""
+    bugs = session.execute(
+        select(Ticket.id, Ticket.key, Ticket.previous_keys).where(
+            Ticket.project_id == project_id, Ticket.ticket_type == "bug",
+            Ticket.tombstone.is_(False),
+        )
+    ).all()  # fmt: skip
+    if not bugs:
+        return {}
+    by_key: dict[str, str] = {}
+    for ticket_id, _key, previous in bugs:
+        for old in previous or []:
+            by_key.setdefault(old, str(ticket_id))
+    by_key.update({key: str(ticket_id) for ticket_id, key, _ in bugs})
+    ids = [ticket_id for ticket_id, _, _ in bugs]
+    by_commit: dict[str, set[str]] = {}
+    by_rule: dict[str, set[str]] = {}
+    for start in range(0, len(ids), 500):
+        for kind, ref, ticket_id in session.execute(
+            select(TicketLink.from_kind, TicketLink.from_ref, TicketLink.ticket_id).where(
+                TicketLink.ticket_id.in_(ids[start : start + 500]),
+                TicketLink.from_kind.in_((COMMIT, RULE)),
+            )
+        ):
+            target = by_commit if kind == COMMIT else by_rule
+            target.setdefault(ref, set()).add(str(ticket_id))
+    found: dict[str, set[str]] = {}
+    for entity_id, metadata in session.execute(
+        select(KnowledgeEntity.id, KnowledgeEntity.metadata_).where(
+            KnowledgeEntity.project_id == project_id
+        )
+    ):
+        metadata = metadata or {}
+        tickets = set(by_rule.get(str(entity_id), set()))
+        tickets |= {by_key[key] for key in metadata.get("tickets") or [] if key in by_key}
+        for sha in metadata.get("commits") or []:
+            tickets |= by_commit.get(sha, set())
+        if tickets:
+            found[str(entity_id)] = tickets
+    return found

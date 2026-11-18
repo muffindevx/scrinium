@@ -39,6 +39,7 @@ from scrinium.application.check.rule_files import (
     RuleFileError,
     parse,
 )
+from scrinium.application.check.tickets import TicketRef, change_tickets, current_branch
 from scrinium.application.knowledge.anchoring import FUZZY, OldAnchor, reanchor
 from scrinium.infrastructure.code_structure import parse_symbols
 from scrinium.infrastructure.decisions import (
@@ -54,6 +55,9 @@ UPDATED: Final = "updated"
 REVIEW: Final = "review"
 REMOVED: Final = "removed"
 MOVED: Final = "moved"
+
+# The levels where the rule itself changes: those should name a ticket (phase 10.5).
+RULE_CHANGES: Final = frozenset({CHANGED, UPDATED, REVIEW, REMOVED})
 
 SEVERITY: Final = {
     CHANGED: "error",
@@ -73,6 +77,13 @@ class Finding:
     anchor: FileAnchor
     # Where it is now, when it was found: (path, start, end, symbol).
     now: tuple[str, int, int, str | None] | None = None
+    # The tickets the change names for it: its file's commits and the branch (phase 10.5).
+    tickets: tuple[TicketRef, ...] = ()
+
+    @property
+    def needs_ticket(self) -> bool:
+        """A rule that changes, is edited or is retired should say why; a move need not."""
+        return self.level in RULE_CHANGES
 
     @property
     def severity(self) -> str:
@@ -121,10 +132,20 @@ class CheckResult:
     stale: int = 0
     # Optional explanations by a model (phase 2.4), by finding key: they never change `failed`.
     explanations: dict[tuple[str, str, int], str] = field(default_factory=dict)
+    # Fail when a rule changes and nothing in the change names a ticket (phase 10.5).
+    require_ticket: bool = False
+    branch: str | None = None
+
+    @property
+    def without_ticket(self) -> list[Finding]:
+        """Rules this change alters without naming any ticket: a governance signal."""
+        return [f for f in self.findings if f.needs_ticket and not f.tickets]
 
     @property
     def failed(self) -> bool:
         failing = {CHANGED, REVIEW, REMOVED} if self.strict else {CHANGED}
+        if self.require_ticket and self.without_ticket:
+            return True
         return bool(self.errors) or any(f.level in failing for f in self.findings)
 
 
@@ -183,6 +204,8 @@ def check(
     include_local: bool = False,
     staged: bool = False,
     strict: bool = False,
+    require_ticket: bool = False,
+    branch: str | None = None,
 ) -> CheckResult:
     started = time.perf_counter()
     since = repository.merge_base(base)
@@ -199,7 +222,8 @@ def check(
     result = CheckResult(
         base=base, head=head,
         changed_files=len(changes.status), rules=len(verified), anchors_checked=0,
-        errors=errors, prefix=prefix, strict=strict,
+        errors=errors, prefix=prefix, strict=strict, require_ticket=require_ticket,
+        branch=branch if branch is not None else current_branch(repository),
     )  # fmt: skip
 
     def local(path: str) -> str | None:
@@ -281,7 +305,33 @@ def check(
             level = REVIEW if alive else REMOVED
         if level is not None:
             result.findings.append(Finding(rule.id, rule.title or "", level, anchor, now))
+    _attach_tickets(repository, since, head, result)
     order = {CHANGED: 0, REVIEW: 1, REMOVED: 2, UPDATED: 3, MOVED: 4}
     result.findings.sort(key=lambda f: (order[f.level], f.anchor.path, f.anchor.start_line))
     result.seconds = time.perf_counter() - started
     return result
+
+
+def _attach_tickets(repository: Repository, since: str, head: str, result: CheckResult) -> None:
+    """Each finding's tickets, read from Git only (no database, no network)."""
+    if not result.findings:
+        return
+    prefix = result.prefix
+    paths: set[str] = set()
+    for finding in result.findings:
+        paths.add(f"{prefix}{finding.anchor.path}")
+        if finding.now is not None:
+            paths.add(f"{prefix}{finding.now[0]}")
+    found = change_tickets(repository, since, head, paths, result.branch)
+    result.findings = [
+        replace(
+            finding,
+            tickets=tuple(
+                found.for_paths(
+                    f"{prefix}{finding.anchor.path}",
+                    *((f"{prefix}{finding.now[0]}",) if finding.now is not None else ()),
+                )
+            ),
+        )
+        for finding in result.findings
+    ]

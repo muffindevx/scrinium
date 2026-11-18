@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/status"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
-import { type ChangeRefs, type Changes, type ChangeSide, compareChanges, getChangeRefs, releaseNotes } from "@/lib/api"
+import { type ChangeRefs, type Changes, type ChangeSide, type ChangeTicket, compareChanges, getChangeRefs, releaseNotes } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import { type Tone } from "@/lib/status"
 import { useErrors } from "@/screens/hooks"
@@ -163,6 +163,14 @@ function ChangesResult({ result }: { result: Changes }) {
       <Muted>
         {t("{0} archivos cambiados · {1} reglas afectadas · {2} s", result.changed_files.length, affected.length, result.seconds)}
       </Muted>
+      {(result.without_ticket ?? 0) > 0 && (
+        <p className="text-sm">
+          <StatusBadge tone="attention">{t("{0} sin ticket", result.without_ticket ?? 0)}</StatusBadge>{" "}
+          <Muted>
+            {t("Ningún commit que toca su código ni la rama {0} nombran un ticket. Con scrinium check --require-ticket, el check falla en ese caso.", result.branch ?? "—")}
+          </Muted>
+        </p>
+      )}
       {result.rules.length === 0 ? (
         <EmptyState icon={GitCompare} title={t("Ninguna regla cambia")}>
           {t("El cambio no toca ninguna decisión con una regla.")}
@@ -188,6 +196,7 @@ function ChangesResult({ result }: { result: Changes }) {
                     {t("Procesos afectados: {0}", (change.processes ?? []).join(", "))}
                   </p>
                 )}
+                <ChangeTickets change={change} />
                 {change.level === "changed" && (
                   <p className="text-xs">
                     {t("Antes")}: <code>{values(change.before)}</code> · {t("Ahora")}: <code>{values(change.after)}</code>
@@ -216,5 +225,46 @@ function ChangesResult({ result }: { result: Changes }) {
         </Section>
       )}
     </>
+  )
+}
+
+const TICKET_ORIGINS: Record<ChangeTicket["origin"], string> = {
+  commit: t("commit"),
+  branch: t("rama"),
+  linear: t("enlazado en Linear"),
+}
+
+/** Why the rule changes (phase 10.5): tickets named by its commits or the branch, or linked by
+ * the tracker; or the governance signal that none is. */
+function ChangeTickets({ change }: { change: Changes["rules"][number] }) {
+  const tickets = change.tickets ?? []
+  if (change.without_ticket) {
+    return (
+      <p className="text-xs">
+        <StatusBadge tone="attention">{t("Sin ticket")}</StatusBadge>
+      </p>
+    )
+  }
+  if (tickets.length === 0) return null
+  return (
+    <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+      {tickets.map((row) => (
+        <li key={row.key} className="flex flex-wrap items-center gap-1.5">
+          {row.ticket?.url ? (
+            <a href={row.ticket.url} target="_blank" rel="noreferrer noopener" className="font-mono font-medium hover:underline">
+              {row.key}
+            </a>
+          ) : (
+            <code className="font-medium">{row.key}</code>
+          )}
+          {row.ticket && <span>{row.ticket.title}</span>}
+          {row.ticket?.type === "bug" && <StatusBadge tone="attention">{t("Bug")}</StatusBadge>}
+          <Muted>
+            {TICKET_ORIGINS[row.origin]}
+            {row.origin !== "branch" && row.where ? ` ${row.where.slice(0, 8)}` : ""}
+          </Muted>
+        </li>
+      ))}
+    </ul>
   )
 }

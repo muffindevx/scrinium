@@ -240,6 +240,7 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
               {current.group && <GroupActions item={current} items={items} decide={decide} merge={merge} />}
               <p className="text-xs text-muted-foreground">
                 {t("Puntuación")} {current.score}{t(": impacto")} {current.parts.impact} {t("× incertidumbre")} {current.parts.uncertainty} {t("÷ coste")} {current.parts.cost}.
+                {(current.parts.bugs ?? 0) > 0 && ` ${t("El impacto incluye {0} tickets de bug que apuntan a esta regla.", current.parts.bugs ?? 0)}`}
               </p>
             </Section>
           )}

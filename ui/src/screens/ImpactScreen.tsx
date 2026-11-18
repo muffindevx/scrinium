@@ -1,5 +1,5 @@
 import { t } from "@/lib/i18n"
-import { ArrowLeft, Bug, FileDiff, ListTree, ScanSearch } from "lucide-react"
+import { ArrowLeft, Bug, FileDiff, ListTree, ScanSearch, Ticket } from "lucide-react"
 import { type FormEvent, useCallback, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { PageHeader, Section } from "@/components/page"
@@ -7,18 +7,19 @@ import { Button } from "@/components/ui/button"
 import { Label, Textarea } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { type AnalysisType, type Triage, analyzeDiff, investigateBug, triageTrace } from "@/lib/api"
+import { TicketTriage } from "@/screens/TicketTriage"
 import { TraceResult } from "@/screens/TraceResult"
 import { AnalysisHistory } from "@/screens/AnalysisHistory"
 import { useErrors } from "@/screens/hooks"
 import { AnalysisDetail, ErrorText, type ScreenProps } from "@/screens/shared"
 
-type Mode = "trace" | "diff" | "bug"
+type Mode = "trace" | "diff" | "bug" | "ticket"
 
 // SQL review left the screen; its past analyses stay readable in the history.
 const IMPACT_TYPES: AnalysisType[] = ["code_diff", "sql_review", "bug_investigation", "impact_analysis"]
 
 
-const MODES: Record<Mode, { label: string; field: string; placeholder: string; rows: number; max: number }> = {
+const MODES: Record<Exclude<Mode, "ticket">, { label: string; field: string; placeholder: string; rows: number; max: number }> = {
   trace: {
     label: t("Traza de error"),
     field: t("Pega la traza (Python, JavaScript o Java/Kotlin)"),
@@ -47,13 +48,13 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
   // The tab lives in the URL, so going back from a result returns to the same one.
   const [params, setParams] = useSearchParams()
   const asked = params.get("modo")
-  const mode: Mode = asked === "bug" || asked === "diff" ? asked : "trace"
+  const mode: Mode = asked === "bug" || asked === "diff" || asked === "ticket" ? asked : "trace"
   const setMode = (value: Mode) => setParams(value === "trace" ? {} : { modo: value }, { replace: true })
   const [traced, setTraced] = useState<Triage | null>(null)
   const [text, setText] = useState("")
   const [busy, setBusy] = useState(false)
   const { error, setError, fail } = useErrors(onSessionLost)
-  const current = MODES[mode]
+  const current = MODES[mode === "ticket" ? "trace" : mode]
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -73,9 +74,7 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
       .finally(() => setBusy(false))
   }
 
-  return (
-    <Section>
-      <form className="grid gap-4" onSubmit={submit}>
+  const tabs = (
         <Tabs value={mode} onValueChange={(value) => setMode(value as Mode)}>
           <TabsList>
             <TabsTrigger value="trace">
@@ -90,8 +89,27 @@ function NewAnalysis({ project, onSessionLost }: ScreenProps) {
               <Bug />
               {t("Descripción de bug")}
             </TabsTrigger>
+            <TabsTrigger value="ticket">
+              <Ticket />
+              {t("Ticket de bug")}
+            </TabsTrigger>
           </TabsList>
         </Tabs>
+  )
+  if (mode === "ticket") {
+    return (
+      <Section>
+        <div className="grid gap-4">
+          {tabs}
+          <TicketTriage projectId={project.id} onSessionLost={onSessionLost} />
+        </div>
+      </Section>
+    )
+  }
+  return (
+    <Section>
+      <form className="grid gap-4" onSubmit={submit}>
+        {tabs}
         <div className="grid gap-1.5">
           <Label htmlFor="analysis-input">{current.field}</Label>
           <Textarea
