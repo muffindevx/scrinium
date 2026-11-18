@@ -1,3 +1,4 @@
+import { DialogHost } from "@/components/ui/confirm"
 import { adoptLanguage, t } from "@/lib/i18n"
 import {
   BookOpen,
@@ -98,7 +99,7 @@ const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
     group: t("Proyecto"),
     items: [
       { path: "/", label: t("Inicio"), icon: House },
-      { path: "/bandeja", label: t("Bandeja"), icon: Inbox },
+      { path: "/bandeja", label: t("Revisar"), icon: Inbox },
       { path: "/reglas", label: t("Reglas"), icon: BookOpen },
     ],
   },
@@ -367,7 +368,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
               <Route path="/procesos" element={needsProject((c) => <ProcessesScreen key={c.id} {...props(c)} />)} />
               <Route path="/cobertura" element={needsProject((c) => <CoverageScreen key={c.id} {...props(c)} />)} />
               <Route path="/cambios" element={needsProject((c) => <ChangesScreen key={c.id} {...props(c)} />)} />
-              <Route path="/bandeja" element={needsProject((c) => <InboxScreen key={c.id} {...props(c)} />)} />
+              <Route path="/bandeja/:entityId?" element={needsProject((c) => <InboxScreen key={c.id} {...props(c)} />)} />
               <Route
                 path="/reglas/:entityId?"
                 element={needsProject((c) => <RulesScreen key={c.id} {...props(c)} />)}
@@ -462,6 +463,8 @@ export default function App() {
     return (
       <BrowserRouter>
         <Shell data={view} setView={setView} />
+        {/* Dialogs opened with `await Confirm.call(...)` from anywhere appear here. */}
+        <DialogHost />
       </BrowserRouter>
     )
   }

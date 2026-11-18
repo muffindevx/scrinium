@@ -357,6 +357,9 @@ def inbox(session: Session, project: Project, offset: int = 0, limit: int = 100)
             }
         )  # fmt: skip
     items.sort(key=lambda item: (-item["score"], item["title"], item["entity_id"]))
+    buckets = {"attention": 0, "high": 0, "rest": 0}
+    for item in items:
+        buckets[bucket_of(item)] += 1
     page = items[offset : offset + limit]
     for item in page:
         if item["review_reason"] in _NOW_REASONS:
@@ -366,10 +369,27 @@ def inbox(session: Session, project: Project, offset: int = 0, limit: int = 100)
             item["now"] = places[0] if places else None
     return {
         "total": len(items),
+        "buckets": buckets,
         "items": page,
         "unanchored": unanchored[:50],
         "unanchored_total": len(unanchored),
     }
+
+
+# The inbox's tabs (as Gmail's): what stopped being true, what matters most, the rest.
+_ATTENTION: Final = frozenset(
+    {"rule_changed", "code_changed", "code_removed", "code_contradicts", "contradiction",
+     "source_deleted"}
+)  # fmt: skip
+
+
+def bucket_of(item: dict[str, Any]) -> str:
+    """attention, high or rest: the same rule as the console's tabs."""
+    if item["review_reason"] in _ATTENTION:
+        return "attention"
+    if item["criticality"] in ("high", "critical") or item["parts"].get("bugs", 0) > 0:
+        return "high"
+    return "rest"
 
 
 _DRIFT: Final = frozenset({"rule_changed", "code_changed", "code_contradicts"})

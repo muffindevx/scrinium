@@ -680,6 +680,8 @@ export type InboxItem = {
 }
 export type Inbox = {
   total: number
+  // How many rules each tab holds, counted over all of them, not only the page.
+  buckets?: { attention: number; high: number; rest: number }
   items: InboxItem[]
   unanchored: { entity_id: string; title: string; missing: string[] }[]
   unanchored_total: number
@@ -1024,16 +1026,19 @@ export const getDocConflicts = async (projectId: string) =>
 export interface Process {
   name: string
   entry: string
+  // What sets it off: an HTTP route, an action (a button), a scheduled job or a handler.
+  trigger: { kind: "http" | "action" | "schedule" | "handler"; label: string }
   path: string
   start_line: number
   rules: number
+  verified: number
   steps: {
     function: string
     path: string
     start_line: number
     end_line: number
     depth: number
-    rules: { id: string; title: string; verified: boolean }[]
+    rules: { id: string; title: string; statement: string; verified: boolean; start_line: number; end_line: number }[]
   }[]
 }
 export const getProcesses = async (projectId: string) =>

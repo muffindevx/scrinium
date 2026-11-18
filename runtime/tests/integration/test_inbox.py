@@ -70,8 +70,11 @@ def test_unreviewed_rules_are_in_the_inbox_until_reviewed(api: Api) -> None:
     api.runtime.chat.state = ModelStatus.UNAVAILABLE
     _change(api, COMMISSION.replace("> 100", "> 150"))
     _proposal(api, "Recargo", "Se recarga un 10 % al importe.", "src/recargos.py", (4, 4))
-    items = _inbox(api)["items"]
+    box = _inbox(api)
+    items = box["items"]
     assert items[0]["review_reason"] == "rule_changed" and items[0]["parts"]["uncertainty"] == 1.5
+    # The tabs: the drifted rule needs attention, the new proposal is in the rest.
+    assert box["buckets"]["attention"] == 1 and sum(box["buckets"].values()) == box["total"]
 
 
 def test_a_statement_with_a_number_its_code_lacks_stays_out(api: Api) -> None:

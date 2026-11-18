@@ -37,6 +37,10 @@ The checks need the network, because they query vulnerability databases, so they
 - **`jiter` is held below 0.19** (`[tool.uv] constraint-dependencies`): 0.19.0 was eight days old. Lift the constraint once it is two weeks old.
 - `make audit` (2026-11-14): no known vulnerabilities in the 79 shipped Python packages; the UI reports only the known development-only `deepmerge` and `minimatch`. `make sbom` was not run.
 
+## Added on 2026-11-18
+
+- **`react-call` 2.0.2** (MIT, UI), to open dialogs from anywhere with `await confirm.call({...})` (`ui/src/components/ui/confirm.tsx`). No dependencies of its own; `react-dom` and `vite` are optional peers already in the project. Pinned exactly. Released 2026-06-21.
+
 ## Updating dependencies
 
 1. Start from a green `make check`.
