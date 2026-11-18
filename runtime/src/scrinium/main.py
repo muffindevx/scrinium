@@ -24,6 +24,7 @@ from scrinium.api.middleware import (
 from scrinium.api.privacy import build_privacy_router
 from scrinium.api.routes import build_router
 from scrinium.api.static import InterfaceFiles
+from scrinium.api.tickets import SYNC_JOB, build_tickets_router
 from scrinium.application.ai.answering import QuestionRunner, mark_interrupted_questions
 from scrinium.application.ai.memory_guard import MemoryGuard
 from scrinium.application.ai.routing import Router
@@ -35,6 +36,8 @@ from scrinium.application.ingestion.sources import IngestionRunner, mark_interru
 from scrinium.application.jobs import JobQueue
 from scrinium.application.knowledge.coverage import prepare_coverage
 from scrinium.application.retrieval.indexing import Indexer
+from scrinium.application.trackers.connections import default_client
+from scrinium.application.trackers.sync import sync_connection
 from scrinium.application.workspaces import ensure_local_workspace
 from scrinium.core.config import ModelProvider, RuntimeConfig
 from scrinium.core.data_dir import prepare_data_dir
@@ -183,6 +186,14 @@ def create_app(
         {
             "after_sync": lambda payload: after_sync(uuid.UUID(payload["sync_run_id"])),
             "embed_pending": lambda _payload: runner.indexer.embed_pending(),
+            # Tickets (phase 10.3): read-only, low priority, retried by the queue.
+            SYNC_JOB: lambda payload: sync_connection(
+                database,
+                environment.secret_store,
+                uuid.UUID(payload["connection_id"]),
+                getattr(app.state, "ticket_clients", None) or default_client,
+                force=bool(payload.get("force")),
+            ),
         },
     )
     app.state.jobs = runner.jobs
@@ -195,6 +206,7 @@ def create_app(
     app.include_router(build_analyses_router(database, app.state.analyses, runner.indexer))
     app.include_router(build_knowledge_router(database, llm_service))
     app.include_router(build_changes_router(database))
+    app.include_router(build_tickets_router(database, environment, runner))
     app.include_router(build_privacy_router(config, database, runner, environment))
     app.include_router(build_ai_router(database, environment, local_chat))
     app.include_router(build_control_router(config, sessions, database, llm_service))

@@ -284,3 +284,22 @@ class TransitionType(StrEnum):
     ERROR = "error"
     RETRY = "retry"
     ASYNC_EVENT = "async_event"
+
+
+class TicketProvider(StrEnum):
+    """A ticket tracker Scrinium reads (ADR-014). Jira follows Linear with the same design."""
+
+    LINEAR = "linear"
+
+
+class TicketLinkLevel(StrEnum):
+    """How sure Scrinium is that a ticket belongs to a rule or a commit (ADR-014, annex C.4)."""
+
+    # The provider links the commit or pull request itself.
+    EXPLICIT = "explicit"
+    # The ticket's key appears in a commit message, a branch or a pull request title.
+    MENTIONED = "mentioned"
+    # Same period, same files, similar text: a proposal for a person to review.
+    INFERRED = "inferred"
+    # A person linked it, or accepted an inferred link.
+    CONFIRMED = "confirmed"

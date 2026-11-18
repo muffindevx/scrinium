@@ -1,0 +1,47 @@
+{
+  "data": {
+    "issues": {
+      "nodes": [
+        {
+          "id": "0b4c1f9e-6f3a-4d8e-9a51-2f6e2a1c7d10",
+          "identifier": "SHOP-221",
+          "previousIdentifiers": ["ENG-12"],
+          "title": "Niveles oro: envío gratis desde 40 EUR",
+          "url": "https://linear.app/acme/issue/SHOP-221/niveles-oro",
+          "createdAt": "2026-09-02T08:15:00.000Z",
+          "updatedAt": "2026-10-11T17:42:09.512Z",
+          "completedAt": "2026-10-11T17:42:09.512Z",
+          "canceledAt": null,
+          "trashed": false,
+          "state": {"name": "Done", "type": "completed"},
+          "team": {"id": "team-shop"},
+          "labels": {"nodes": [{"name": "Feature"}, {"name": "Pricing"}]},
+          "attachments": {
+            "nodes": [
+              {"url": "https://github.com/acme/shop/commit/4f1e2d3c4b5a69788766554433221100ffeeddcc"},
+              {"url": "https://github.com/acme/shop/pull/318"},
+              {"url": "https://acme.slack.com/archives/C01/p1234"}
+            ]
+          }
+        },
+        {
+          "id": "7d2a9c44-1b0e-4f4b-8d1d-55aa0e3b9f21",
+          "identifier": "SHOP-230",
+          "previousIdentifiers": [],
+          "title": "El descuento VIP se aplica dos veces",
+          "url": "https://linear.app/acme/issue/SHOP-230/descuento-vip",
+          "createdAt": "2026-10-20T10:00:00.000Z",
+          "updatedAt": "2026-10-21T09:30:00.000Z",
+          "completedAt": null,
+          "canceledAt": null,
+          "trashed": false,
+          "state": {"name": "In Progress", "type": "started"},
+          "team": {"id": "team-shop"},
+          "labels": {"nodes": [{"name": "Bug"}]},
+          "attachments": {"nodes": []}
+        }
+      ],
+      "pageInfo": {"hasNextPage": true, "endCursor": "c2hvcC0yMzA="}
+    }
+  }
+}

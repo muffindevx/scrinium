@@ -26,6 +26,7 @@ from scrinium.application.knowledge.deletion import (
 )
 from scrinium.application.privacy import pending_purge
 from scrinium.application.retrieval.indexing import Indexer
+from scrinium.application.trackers.connections import remove_connection
 from scrinium.application.workspaces import local_workspace, record_audit
 from scrinium.domain.enums import AnalysisStatus, AnalysisType, AuditResult, SyncStatus
 from scrinium.infrastructure.secret_store import SecretStore
@@ -50,6 +51,7 @@ from scrinium.infrastructure.sqlite.models import (
     SourceItem,
     SourceRevision,
     SyncRun,
+    TicketConnection,
     Workspace,
 )
 from scrinium.infrastructure.vector_index.base import LEGACY_VECTOR_DIRNAME
@@ -200,6 +202,7 @@ def delete_project(
     project_id: uuid.UUID,
     confirmation: str,
     request_id: str | None,
+    secret_store: SecretStore,
 ) -> dict[str, int]:
     with database.session() as session:
         project = sources.project_of(session, project_id)
@@ -216,6 +219,15 @@ def delete_project(
         ):
             sources.delete_source(session, connection_id, request_id)
             summary["sources_deleted"] += 1
+        # Its ticket connections, their tickets, links and tokens (ADR-014).
+        summary["ticket_connections_deleted"] = 0
+        for ticket_connection in list(
+            session.scalars(
+                select(TicketConnection).where(TicketConnection.project_id == project.id)
+            )
+        ):
+            remove_connection(session, secret_store, ticket_connection, request_id)
+            summary["ticket_connections_deleted"] += 1
         # The project's record of remote requests and its consents go with it (ADR-010); the
         # provider stays.
         summary["ai_requests_deleted"] = session.execute(
@@ -252,8 +264,9 @@ def wipe_workspace(
             raise WorkInProgressError
         workspace = local_workspace(session)
         secrets = [ref for ref in session.scalars(select(SourceConnection.secret_ref)) if ref]
-        # Remote providers' API keys too (ADR-010).
+        # Remote providers' API keys too (ADR-010), and trackers' tokens (ADR-014).
         secrets += [ref for ref in session.scalars(select(ModelProvider.secret_ref)) if ref]
+        secrets += [ref for ref in session.scalars(select(TicketConnection.secret_ref)) if ref]
         counts: dict[str, int] = {}
         # From children to parents: the reverse order of the dependencies between tables.
         session.execute(update(SourceItem).values(current_revision_id=None))

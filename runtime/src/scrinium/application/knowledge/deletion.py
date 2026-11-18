@@ -41,6 +41,7 @@ from scrinium.infrastructure.sqlite.models import (
     ReleaseKnowledgeSnapshot,
     ReleaseSnapshotEntry,
     SoftwareRelease,
+    TicketLink,
 )
 
 REVIEW_SOURCE_DELETED: Final = "source_deleted"
@@ -185,6 +186,12 @@ def delete_entities(session: Session, entity_ids: Iterable[uuid.UUID]) -> int:
     session.execute(delete(BusinessRule).where(BusinessRule.knowledge_entity_id.in_(ids)))
     session.execute(
         delete(KnowledgeEntityVersion).where(KnowledgeEntityVersion.knowledge_entity_id.in_(ids))
+    )
+    # A person's links from these rules to tickets (ADR-014): they point to nothing now.
+    session.execute(
+        delete(TicketLink).where(
+            TicketLink.from_kind == "rule", TicketLink.from_ref.in_([str(i) for i in ids])
+        )
     )
     deleted = session.execute(delete(KnowledgeEntity).where(KnowledgeEntity.id.in_(ids)))
     revalidate_findings(session, findings)

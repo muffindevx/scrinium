@@ -1,6 +1,6 @@
 # ADR-014: Ticket connectors, read-only, Linear first
 
-**Status:** proposed, 2026-11-15. Needs the owner's acceptance before phase 10 (tickets) starts. The owner already chose Linear as the first connector, with Jira following the same design.
+**Status:** accepted, 2026-11-18, with the amendments in [Amendments at acceptance](#amendments-at-acceptance-2026-11-18). Proposed 2026-11-15. The owner chose Linear as the first connector, with Jira following the same design.
 
 ## The question
 
@@ -85,6 +85,50 @@ So: what should a connector do, how does it authenticate and stay in sync, what 
 
 - GitHub issues and pull requests (T-012): only if the pilot needs them, with this same design.
 - How tickets weigh in the review inbox order: the inbox design.
+
+## Amendments at acceptance (2026-11-18)
+
+Two facts about Linear, checked against its OAuth documentation when phase 10 started, change how decision 3 applies to it. A third clarifies decision 4.
+
+### 1. Linear starts with a personal API key; OAuth follows once Scrinium has a registered app
+
+**What.** The first Linear connection authenticates with a personal API key. The person pastes it once; it goes straight to the OS keyring and is sent only to `api.linear.app`, the same way a model provider's key is handled ([ADR-010](ADR-010-remote-model-providers.md)). OAuth with PKCE remains the target, and arrives as soon as a Scrinium OAuth app is registered with Linear.
+
+**Why not OAuth from day one?** Two things stand in the way:
+
+- **No client id.** OAuth needs an application registered with Linear, whose `client_id` Scrinium ships. That application does not exist yet. Registering it is the publisher's act, not code.
+- **No ephemeral port.** Linear matches `redirect_uri` exactly against the URLs registered for the app. A "random free port" callback, as RFC 8252 suggests, would be rejected. So the loopback callback must use one fixed port registered with the app (for example `http://127.0.0.1:<fixed port>/callback`). If that port is busy, the flow fails with a clear message instead of picking another.
+
+**Is a personal key acceptable?** The panel's annex C.2 already lists it for Linear. The risks are the same as for a model provider's key, and the same controls apply:
+
+- the key lives in the keyring only, and is never kept in the database, logs, exports or `.scrinium/`;
+- it is tied to one host;
+- it is deleted from the keyring when the connection is removed.
+
+It does lose two properties OAuth has:
+
+- **Scopes.** The person should create the key with read access only, where Linear offers that. Scrinium only ever sends read queries anyway.
+- **Revocation from Scrinium.** Removing the connection deletes Scrinium's copy, but the key stays valid in Linear until the person revokes it there. The interface says so when the connection is removed.
+
+**Alternatives.**
+
+| Alternative | Why not |
+|---|---|
+| Wait for the OAuth app before shipping anything | Blocks the whole phase on a registration step that is not code. The data model, sync and evidence graph do not depend on how the token was obtained. |
+| Each person registers their own OAuth app | Asks too much of a person who only wants their tickets. It is still possible later as an advanced option, because the client id is configuration. |
+| OAuth with an ephemeral port anyway | Linear rejects it. |
+
+### 2. Rate limits arrive in two shapes
+
+Linear can answer HTTP 429. It can also answer with a GraphQL error whose `extensions.code` is `RATELIMITED`, with the reset time in its rate-limit headers. The client treats both the same way: it waits until the reset (or `Retry-After`) and does not count the wait as a failure. A sync that cannot finish within its job's time goes back to the queue with its cursor saved.
+
+### 3. Key history comes from the provider
+
+Linear returns an issue's `previousIdentifiers`, its keys from before it moved between teams. Scrinium stores them as the key history in decision 4, so an old commit that says `ENG-12` still resolves to the issue that is now `OPS-40`. Jira will need its own source for the same history (its changelog), which is why the history is a column and not something derived.
+
+### 4. Linear has no issue type
+
+Jira has issue types (bug, story, task). Linear does not: teams mark bugs with labels. The ticket's `type` is therefore `bug` when a label's name is "bug" (in any case or language form Scrinium recognises), and empty otherwise. Bug density (C.5) counts only tickets typed `bug`.
 
 ## Consequences
 

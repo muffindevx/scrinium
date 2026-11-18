@@ -56,6 +56,8 @@ from scrinium.domain.enums import (
     Severity,
     SyncStatus,
     SyncTrigger,
+    TicketLinkLevel,
+    TicketProvider,
     TransitionType,
     VerificationMethod,
     VerificationStatus,
@@ -997,4 +999,103 @@ class FlowTransition(ProjectScoped, Base):
     )
     condition_description: Mapped[str | None] = mapped_column(String(1000))
     evidence_record_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+
+
+# Tickets (ADR-014): read-only copies of a tracker's metadata, and the links that say why a rule
+# exists. A connection belongs to one project; its tickets and links go with it.
+
+
+class TicketConnection(Timestamps, Base):
+    """A tracker connected to a project. The token lives only in the keyring (`secret_ref`)."""
+
+    __tablename__ = "ticket_connections"
+    __table_args__ = (UniqueConstraint("id", "workspace_id", "project_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    workspace_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("workspaces.id"), index=True)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    provider: Mapped[TicketProvider] = mapped_column(_enum(TicketProvider, "ticket_provider"))
+    # The only host the token is ever sent to.
+    host: Mapped[str] = mapped_column(String(253))
+    # The workspace or site name the provider reports, to tell connections apart.
+    display_name: Mapped[str] = mapped_column(String(200), default="")
+    status: Mapped[ConnectionStatus] = mapped_column(
+        _enum(ConnectionStatus, "connection_status"), default=ConnectionStatus.PENDING
+    )
+    # "api_key" today; "oauth" once Scrinium has a registered app (ADR-014, amendment 1).
+    auth: Mapped[str] = mapped_column(String(16), default="api_key")
+    secret_ref: Mapped[str | None] = mapped_column(String(200))
+    key_hint: Mapped[str] = mapped_column(String(4), default="")
+    # The teams (Linear) or projects (Jira) this project reads: [{"id", "key", "name"}].
+    scope: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    # Where the next incremental sync starts: {"updated_at": ISO-8601}.
+    cursor: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    last_sync_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # The last reconciliation sweep, which finds tickets deleted or no longer visible.
+    last_sweep_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # A stable code (`auth`, `unavailable`...), never the provider's message.
+    last_error: Mapped[str | None] = mapped_column(String(32))
+
+
+class Ticket(ProjectScoped, Base):
+    """A ticket's metadata. Identity is the provider's immutable id; the key is a label."""
+
+    __tablename__ = "tickets"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["connection_id", "workspace_id", "project_id"],
+            ["ticket_connections.id", "ticket_connections.workspace_id",
+             "ticket_connections.project_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("connection_id", "external_id"),
+        _scope_key(),
+    )  # fmt: skip
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid7)
+    connection_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    external_id: Mapped[str] = mapped_column(String(100))
+    # The team (Linear) or project (Jira) it is in now: leaving the scope deletes it.
+    container_id: Mapped[str] = mapped_column(String(100))
+    key: Mapped[str] = mapped_column(String(64), index=True)
+    # Keys it had before moving between teams or projects, so old commits still resolve.
+    previous_keys: Mapped[list[str]] = mapped_column(JSON, default=list)
+    title: Mapped[str] = mapped_column(String(500))
+    # "bug" or empty: Linear has no issue type, only labels (ADR-014, amendment 4).
+    ticket_type: Mapped[str] = mapped_column(String(32), default="")
+    status: Mapped[str] = mapped_column(String(100), default="")
+    # open, started, done or canceled: the provider's category, comparable across trackers.
+    status_category: Mapped[str] = mapped_column(String(16), default="")
+    labels: Mapped[list[str]] = mapped_column(JSON, default=list)
+    url: Mapped[str] = mapped_column(String(500), default="")
+    opened_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    changed_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    closed_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # Deleted at the provider, or no longer visible with this token: kept so links say so.
+    tombstone: Mapped[bool] = mapped_column(Boolean, default=False)
+    synced_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+
+
+class TicketLink(ProjectScoped, Base):
+    """Something that points to a ticket: a rule, a commit or a pull request (annex C.4)."""
+
+    __tablename__ = "ticket_links"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["ticket_id", "workspace_id", "project_id"],
+            ["tickets.id", "tickets.workspace_id", "tickets.project_id"],
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint("ticket_id", "from_kind", "from_ref", "level"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    # rule (an entity id), commit (a full SHA) or pull_request (its URL).
+    from_kind: Mapped[str] = mapped_column(String(16))
+    from_ref: Mapped[str] = mapped_column(String(500), index=True)
+    level: Mapped[TicketLinkLevel] = mapped_column(_enum(TicketLinkLevel, "ticket_link_level"))
+    # Where the link came from: "linear:attachment", "commit:<sha>", "person".
+    origin: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)

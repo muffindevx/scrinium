@@ -87,8 +87,9 @@ def build_privacy_router(
     ) -> dict[str, int]:
         try:
             return erasure.delete_project(
-                database, indexer, project_id, body.confirmation, _request_id(request)
-            )
+                database, indexer, project_id, body.confirmation, _request_id(request),
+                environment.secret_store,
+            )  # fmt: skip
         except handled as error:
             raise _errors(error) from None
 

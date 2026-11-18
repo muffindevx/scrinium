@@ -25,6 +25,7 @@ from scrinium.application.engine import engine_info
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion.sources import IngestionRunner
 from scrinium.application.privacy import pending_purge
+from scrinium.application.trackers.connections import tracker_destinations
 from scrinium.core.config import LOOPBACK_HOST, RuntimeConfig
 from scrinium.core.data_dir import DataDirPermissions
 from scrinium.core.disk_encryption import DiskEncryption
@@ -354,7 +355,8 @@ def build_router(
         return DataFlowResponse(
             ai_mode=_ai_mode(db),
             remote_ai_providers=remote,
-            outbound_destinations=remote,
+            # Trackers too (ADR-014): Scrinium only reads from them.
+            outbound_destinations=remote + tracker_destinations(db),
             stored_locally=[
                 "Workspace, proyectos y registro de auditoria, en SQLite",
                 "Texto de los archivos indexados de tus fuentes, en SQLite",

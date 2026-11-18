@@ -11,7 +11,7 @@ import re
 import uuid
 from collections import defaultdict
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -42,8 +42,12 @@ _NOT_TICKETS: Final = frozenset(
      "ES", "WCAG", "CP", "WINDOWS", "X", "COVID"}
 )  # fmt: skip
 MAX_TICKETS: Final = 10
+MAX_COMMITS: Final = 20
 # A rule whose citation is labelled at this commit and these lines is not looked up again.
 _CHECKED: Final = "tickets_checked"
+# Bumped when what is stored changes: v2 adds the commits (phase 10.4), so every rule is
+# looked up once more.
+_CHECK_VERSION: Final = "v2"
 
 
 def tickets_in(message: str) -> list[str]:
@@ -70,28 +74,36 @@ def label_rules(database: Database, project_id: uuid.UUID) -> int:
             logger.warning("tickets_skipped code=%s", error.code)
             continue
         with database.session() as session:
-            for entity_id, key, tickets in results:
+            for entity_id, key, found in results:
                 entity = session.get(KnowledgeEntity, entity_id)
-                if entity is None or tickets is None:
+                if entity is None or found is None:
                     continue
                 # A new dict: SQLAlchemy does not see changes made inside a JSON value.
-                entity.metadata_ = {**entity.metadata_, "tickets": tickets, _CHECKED: key}
+                entity.metadata_ = {**entity.metadata_, **found, _CHECKED: key}
                 looked += 1
     return looked
 
 
 def _lookup(
     repository: GitRepository, commit: str, path: str, start: int, end: int
-) -> list[str] | None:
+) -> dict[str, Any] | None:
+    """The tickets the commits behind these lines name, which commit names each, and those
+    commits (phase 10.4: a tracker may link a commit explicitly)."""
     try:
         commits = repository.line_commits(commit, path, start, end)
         messages = repository.messages(sorted(commits))
     except GitError:
         return None
-    tickets: list[str] = []
-    for message in messages.values():
-        tickets += tickets_in(message)
-    return list(dict.fromkeys(tickets))[:MAX_TICKETS]
+    by_key: dict[str, list[str]] = {}
+    for sha in sorted(messages):
+        for key in tickets_in(messages[sha]):
+            by_key.setdefault(key, []).append(sha)
+    tickets = list(by_key)[:MAX_TICKETS]
+    return {
+        "tickets": tickets,
+        "ticket_commits": {key: by_key[key][:MAX_COMMITS] for key in tickets},
+        "commits": sorted(commits)[:MAX_COMMITS],
+    }
 
 
 Work = dict[Path, list[tuple[uuid.UUID, str, str, str, int, int]]]
@@ -115,7 +127,10 @@ def _work(session: Session, project_id: uuid.UUID) -> Work:
         commit = (revision.metadata_ or {}).get("commit") if revision is not None else None
         if revision is None or not commit:
             continue
-        key = f"{commit}:{citation['path']}:{citation['start_line']}-{citation['end_line']}"
+        key = (
+            f"{_CHECK_VERSION}:{commit}:{citation['path']}:"
+            f"{citation['start_line']}-{citation['end_line']}"
+        )
         if entity.metadata_.get(_CHECKED) == key:
             continue
         connection = session.scalars(
