@@ -137,6 +137,10 @@ export const ERROR_LABELS: Record<string, string> = {
   invalid_scope: t("Elige al menos un equipo de los que la clave puede ver."),
   no_scope: t("Elige primero qué equipos lee este proyecto."),
   isolated_mode: t("El modo aislado no permite conectar servicios externos."),
+  invalid_email: t("Escribe el e-mail de la cuenta de Atlassian del token."),
+  invalid_auth: t("Ese tipo de acceso no sirve para este tracker."),
+  comments_not_allowed: t("Esta conexión no permite comentar. Actívalo en Fuentes › Tickets."),
+  oauth_not_configured: t("Conectar con Linear por OAuth no está configurado; usa una clave personal."),
 }
 
 export function errorMessage(code: string | null | undefined, fallback = t("No se pudo completar.")) {

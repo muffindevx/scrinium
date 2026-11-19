@@ -1034,6 +1034,9 @@ class TicketConnection(Timestamps, Base):
     last_sync_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
     # The last reconciliation sweep, which finds tickets deleted or no longer visible.
     last_sweep_at: Mapped[datetime | None] = mapped_column(UtcDateTime)
+    # Options, all off by default: {"base_url" (Jira), "email" (Jira Cloud), "read_text"
+    # (descriptions and comments, 10.6), "allow_comments" (Scrinium may comment, 10.7)}.
+    settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     # A stable code (`auth`, `unavailable`...), never the provider's message.
     last_error: Mapped[str | None] = mapped_column(String(32))
 
@@ -1075,6 +1078,10 @@ class Ticket(ProjectScoped, Base):
     # Deleted at the provider, or no longer visible with this token: kept so links say so.
     tombstone: Mapped[bool] = mapped_column(Boolean, default=False)
     synced_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utc_now)
+    # Only when the connection allows reading text (10.6); never sent to a model without the
+    # project's egress consent. Comments without their authors.
+    description: Mapped[str | None] = mapped_column(Text)
+    comments: Mapped[list[str] | None] = mapped_column(JSON)
 
 
 class TicketLink(ProjectScoped, Base):

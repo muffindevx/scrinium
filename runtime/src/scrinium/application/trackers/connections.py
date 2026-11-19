@@ -11,9 +11,11 @@
 
 import uuid
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, Final
+from urllib.parse import urlsplit
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from scrinium.application.ai.providers import ProviderError, refuse_if_isolated
@@ -22,13 +24,30 @@ from scrinium.application.workspaces import record_audit
 from scrinium.domain.enums import AuditResult, ConnectionStatus, TicketProvider
 from scrinium.infrastructure.secret_store import SecretStore, SecretStoreUnavailableError
 from scrinium.infrastructure.sqlite.models import Ticket, TicketConnection, TicketLink
-from scrinium.infrastructure.tickets.linear import LINEAR_HOST, LinearClient, Team
+from scrinium.infrastructure.tickets.base import Team, TrackerAuthError, TrackerClient
+from scrinium.infrastructure.tickets.jira import JiraClient, check_base_url
+from scrinium.infrastructure.tickets.linear import LINEAR_HOST, LinearClient
 
 MIN_TOKEN_LENGTH: Final = 16
-MAX_TOKEN_LENGTH: Final = 512
+MAX_TOKEN_LENGTH: Final = 4096
 MAX_TEAMS: Final = 50
+# How each provider authenticates: Linear with a personal key or OAuth; Jira Cloud with an API
+# token and the account e-mail ("basic"); Jira Data Center with a personal access token.
+AUTHS: Final = {TicketProvider.LINEAR: ("api_key", "oauth"), TicketProvider.JIRA: ("basic", "pat")}
 
-ClientFactory = Callable[[Callable[[], str], str], LinearClient]
+
+@dataclass(frozen=True)
+class TrackerTarget:
+    """Where a client talks to and how: everything but the token."""
+
+    provider: TicketProvider
+    base_url: str
+    auth: str
+    email: str = ""
+    read_text: bool = False
+
+
+ClientFactory = Callable[[TrackerTarget, Callable[[], str]], TrackerClient]
 
 
 class TrackerSetupError(ValueError):
@@ -39,8 +58,43 @@ class TrackerSetupError(ValueError):
         self.code = code
 
 
-def default_client(token: Callable[[], str], auth: str) -> LinearClient:
-    return LinearClient(token, auth)
+def default_client(target: TrackerTarget, token: Callable[[], str]) -> TrackerClient:
+    if target.provider is TicketProvider.JIRA:
+        return JiraClient(target.base_url, token, target.auth, target.email,
+                          read_text=target.read_text)  # fmt: skip
+    return LinearClient(token, target.auth, read_text=target.read_text)
+
+
+def target_of(connection: TicketConnection) -> TrackerTarget:
+    settings = connection.settings or {}
+    return TrackerTarget(
+        connection.provider,
+        str(settings.get("base_url") or f"https://{LINEAR_HOST}"),
+        connection.auth,
+        str(settings.get("email") or ""),
+        bool(settings.get("read_text")),
+    )
+
+
+def new_target(
+    provider: TicketProvider, auth: str, base_url: str = "", email: str = ""
+) -> TrackerTarget:
+    """A target from what a person typed, checked: HTTPS to a named host for Jira, an e-mail
+    with Jira Cloud's tokens, and an authentication the provider has."""
+    if auth not in AUTHS[provider]:
+        raise TrackerSetupError("invalid_auth")
+    if provider is TicketProvider.LINEAR:
+        return TrackerTarget(provider, f"https://{LINEAR_HOST}", auth)
+    try:
+        url = check_base_url(base_url)
+    except ValueError:
+        raise TrackerSetupError("invalid_base_url") from None
+    email = email.strip()
+    if auth == "basic" and (
+        "@" not in email or len(email) > 320 or any(c.isspace() for c in email)
+    ):
+        raise TrackerSetupError("invalid_email")
+    return TrackerTarget(provider, url, auth, email if auth == "basic" else "")
 
 
 def clean_token(token: str) -> str:
@@ -61,17 +115,21 @@ def check_allowed(session: Session) -> None:
 
 def describe(connection: TicketConnection, tickets: int | None = None) -> dict[str, Any]:
     """What the interface may know about a connection. Never the token or its reference."""
+    settings = connection.settings or {}
     return {
         "id": str(connection.id),
         "project_id": str(connection.project_id),
         "provider": connection.provider.value,
         "host": connection.host,
+        "base_url": settings.get("base_url") or f"https://{LINEAR_HOST}",
         "display_name": connection.display_name,
         "status": connection.status.value,
         "auth": connection.auth,
         "has_token": connection.secret_ref is not None,
         "key_hint": connection.key_hint,
         "scope": connection.scope,
+        "read_text": bool(settings.get("read_text")),
+        "allow_comments": bool(settings.get("allow_comments")),
         "last_sync_at": _iso(connection.last_sync_at),
         "last_sweep_at": _iso(connection.last_sweep_at),
         "last_error": connection.last_error,
@@ -108,34 +166,41 @@ def create_connection(
     token: str,
     organization: str,
     request_id: str | None = None,
+    target: TrackerTarget | None = None,
 ) -> TicketConnection:
-    """Stores a Linear token that already answered (`organization` is what it reported)."""
+    """Stores a token that already answered (`organization` is what the tracker reported). For
+    OAuth, `token` is the tokens as `oauth.encode_secret` writes them: one keyring secret."""
     check_allowed(session)
     project = project_of(session, project_id)
+    target = target or TrackerTarget(TicketProvider.LINEAR, f"https://{LINEAR_HOST}", "api_key")
     token = clean_token(token)
     try:
         ref = store.put(token)
     except SecretStoreUnavailableError:
         raise TrackerSetupError("keyring_unavailable") from None
+    settings: dict[str, Any] = {}
+    if target.provider is TicketProvider.JIRA:
+        settings = {"base_url": target.base_url, "email": target.email}
     connection = TicketConnection(
         workspace_id=project.workspace_id,
         project_id=project.id,
-        provider=TicketProvider.LINEAR,
-        host=LINEAR_HOST,
+        provider=target.provider,
+        host=(urlsplit(target.base_url).hostname or "").lower(),
         display_name=organization[:200],
         status=ConnectionStatus.PENDING,
-        auth="api_key",
+        auth=target.auth,
         secret_ref=ref,
-        key_hint=token[-4:],
+        key_hint=token[-4:] if target.auth != "oauth" else "",
         scope=[],
         cursor={},
+        settings=settings,
     )
     session.add(connection)
     session.flush()
     record_audit(
         session, project.workspace_id, "ticket_connection.create", "ticket_connection",
         str(connection.id), AuditResult.SUCCESS, request_id,
-        {"provider": connection.provider.value, "host": connection.host},
+        {"provider": connection.provider.value, "host": connection.host, "auth": target.auth},
     )  # fmt: skip
     return connection
 
@@ -150,13 +215,13 @@ def connection_of(
 
 
 def connection_token(store: SecretStore, connection: TicketConnection) -> Callable[[], str]:
-    """Reads the token from the keyring on each call, for this connection's host only."""
-    ref, host = connection.secret_ref, connection.host
+    """Reads the token from the keyring on each call, for this connection's host only: the host
+    it was stored for must still be the one its address names."""
+    ref, host, auth = connection.secret_ref, connection.host, connection.auth
+    expected = (urlsplit(target_of(connection).base_url).hostname or "").lower()
 
     def read() -> str:
-        from scrinium.infrastructure.tickets.linear import TrackerAuthError
-
-        if ref is None or host != LINEAR_HOST:
+        if ref is None or not host or host != expected:
             raise TrackerAuthError
         try:
             token = store.get(ref)
@@ -164,9 +229,72 @@ def connection_token(store: SecretStore, connection: TicketConnection) -> Callab
             raise TrackerAuthError from None
         if not token:
             raise TrackerAuthError
+        if auth == "oauth":
+            return _oauth_access(store, ref, token)
         return token
 
     return read
+
+
+def _oauth_access(store: SecretStore, ref: str, stored: str) -> str:
+    """The access token of an OAuth connection, refreshed first when it is about to expire;
+    the rotated refresh token replaces the old one under the same keyring reference."""
+    import time
+
+    from scrinium.infrastructure.tickets import oauth
+
+    tokens = oauth.decode_secret(stored)
+    if tokens is None:
+        raise TrackerAuthError
+    due = tokens.expires_at is not None and time.time() >= tokens.expires_at - (
+        oauth.REFRESH_MARGIN_SECONDS
+    )
+    if not due:
+        return tokens.access
+    client = oauth.client_id()
+    if not tokens.refresh or client is None:
+        raise TrackerAuthError
+    fresh = oauth.refresh(tokens.refresh, client)
+    if fresh.refresh is None:
+        fresh = oauth.Tokens(fresh.access, tokens.refresh, fresh.expires_at)
+    try:
+        store.replace(ref, oauth.encode_secret(fresh))
+    except SecretStoreUnavailableError:
+        raise TrackerAuthError from None
+    return fresh.access
+
+
+def update_options(
+    session: Session,
+    connection: TicketConnection,
+    read_text: bool | None,
+    allow_comments: bool | None,
+    request_id: str | None = None,
+) -> None:
+    """Reading descriptions and comments (10.6) and commenting (10.7): off by default, each a
+    person's choice. Turning reading off deletes the text already stored, at once."""
+    check_allowed(session)
+    settings = dict(connection.settings or {})
+    if read_text is not None:
+        settings["read_text"] = read_text
+        if not read_text:
+            session.execute(
+                update(Ticket)
+                .where(Ticket.connection_id == connection.id)
+                .values(description=None, comments=None)
+            )
+        else:
+            # Tickets read before have no text: read everything again.
+            connection.cursor = {}
+    if allow_comments is not None:
+        settings["allow_comments"] = allow_comments
+    connection.settings = settings
+    record_audit(
+        session, connection.workspace_id, "ticket_connection.options", "ticket_connection",
+        str(connection.id), AuditResult.SUCCESS, request_id,
+        {"read_text": settings.get("read_text", False),
+         "allow_comments": settings.get("allow_comments", False)},
+    )  # fmt: skip
 
 
 def set_scope(
@@ -245,13 +373,15 @@ def _iso(value: Any) -> str | None:
 
 
 def tracker_destinations(session: Session) -> list[str]:
-    """Each connected tracker, as "provider (host)": for the privacy summary. Read-only, and
-    nothing of the project is sent to it but the queries."""
-    rows = session.execute(
-        select(TicketConnection.provider, TicketConnection.host).distinct()
-        .order_by(TicketConnection.provider, TicketConnection.host)
-    )  # fmt: skip
+    """Each connected tracker, as "provider (host)" and what goes there: the queries only, or
+    also the comments a person confirms (10.7). For the privacy summary."""
+    found: dict[str, bool] = {}
+    for connection in session.scalars(select(TicketConnection)):
+        label = f"{connection.provider.value.capitalize()} ({connection.host})"
+        allow = bool((connection.settings or {}).get("allow_comments"))
+        found[label] = found.get(label, False) or allow
     return [
-        f"{provider.value.capitalize()} ({host}), solo lectura de tickets"
-        for provider, host in rows
-    ]
+        f"{label}, lectura de tickets y comentarios que confirmes" if allow
+        else f"{label}, solo lectura de tickets"
+        for label, allow in sorted(found.items())
+    ]  # fmt: skip

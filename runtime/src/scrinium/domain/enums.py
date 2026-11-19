@@ -290,6 +290,8 @@ class TicketProvider(StrEnum):
     """A ticket tracker Scrinium reads (ADR-014). Jira follows Linear with the same design."""
 
     LINEAR = "linear"
+    # Jira Cloud (REST v3, API token with the account e-mail) and Data Center (REST v2, PAT).
+    JIRA = "jira"
 
 
 class TicketLinkLevel(StrEnum):

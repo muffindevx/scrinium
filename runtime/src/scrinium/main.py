@@ -37,6 +37,7 @@ from scrinium.application.jobs import JobQueue
 from scrinium.application.knowledge.coverage import prepare_coverage
 from scrinium.application.retrieval.indexing import Indexer
 from scrinium.application.trackers.connections import default_client
+from scrinium.application.trackers.poller import TicketPoller
 from scrinium.application.trackers.sync import sync_connection
 from scrinium.application.workspaces import ensure_local_workspace
 from scrinium.core.config import ModelProvider, RuntimeConfig
@@ -197,6 +198,16 @@ def create_app(
         },
     )
     app.state.jobs = runner.jobs
+    # Phase 10.3: ask the trackers every few minutes. Only for a real run: tests sync by hand.
+    if llm is None:
+        jobs = runner.jobs
+        TicketPoller(
+            database,
+            lambda connection_id: jobs.enqueue(
+                SYNC_JOB, {"connection_id": connection_id}, priority=-1
+            ),
+            runner.submit_jobs,
+        ).start()
     install_error_handlers(app)
     app.include_router(
         build_router(

@@ -31,15 +31,16 @@ from scrinium.application.trackers.connections import (
     ClientFactory,
     connection_token,
     default_client,
+    target_of,
 )
 from scrinium.domain.enums import ConnectionStatus, TicketLinkLevel
 from scrinium.infrastructure.secret_store import SecretStore
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import Ticket, TicketConnection, TicketLink, utc_now
-from scrinium.infrastructure.tickets.linear import (
-    LinearClient,
-    LinearIssue,
+from scrinium.infrastructure.tickets.base import (
+    Issue,
     TrackerAuthError,
+    TrackerClient,
     TrackerError,
 )
 
@@ -49,6 +50,8 @@ SWEEP_EVERY: Final = timedelta(days=7)
 # Polling, not webhooks (a local app receives no calls): a sync asked for sooner than this after
 # the last one is skipped unless it is forced.
 MIN_INTERVAL: Final = timedelta(minutes=10)
+# Adaptive polling (annex C.3): a connection with nothing new waits twice as long, up to this.
+MAX_INTERVAL: Final = timedelta(minutes=60)
 PROVIDER_ORIGIN: Final = "linear:attachment"
 # A safety net against a provider that keeps saying "there is another page".
 MAX_PAGES: Final = 2000
@@ -58,6 +61,8 @@ MAX_PAGES: Final = 2000
 class SyncSummary:
     pages: int = 0
     stored: int = 0
+    # Tickets changed after the cursor: re-reading the one at the cursor is not a change.
+    changed: int = 0
     skipped: int = 0
     tombstoned: int = 0
     swept: bool = False
@@ -83,7 +88,7 @@ def sync_connection(
         ) or not connection.scope:  # fmt: skip
             return SyncSummary(ran=False)
         recent = connection.last_sync_at is not None and (
-            clock() - connection.last_sync_at < MIN_INTERVAL
+            clock() - connection.last_sync_at < interval_of(connection)
         )
         if recent and not force:
             return SyncSummary(ran=False)
@@ -92,10 +97,11 @@ def sync_connection(
         due_sweep = connection.last_sweep_at is None or (
             clock() - connection.last_sweep_at >= SWEEP_EVERY
         )
-        client = client_factory(connection_token(store, connection), connection.auth)
+        client = client_factory(target_of(connection), connection_token(store, connection))
+        read_text = bool((connection.settings or {}).get("read_text"))
     summary = SyncSummary()
     try:
-        newest = _pull(database, connection_id, client, teams, since, summary)
+        newest = _pull(database, connection_id, client, teams, since, summary, read_text)
         if due_sweep:
             summary.tombstoned = _sweep(database, connection_id, client, teams)
             summary.swept = True
@@ -108,7 +114,10 @@ def sync_connection(
         _finish(database, connection_id, ConnectionStatus.ERROR, error.code, None, False, clock)
         logger.warning("tickets_sync_failed code=%s", error.code)
         raise
-    _finish(database, connection_id, ConnectionStatus.ACTIVE, None, newest, summary.swept, clock)
+    _finish(
+        database, connection_id, ConnectionStatus.ACTIVE, None, newest, summary.swept, clock,
+        summary.changed,
+    )  # fmt: skip
     logger.info(
         "tickets_synced pages=%d stored=%d skipped=%d tombstoned=%d",
         summary.pages, summary.stored, summary.skipped, summary.tombstoned,
@@ -119,10 +128,11 @@ def sync_connection(
 def _pull(
     database: Database,
     connection_id: uuid.UUID,
-    client: LinearClient,
+    client: TrackerClient,
     teams: list[str],
     since: datetime | None,
     summary: SyncSummary,
+    read_text: bool = False,
 ) -> datetime | None:
     newest = since
     after: str | None = None
@@ -133,9 +143,11 @@ def _pull(
         wanted = [issue for issue in page.issues if issue.team_id in teams]
         with database.session() as session:
             connection = session.get_one(TicketConnection, connection_id)
-            store_issues(session, connection, wanted)
+            store_issues(session, connection, wanted, read_text)
         summary.stored += len(wanted)
         for issue in wanted:
+            if issue.changed_at is not None and (since is None or issue.changed_at > since):
+                summary.changed += 1
             if issue.changed_at is not None and (newest is None or issue.changed_at > newest):
                 newest = issue.changed_at
         if not page.has_next:
@@ -144,7 +156,9 @@ def _pull(
     return newest
 
 
-def store_issues(session: Session, connection: TicketConnection, issues: list[LinearIssue]) -> None:
+def store_issues(
+    session: Session, connection: TicketConnection, issues: list[Issue], read_text: bool = False
+) -> None:
     """Upserts by the provider's id, and replaces each ticket's explicit links."""
     if not issues:
         return
@@ -190,6 +204,9 @@ def store_issues(session: Session, connection: TicketConnection, issues: list[Li
         ticket.closed_at = issue.closed_at
         ticket.tombstone = issue.trashed
         ticket.synced_at = now
+        # Text only with the connection's permission; without it, nothing is kept (10.6).
+        ticket.description = issue.description if read_text else None
+        ticket.comments = list(issue.comments) if read_text and issue.comments else None
     session.flush()
     _replace_explicit_links(session, connection, issues, existing)
 
@@ -197,7 +214,7 @@ def store_issues(session: Session, connection: TicketConnection, issues: list[Li
 def _replace_explicit_links(
     session: Session,
     connection: TicketConnection,
-    issues: list[LinearIssue],
+    issues: list[Issue],
     tickets: dict[str, Ticket],
 ) -> None:
     ids = [tickets[issue.external_id].id for issue in issues]
@@ -225,7 +242,7 @@ def _replace_explicit_links(
 
 
 def _sweep(
-    database: Database, connection_id: uuid.UUID, client: LinearClient, teams: list[str]
+    database: Database, connection_id: uuid.UUID, client: TrackerClient, teams: list[str]
 ) -> int:
     """Marks as tombstones the tickets the provider no longer shows. Returns how many."""
     visible: set[str] = set()
@@ -262,6 +279,7 @@ def _finish(
     newest: datetime | None,
     swept: bool,
     clock: Callable[[], datetime],
+    changed: int = 0,
 ) -> None:
     with database.session() as session:
         connection = session.get(TicketConnection, connection_id)
@@ -271,10 +289,30 @@ def _finish(
         connection.last_error = error
         if error is None:
             connection.last_sync_at = clock()
+            # Something new: poll again soon. Nothing (only the ticket at the cursor read again):
+            # wait twice as long, up to an hour.
+            before = int(connection.cursor.get("interval_minutes") or MIN_INTERVAL.seconds // 60)
+            changed = changed > 0 or connection.cursor.get("updated_at") is None
+            minutes = (
+                MIN_INTERVAL.seconds // 60
+                if changed
+                else min(before * 2, MAX_INTERVAL.seconds // 60)
+            )
+            cursor = dict(connection.cursor)
             if newest is not None:
-                connection.cursor = {"updated_at": newest.isoformat()}
+                cursor["updated_at"] = newest.isoformat()
+            cursor["interval_minutes"] = minutes
+            connection.cursor = cursor
             if swept:
                 connection.last_sweep_at = clock()
+
+
+def interval_of(connection: TicketConnection) -> timedelta:
+    """How long this connection waits between polls (adaptive, 10 to 60 minutes)."""
+    minutes = connection.cursor.get("interval_minutes") if connection.cursor else None
+    if not isinstance(minutes, int):
+        return MIN_INTERVAL
+    return min(max(timedelta(minutes=minutes), MIN_INTERVAL), MAX_INTERVAL)
 
 
 def _parse(value: object) -> datetime | None:

@@ -49,7 +49,7 @@ export function TicketTriage({ projectId, onSessionLost }: { projectId: string; 
           <Muted>
             {query.trim() ? t("Ningún bug guardado coincide.") : t("No hay bugs guardados.")}{" "}
             <Link to="/fuentes" className="font-medium text-foreground underline-offset-4 hover:underline">
-              {t("Conecta Linear en Fuentes")}
+              {t("Conecta Linear o Jira en Fuentes")}
             </Link>
           </Muted>
         )}
@@ -112,6 +112,30 @@ function TriageResult({ result }: { result: Loaded }) {
         )}
         {ticket.status && <StatusBadge tone={ticket.status_category === "done" ? "verified" : "attention"}>{ticket.status}</StatusBadge>}
       </p>
+      {(result.trace?.length ?? 0) > 0 && (
+        <div className="grid gap-2">
+          <Eyebrow>{t("La traza de su descripción")}</Eyebrow>
+          <ol className="grid gap-1 text-sm">
+            {(result.trace ?? []).map((frame, index) => (
+              <li key={`${frame.raw}${index}`} className="flex flex-wrap items-baseline gap-x-2">
+                <code className="text-xs">{frame.function?.name}</code>
+                <span className="font-mono text-xs break-all text-muted-foreground">{frame.path}</span>
+                {frame.rules.map((rule) => (
+                  <RuleLink key={rule.id} id={rule.id} className="font-medium hover:underline">
+                    {rule.title}
+                  </RuleLink>
+                ))}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {ticket.description && (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-muted-foreground">{t("Ver la descripción del ticket")}</summary>
+          <p className="mt-1 border-l-2 pl-2 whitespace-pre-wrap text-muted-foreground">{ticket.description}</p>
+        </details>
+      )}
       <div className="grid gap-2">
         <Eyebrow>{t("Reglas")}</Eyebrow>
         {result.rules.length === 0 && <Muted>{t("Ninguna regla está citada en los archivos de estos commits.")}</Muted>}
@@ -150,7 +174,7 @@ function TriageResult({ result }: { result: Loaded }) {
                   <code className="text-xs">{shortSha(commit.sha)}</code>
                   <span>{commit.subject}</span>
                   <Muted>
-                    {commit.author} · {commit.date.slice(0, 10)} · {commit.level === "explicit" ? t("enlazado en Linear") : t("lo nombra")}
+                    {commit.author} · {commit.date.slice(0, 10)} · {commit.level === "explicit" ? t("enlazado en el tracker") : t("lo nombra")}
                   </Muted>
                 </span>
                 {commit.files.length > 0 && (

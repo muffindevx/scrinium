@@ -110,8 +110,8 @@ def main() -> None:
             session.flush()
             connection_id = connection.id
 
-        def factory(token: Any, auth: str) -> LinearClient:
-            return LinearClient(token, auth, linear)
+        def factory(target: Any, token: Any) -> LinearClient:
+            return LinearClient(token, target.auth, linear)
 
         started = time.perf_counter()
         first = sync_connection(database, store, connection_id, factory, force=True)

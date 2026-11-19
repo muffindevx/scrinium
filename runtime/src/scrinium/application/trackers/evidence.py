@@ -37,7 +37,7 @@ COMMIT: Final = "commit"
 
 def describe_ticket(ticket: Ticket) -> dict[str, Any]:
     """Metadata only (ADR-014, decision 6): never a description, a comment or a person."""
-    return {
+    described: dict[str, Any] = {
         "id": str(ticket.id),
         "key": ticket.key,
         "previous_keys": list(ticket.previous_keys or []),
@@ -52,6 +52,12 @@ def describe_ticket(ticket: Ticket) -> dict[str, Any]:
         "closed_at": None if ticket.closed_at is None else ticket.closed_at.isoformat(),
         "deleted": ticket.tombstone,
     }
+    # Text only exists when the connection allows reading it (10.6): otherwise, metadata only.
+    if ticket.description:
+        described["description"] = ticket.description
+    if ticket.comments:
+        described["comments"] = list(ticket.comments)
+    return described
 
 
 def tickets_by_key(session: Session, project_id: uuid.UUID, keys: list[str]) -> dict[str, Ticket]:
@@ -125,7 +131,11 @@ def rule_tickets(session: Session, entity: KnowledgeEntity) -> dict[str, Any]:
         found.values(),
         key=lambda item: (-_STRENGTH[TicketLinkLevel(item["level"])], item["deleted"], item["key"]),
     )
-    return {"tickets": ordered, "unmatched_keys": [key for key in keys if key not in matched]}
+    return {
+        "tickets": ordered,
+        "unmatched_keys": [key for key in keys if key not in matched],
+        "proposed": inferred_tickets(session, entity, set(found)),
+    }
 
 
 def confirm_link(
@@ -280,3 +290,128 @@ def bug_tickets_by_rule(session: Session, project_id: uuid.UUID) -> dict[str, se
         if tickets:
             found[str(entity_id)] = tickets
     return found
+
+
+def rules_of_ticket(session: Session, ticket: Ticket) -> list[dict[str, Any]]:
+    """The rules this ticket explains, by the same paths as `rule_tickets` read backwards:
+    a person's link, a commit the tracker attaches, or a commit that names its key (current or
+    old). Strongest level first."""
+    keys = {ticket.key, *(ticket.previous_keys or [])}
+    commits = set(
+        session.scalars(
+            select(TicketLink.from_ref).where(
+                TicketLink.ticket_id == ticket.id, TicketLink.from_kind == COMMIT
+            )
+        )
+    )
+    confirmed = set(
+        session.scalars(
+            select(TicketLink.from_ref).where(
+                TicketLink.ticket_id == ticket.id,
+                TicketLink.from_kind == RULE,
+                TicketLink.level == TicketLinkLevel.CONFIRMED,
+            )
+        )
+    )
+    found: list[dict[str, Any]] = []
+    for entity in session.scalars(
+        select(KnowledgeEntity).where(KnowledgeEntity.project_id == ticket.project_id)
+    ):
+        metadata = entity.metadata_ or {}
+        level: TicketLinkLevel | None = None
+        if str(entity.id) in confirmed:
+            level = TicketLinkLevel.CONFIRMED
+        elif commits & set(metadata.get("commits") or []):
+            level = TicketLinkLevel.EXPLICIT
+        elif keys & set(metadata.get("tickets") or []):
+            level = TicketLinkLevel.MENTIONED
+        if level is not None:
+            found.append({"id": str(entity.id), "title": entity.name,
+                          "statement": entity.summary, "level": level.value})  # fmt: skip
+    found.sort(key=lambda rule: (-_STRENGTH[TicketLinkLevel(rule["level"])], rule["title"]))
+    return found
+
+
+def comment_text(rules: list[dict[str, Any]]) -> str:
+    """A comment for the ticket, to be edited by a person before it is sent (10.7)."""
+    if not rules:
+        return "Scrinium: no hay reglas de negocio enlazadas a este ticket todavía."
+    lines = ["Reglas de negocio relacionadas (Scrinium):", ""]
+    for rule in rules[:20]:
+        statement = str(rule.get("statement") or "").strip()
+        lines.append(f"- {rule['title']}" + (f": {statement}" if statement else ""))
+    return "\n".join(lines)
+
+
+# Inferred links (annex C.4, "inferred"): a proposal for a person, never shown as a fact.
+MAX_PROPOSED: Final = 3
+MIN_SHARED_WORDS: Final = 2
+MIN_SIMILARITY: Final = 0.2
+DISMISSED: Final = "person:dismissed"
+
+
+def inferred_tickets(
+    session: Session, entity: KnowledgeEntity, linked: set[uuid.UUID]
+) -> list[dict[str, Any]]:
+    """Tickets whose title and labels share words with the rule's title and statement, that no
+    other path links to it and nobody dismissed. Local word overlap, no model."""
+    from scrinium.application.knowledge.doc_conflicts import _IDENTIFIER, _words
+
+    rule_words = _words(f"{entity.name} {_IDENTIFIER.sub(' ', entity.summary or '')}")
+    if len(rule_words) < MIN_SHARED_WORDS:
+        return []
+    dismissed = set(
+        session.scalars(
+            select(TicketLink.ticket_id).where(
+                TicketLink.project_id == entity.project_id,
+                TicketLink.from_kind == RULE,
+                TicketLink.from_ref == str(entity.id),
+                TicketLink.level == TicketLinkLevel.INFERRED,
+                TicketLink.origin == DISMISSED,
+            )
+        )
+    )
+    scored = []
+    for ticket in session.scalars(
+        select(Ticket).where(Ticket.project_id == entity.project_id, Ticket.tombstone.is_(False))
+    ):
+        if ticket.id in linked or ticket.id in dismissed:
+            continue
+        words = _words(f"{ticket.title} {' '.join(ticket.labels or [])}")
+        shared = rule_words & words
+        if len(shared) < MIN_SHARED_WORDS:
+            continue
+        similarity = len(shared) / len(rule_words | words)
+        if similarity >= MIN_SIMILARITY:
+            scored.append((similarity, ticket, sorted(shared)))
+    scored.sort(key=lambda row: (-row[0], row[1].key))
+    return [
+        {**describe_ticket(ticket), "level": TicketLinkLevel.INFERRED.value,
+         "similarity": round(similarity, 2), "shared_words": shared}
+        for similarity, ticket, shared in scored[:MAX_PROPOSED]
+    ]  # fmt: skip
+
+
+def dismiss_proposal(
+    session: Session, entity: KnowledgeEntity, ticket_id: uuid.UUID, request_id: str | None = None
+) -> None:
+    """A person says this proposed ticket does not explain the rule: never proposed again."""
+    ticket = session.get(Ticket, ticket_id)
+    if ticket is None or ticket.project_id != entity.project_id:
+        raise LookupError
+    exists = session.scalars(
+        select(TicketLink.id).where(
+            TicketLink.ticket_id == ticket.id, TicketLink.from_kind == RULE,
+            TicketLink.from_ref == str(entity.id), TicketLink.level == TicketLinkLevel.INFERRED,
+        )
+    ).first()  # fmt: skip
+    if exists is None:
+        session.add(TicketLink(
+            workspace_id=entity.workspace_id, project_id=entity.project_id, ticket_id=ticket.id,
+            from_kind=RULE, from_ref=str(entity.id), level=TicketLinkLevel.INFERRED,
+            origin=DISMISSED,
+        ))  # fmt: skip
+    record_audit(
+        session, entity.workspace_id, "ticket_link.dismiss", "knowledge_entity", str(entity.id),
+        AuditResult.SUCCESS, request_id, {"ticket": ticket.key},
+    )  # fmt: skip

@@ -46,6 +46,9 @@ class SecretStore(Protocol):
 
     def get(self, ref: str) -> str | None: ...
 
+    def replace(self, ref: str, value: str) -> None:
+        """A new value under the same reference (an OAuth token that was refreshed)."""
+
     def delete(self, ref: str) -> None: ...
 
 
@@ -90,6 +93,12 @@ class KeyringSecretStore:
         _check_ref(ref)
         result: str | None = self._call(lambda backend: backend.get_password(self._service, ref))
         return result
+
+    def replace(self, ref: str, value: str) -> None:
+        _check_ref(ref)
+        if not value or len(value) > MAX_SECRET_LENGTH:
+            raise ValueError("secret empty or too long")
+        self._call(lambda backend: backend.set_password(self._service, ref, value))
 
     def delete(self, ref: str) -> None:
         _check_ref(ref)

@@ -33,6 +33,7 @@ from scrinium.infrastructure.sqlite.models import (
 )
 
 MAX_COMMITS: Final = 20
+MAX_TRACE_CHARS: Final = 20_000
 MAX_FILES: Final = 60
 MAX_SIMILAR: Final = 5
 MIN_SIMILARITY: Final = 0.2
@@ -71,8 +72,17 @@ def triage_ticket(session: Session, project_id: uuid.UUID, ticket_id: uuid.UUID)
         commits += _commits(Path(root), keys, linked)
     commits = commits[:MAX_COMMITS]
     rules = _rules(session, project_id, commits)
+    # 10.6: a description the connection allowed reading may carry a stack trace; it is followed
+    # like a pasted one, locally (no model sees the ticket's text).
+    trace: list[dict[str, Any]] = []
+    if ticket.description:
+        from scrinium.application.analysis.traces import triage as triage_trace
+
+        found = triage_trace(session, project_id, ticket.description[:MAX_TRACE_CHARS])
+        trace = [frame for frame in found.get("frames", []) if frame.get("function")]
     return {
         "ticket": describe_ticket(ticket),
+        "trace": trace,
         "commits": [
             {key: value for key, value in commit.items() if key != "changed"} for commit in commits
         ],

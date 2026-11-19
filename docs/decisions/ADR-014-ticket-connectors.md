@@ -130,6 +130,17 @@ Linear returns an issue's `previousIdentifiers`, its keys from before it moved b
 
 Jira has issue types (bug, story, task). Linear does not: teams mark bugs with labels. The ticket's `type` is therefore `bug` when a label's name is "bug" (in any case or language form Scrinium recognises), and empty otherwise. Bug density (C.5) counts only tickets typed `bug`.
 
+## As built (2026-11-18)
+
+What phase 10 ended up doing where the text above left a choice open.
+
+- **OAuth comes back to Scrinium itself.** The redirect URI is `http://127.0.0.1:<Scrinium's port>/oauth/linear/callback`: the fixed port amendment 1 asks for, with no second listener. The registered app lists that URL; the `client_id` comes from `SCRINIUM_LINEAR_CLIENT_ID`, and without it the console offers the personal key only. The `state` is single-use and expires in ten minutes. Access and refresh tokens are one keyring secret; the access token is refreshed two minutes before it expires, the rotated refresh token replaces the old one under the same reference, and removing the connection revokes the token at Linear.
+- **Jira authenticates two ways.** Cloud uses an API token with the account e-mail (HTTP Basic, REST v3, `nextPageToken` pagination); Data Center uses a personal access token (Bearer, REST v2, `startAt`). The site address must be HTTPS to a named host, as with model providers. Jira does not report a moved issue's old key, so the sync keeps the key a ticket had before as a previous one; it does not expose development links through its public API, so Jira tickets reach rules through commit messages and people, not through "explicit" links.
+- **Polling adapts.** A background thread asks every five minutes which connections are due. A connection with news waits ten minutes; one without doubles its wait up to an hour.
+- **Inferred links are word overlap, shown as proposals.** Tickets whose title and labels share at least two words with the rule's title and statement (identifiers the statement quotes do not count), at least 0.2 Jaccard, three at most. A person confirms one (it becomes a confirmed link) or dismisses it (it is never proposed again).
+- **Text and comments are per-connection switches.** Reading descriptions and comments re-reads every ticket; turning it off deletes the stored text at once. Comments are stored without authors. A description that holds a stack trace is followed locally in the bug-ticket triage; ticket text never reaches a model.
+- **Commenting needs the switch and a confirmed text.** The console drafts a comment listing the ticket's rules, the person edits and confirms it, and only then is it posted. Linear's OAuth scope for that is `comments:create`; the read-only default asks for `read` only. The audit records that a comment was posted and its length, never its text. The privacy summary says which trackers may receive comments.
+
 ## Consequences
 
 - New tables and a migration; deleting a connection removes its tickets, links and tokens with the two-phase delete.

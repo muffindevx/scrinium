@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from sqlalchemy import select
 
+from scrinium.application.trackers.connections import TrackerTarget
 from scrinium.application.trackers.sync import sync_connection
 from scrinium.infrastructure.sqlite.models import (
     AuditEvent,
@@ -96,8 +97,9 @@ class Client:
         self.project_id = self.send("POST", "/api/v1/projects", {"name": "Tienda"}, 201)["id"]
         self.base = f"/api/v1/projects/{self.project_id}"
 
-    def factory(self, token: Callable[[], str], auth: str) -> LinearClient:
-        return LinearClient(token, auth, self.linear, sleep=lambda _seconds: None)
+    def factory(self, target: TrackerTarget, token: Callable[[], str]) -> LinearClient:
+        return LinearClient(token, target.auth, self.linear, sleep=lambda _seconds: None,
+                            read_text=target.read_text)  # fmt: skip
 
     def send(self, method: str, path: str, body: Any = None, expected: int = 200) -> Any:
         response = self.runtime.client.request(method, path, json=body, headers=self.headers)
@@ -195,7 +197,9 @@ def test_choosing_the_scope_syncs_only_those_teams_page_by_page(client: Client) 
         assert (link.from_kind, link.from_ref, link.level.value) == ("commit", SHA_GOLD, "explicit")
         connection = session.scalars(select(TicketConnection)).one()
         assert connection.status.value == "active" and connection.last_sweep_at is not None
-        assert connection.cursor == {"updated_at": (T0 + timedelta(minutes=30)).isoformat()}
+        assert connection.cursor == {
+            "updated_at": (T0 + timedelta(minutes=30)).isoformat(), "interval_minutes": 10,
+        }  # fmt: skip
 
 
 def test_an_incremental_sync_reads_only_what_changed_and_follows_moves(client: Client) -> None:
@@ -317,7 +321,7 @@ def test_removing_the_connection_removes_tickets_links_and_token(client: Client)
         ref = session.scalars(select(TicketConnection.secret_ref)).one()
     answer = client.send("DELETE", f"{client.base}/ticket-connections/{connection_id}")
     assert answer == {"tickets_deleted": 3, "links_deleted": 1, "token_deleted": 1,
-                      "revoke_at_provider": True}  # fmt: skip
+                      "revoke_at_provider": True, "revoked": False}  # fmt: skip
     assert ref is not None and client.runtime.environment.secret_store.get(ref) is None
     with client.runtime.database.session() as session:
         assert session.scalars(select(TicketLink)).first() is None

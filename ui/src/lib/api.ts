@@ -1295,11 +1295,15 @@ export type TrackerTeam = { id: string; key: string; name: string }
 export type TicketConnection = {
   id: string
   project_id: string
-  provider: "linear"
+  provider: "linear" | "jira"
+  base_url: string
+  // Off by default: reading descriptions and comments (10.6), commenting on tickets (10.7).
+  read_text: boolean
+  allow_comments: boolean
   host: string
   display_name: string
   status: "pending" | "active" | "error" | "revoked" | "disabled"
-  auth: "api_key" | "oauth"
+  auth: "api_key" | "oauth" | "basic" | "pat"
   has_token: boolean
   key_hint: string
   scope: TrackerTeam[]
@@ -1326,17 +1330,28 @@ export type TicketInfo = {
   changed_at: string | null
   closed_at: string | null
   deleted: boolean
+  // Only when the connection allows reading text.
+  description?: string
+  comments?: string[]
 }
 
 export type RuleTicket = TicketInfo & { level: TicketLinkLevel; commits: string[] }
 
-export type RuleTickets = { tickets: RuleTicket[]; unmatched_keys: string[] }
+export type ProposedTicket = TicketInfo & { level: "inferred"; similarity: number; shared_words: string[] }
+export type RuleTickets = { tickets: RuleTicket[]; unmatched_keys: string[]; proposed?: ProposedTicket[] }
 
 const trackers = (projectId: string) => `/api/v1/projects/${projectId}/ticket-connections`
 
 export const listTicketConnections = (projectId: string) =>
   getJson<{ connections: TicketConnection[] }>(trackers(projectId))
 
+export type ConnectRequest =
+  | { provider: "linear"; token: string }
+  | { provider: "jira"; token: string; auth: "basic" | "pat"; base_url: string; email?: string }
+export async function connectTracker(projectId: string, request: ConnectRequest) {
+  const response = await mutate(trackers(projectId), request)
+  return (await response.json()) as TicketConnection & { teams: TrackerTeam[] }
+}
 export async function connectLinear(projectId: string, token: string) {
   const response = await mutate(trackers(projectId), { provider: "linear", token })
   return (await response.json()) as TicketConnection & { teams: TrackerTeam[] }
@@ -1354,6 +1369,37 @@ export async function syncTickets(projectId: string, connectionId: string) {
   return (await (await mutate(`${trackers(projectId)}/${connectionId}/sync`)).json()) as TicketConnection
 }
 
+export async function setTrackerOptions(
+  projectId: string,
+  connectionId: string,
+  options: { read_text?: boolean; allow_comments?: boolean },
+) {
+  return (await (await mutate(`${trackers(projectId)}/${connectionId}/options`, options, "PUT")).json()) as TicketConnection
+}
+
+export const getLinearOAuth = () => getJson<{ available: boolean; callback_path: string }>("/api/v1/ticket-oauth/linear")
+
+export async function startLinearOAuth(projectId: string) {
+  return (await (await mutate(`${trackers(projectId)}/oauth/linear`)).json()) as { authorize_url: string }
+}
+
+export async function dismissProposal(projectId: string, entityId: string, ticketId: string) {
+  const path = `/api/v1/projects/${projectId}/rules/${entityId}/tickets/${ticketId}/dismiss`
+  return (await (await mutate(path)).json()) as RuleTickets
+}
+
+export const getCommentDraft = (projectId: string, ticketId: string) =>
+  getJson<{ ticket: TicketInfo; allowed: boolean; body: string; rules: { id: string; title: string }[] }>(
+    `/api/v1/projects/${projectId}/tickets/${ticketId}/comment-draft`,
+  )
+
+export async function commentOnTicket(projectId: string, ticketId: string, body: string) {
+  return (await (await mutate(`/api/v1/projects/${projectId}/tickets/${ticketId}/comment`, { body })).json()) as {
+    sent: boolean
+    key: string
+  }
+}
+
 export async function removeTicketConnection(projectId: string, connectionId: string) {
   const response = await mutate(`${trackers(projectId)}/${connectionId}`, undefined, "DELETE")
   return (await response.json()) as {
@@ -1361,6 +1407,7 @@ export async function removeTicketConnection(projectId: string, connectionId: st
     links_deleted: number
     token_deleted: number
     revoke_at_provider: boolean
+    revoked?: boolean
   }
 }
 
@@ -1393,6 +1440,8 @@ export type TicketTriage = {
   }[]
   rules: { id: string; title: string; path: string; start_line: number; end_line: number; commits: string[] }[]
   similar: (TicketInfo & { similarity: number })[]
+  // Frames of a stack trace found in the ticket's description (10.6), followed locally.
+  trace?: { raw: string; path: string | null; function: { name: string } | null; rules: { id: string; title: string }[] }[]
 }
 
 export const searchBugTickets = (projectId: string, query: string) =>
