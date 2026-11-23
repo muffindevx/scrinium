@@ -190,6 +190,15 @@ def test_clean_and_uninstall_find_the_moved_downloads(data_dir: Path, tmp_path: 
     (away / "mio.txt").write_text("de la persona")
     assert away / "mio.txt" not in maintenance._owned(data_dir)
 
+    # A model no longer in the manifest: clean removes it, and its record with it.
+    unused = away / "models" / "retirado" / "r" / "m.gguf"
+    unused.parent.mkdir(parents=True)
+    unused.write_bytes(b"x")
+    downloads.record(data_dir, unused)
+    assert maintenance.clean(data_dir, assume_yes=True) == 0
+    assert not unused.exists() and not downloads.has_record(data_dir, unused)
+    assert (away / "mio.txt").exists()
+
 
 def test_settings_start_a_move_and_show_its_progress(runtime: Runtime, tmp_path: Path) -> None:
     data_dir = runtime.config.data_dir

@@ -119,6 +119,7 @@ def _confirmed(question: str, assume_yes: bool, ask: Ask) -> bool:
 
 
 def clean(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
+    downloads.forget_missing(data_dir)
     found = leftovers(data_dir)
     if not found:
         print("No hay nada que limpiar.")
@@ -135,6 +136,7 @@ def clean(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
         return 1
     for path, _ in found:
         _remove(path)
+    downloads.forget_missing(data_dir)
     if downloads.pending_cleanup(data_dir) is not None and not instances.running(data_dir):
         downloads.finish_cleanup(data_dir)
     print("Limpio.")

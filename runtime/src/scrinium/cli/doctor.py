@@ -158,7 +158,8 @@ def _tools(data_dir: Path, os_name: str, arch: str) -> list[Check]:
                     Check(
                         Level.OK,
                         f"Modelo de chat local {model.name}: no instalado (opcional, "
-                        f"scrinium tools install {LOCAL_ADDON})",
+                        f"scrinium tools install "
+                        f"{LOCAL_ADDON if model is CHAT_MODEL else model.name})",
                     )
                 )
                 continue

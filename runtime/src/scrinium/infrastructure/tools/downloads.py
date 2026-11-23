@@ -197,6 +197,16 @@ def record(data_dir: Path, *paths: Path) -> None:
     _save(data_dir, state)
 
 
+def forget_missing(data_dir: Path) -> None:
+    """Drops the records of files no longer there (`scrinium clean` removed them)."""
+    root = downloads_dir(data_dir)
+    state = _load(data_dir)
+    kept = {key: value for key, value in state["files"].items() if os.path.lexists(root / key)}
+    if len(kept) != len(state["files"]):
+        state["files"] = kept
+        _save(data_dir, state)
+
+
 def has_record(data_dir: Path, path: Path) -> bool:
     root = downloads_dir(data_dir)
     prefix = _key(root, path)

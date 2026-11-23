@@ -199,7 +199,32 @@ MAP_MODEL = Model(
     1107409472,
 )
 
-MODELS: Mapping[str, Model] = {model.name: model for model in (CHAT_MODEL, EMBEDDING_MODEL)}
+# Gemma 4 E4B, Google's QAT build, Q4_0, text only (the image projector is not downloaded).
+# Evaluated as the local chat model on reference-c (2026-11-23, GTX 1060 6 GB): found 35 of 44
+# reference rules versus 30 with the Qwen3-4B, at ~3.5x the time (98 s per batch versus 28).
+# Gemma 4 12B was rejected on the same run: 27 of 44 and 320 s per batch, half on the CPU.
+# Optional and not installed by default; chosen with SCRINIUM_LOCAL_CHAT_MODEL. Apache-2.0.
+GEMMA_MODEL = Model(
+    "gemma-4-e4b-it",
+    "google/gemma-4-E4B-it-qat-q4_0-gguf",
+    "4b4a2c1d584be7264f87aac328a1bc739ce81b6c",
+    "gemma-4-E4B_q4_0-it.gguf",
+    "676c35070db6dbe52f93e9c864ee0fba4eddea94b9c875d9cb10daff453fbaee",
+    5154941280,
+)
+
+# The local chat models llama-server can write with; SCRINIUM_LOCAL_CHAT_MODEL picks one.
+LOCAL_CHAT_MODELS: Mapping[str, Model] = {model.name: model for model in (CHAT_MODEL, GEMMA_MODEL)}
+
+
+def local_chat_model(name: str | None) -> Model:
+    """The chosen local chat model; the managed default without a choice. KeyError if unknown."""
+    return LOCAL_CHAT_MODELS[name] if name else CHAT_MODEL
+
+
+MODELS: Mapping[str, Model] = {
+    model.name: model for model in (CHAT_MODEL, EMBEDDING_MODEL, GEMMA_MODEL)
+}
 
 # ADR-013: what `scrinium tools install` downloads by default. No chat model: the writing model
 # is the person's provider or a local server. llama-server stays, because it serves the

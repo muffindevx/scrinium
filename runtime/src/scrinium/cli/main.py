@@ -38,6 +38,7 @@ from scrinium.core.config import (
     default_data_dir,
     default_embedding_model,
     default_llm_model,
+    default_local_chat_model,
     default_model_provider,
     default_ollama_url,
     default_port,
@@ -60,8 +61,10 @@ from scrinium.infrastructure.tools.manifest import (
     ADDONS,
     CHAT_MODEL,
     EMBEDDING_MODEL,
+    GEMMA_MODEL,
     LLAMA_SERVER,
     LOCAL_ADDON,
+    LOCAL_CHAT_MODELS,
     MAP_MODEL,
     MODELS,
     TOOLS,
@@ -198,6 +201,9 @@ def start_llama_server(data_dir: Path) -> LlamaServer | None:
     # someone asks for it.
     if (map_path := locate_model(MAP_MODEL, models_dir)) is not None:
         served.append(ServedModel(MAP_MODEL, map_path, no_thinking=True))
+    # Gemma 4, the other local chat model: the same, loaded only when asked for.
+    if (gemma_path := locate_model(GEMMA_MODEL, models_dir)) is not None:
+        served.append(ServedModel(GEMMA_MODEL, gemma_path, no_thinking=True))
     if executable is None or not has_embeddings:
         print(_MODELS_MISSING, file=sys.stderr, flush=True)
     if executable is None or not served:
@@ -230,6 +236,13 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
     except ValueError:
         print("SCRINIUM_MODEL_PROVIDER debe ser llama u ollama.", file=sys.stderr)
         return 1
+    local_chat = default_local_chat_model()
+    if local_chat is not None and local_chat not in LOCAL_CHAT_MODELS:
+        print(
+            f"SCRINIUM_LOCAL_CHAT_MODEL debe ser uno de: {', '.join(LOCAL_CHAT_MODELS)}.",
+            file=sys.stderr,
+        )
+        return 1
     try:
         ollama_url = check_loopback_url(default_ollama_url())
     except ValueError:
@@ -260,6 +273,7 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
         ollama_url=ollama_url,
         embedding_model=default_embedding_model(),
         llm_model=default_llm_model(),
+        local_chat_model=local_chat,
     )
     try:
         database, environment = open_runtime(config)
