@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n"
+import { t, tn } from "@/lib/i18n"
 import { FolderGit2, FolderOpen, GitBranch, RefreshCw, ScanSearch, Trash2 } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { EmptyState, Section } from "@/components/page"
@@ -66,9 +66,12 @@ function PreviewView({ preview }: { preview: SourcePreview }) {
   return (
     <div className="grid gap-3 rounded-lg border bg-muted/30 p-3 text-sm">
       <p>
-        {t("Se leerán")} <strong>{preview.included_count}</strong> {t("archivos (")}
-        {formatBytes(preview.included_bytes)}{t(") y se excluirán")}{" "}
-        <strong>{preview.excluded_count}</strong>.
+        {tn(
+          "Se leerán {0} archivos ({1}) y se excluirán {2}.",
+          <strong>{preview.included_count}</strong>,
+          formatBytes(preview.included_bytes),
+          <strong>{preview.excluded_count}</strong>,
+        )}
         {preview.commit && (
           <>
             {" "}

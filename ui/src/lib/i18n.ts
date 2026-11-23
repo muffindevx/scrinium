@@ -1,3 +1,4 @@
+import { createElement, Fragment, type ReactNode } from "react"
 import { EN } from "@/lib/i18n-en"
 
 /**
@@ -45,4 +46,14 @@ export function t(key: string, ...args: (string | number | null | undefined)[]):
     const value = args[Number(index)]
     return value === undefined || value === null ? match : String(value)
   })
+}
+
+/**
+ * `t` for a sentence with markup inside: `tn("Se leerán {0} archivos", <strong>{n}</strong>)`.
+ * The whole sentence is one key, so each language puts the pieces in its own order.
+ */
+export function tn(key: string, ...nodes: ReactNode[]): ReactNode {
+  const text = current === "en" ? (EN[key] ?? key) : key
+  const parts = text.split(/\{(\d+)\}/).map((part, index) => (index % 2 === 1 ? nodes[Number(part)] : part))
+  return createElement(Fragment, null, ...parts)
 }

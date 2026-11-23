@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n"
+import { t, tn } from "@/lib/i18n"
 import { Download, ShieldCheck, Trash2, Upload } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
@@ -206,7 +206,7 @@ function ConfirmedDelete({
       <div className="flex flex-wrap items-end gap-2">
         <div className="grid min-w-48 flex-1 gap-1.5">
           <Label htmlFor={id}>
-            {t("Escribe")} <code>{expected}</code> {t("para confirmar")}
+            {tn("Escribe {0} para confirmar", <code>{expected}</code>)}
           </Label>
           <Input
             id={id}

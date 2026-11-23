@@ -7,8 +7,8 @@ import { Input, Label, Textarea } from "@/components/ui/input"
 import { ApiError, type Project, type Workspace, createProject } from "@/lib/api"
 
 const FIELD_NAMES: Record<string, string> = {
-  name: "nombre",
-  project_key: "clave",
+  name: t("nombre"),
+  project_key: t("clave"),
   description: t("descripción"),
 }
 

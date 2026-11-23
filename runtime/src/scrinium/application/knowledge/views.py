@@ -110,10 +110,13 @@ def list_rules(
             )
             .exists()
         )
+    rows = session.execute(query).all()
+    versions = _latest_versions(session, project)
+    citations = _first_code_citations(session, [version.id for version in versions.values()])
     rules = []
-    for entity, rule, evidence in session.execute(query):
-        version = latest_version(session, entity.id)
-        citation = None if version is None else first_code_citation(session, version.id)
+    for entity, rule, evidence in rows:
+        version = versions.get(entity.id)
+        citation = None if version is None else citations.get(version.id)
         if verification is not None and (
             version is None or version.verification_status is not verification
         ):
@@ -132,19 +135,68 @@ def list_rules(
     return rules
 
 
-def first_code_citation(session: Session, version_id: uuid.UUID) -> dict[str, Any] | None:
-    """Where the rule lives in the code: the list shows those lines without opening the rule."""
-    record = session.scalars(
+def _latest_versions(session: Session, project: Project) -> dict[uuid.UUID, KnowledgeEntityVersion]:
+    """The latest version of every entity in the project, in one query (the list has thousands)."""
+    latest = (
+        select(
+            KnowledgeEntityVersion.knowledge_entity_id,
+            func.max(KnowledgeEntityVersion.version_number).label("number"),
+        )
+        .where(KnowledgeEntityVersion.project_id == project.id)
+        .group_by(KnowledgeEntityVersion.knowledge_entity_id)
+        .subquery()
+    )
+    versions = session.scalars(
+        select(KnowledgeEntityVersion).join(
+            latest,
+            (KnowledgeEntityVersion.knowledge_entity_id == latest.c.knowledge_entity_id)
+            & (KnowledgeEntityVersion.version_number == latest.c.number),
+        )
+    )
+    return {version.knowledge_entity_id: version for version in versions}
+
+
+def _first_code_citations(
+    session: Session, version_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, dict[str, Any] | None]:
+    """`first_code_citation` for many versions, in one query per batch of ids."""
+    first: dict[uuid.UUID, EvidenceRecord] = {}
+    for start in range(0, len(version_ids), _IN_BATCH):
+        records = session.scalars(
+            _code_citations().where(
+                EvidenceRecord.target_version_id.in_(version_ids[start : start + _IN_BATCH])
+            )
+        )
+        for record in records:
+            first.setdefault(record.target_version_id, record)
+    return {version_id: _citation(record) for version_id, record in first.items()}
+
+
+# SQLite caps the parameters of one statement; the list asks for its ids in batches.
+_IN_BATCH: Final = 900
+
+
+def _code_citations() -> Any:
+    return (
         select(EvidenceRecord)
         .where(
-            EvidenceRecord.target_version_id == version_id,
             EvidenceRecord.source_revision_id.is_not(None),
             EvidenceRecord.evidence_type.in_((EvidenceType.CODE, EvidenceType.SCHEMA)),
         )
         .order_by(EvidenceRecord.created_at)
-        .limit(1)
+    )
+
+
+def first_code_citation(session: Session, version_id: uuid.UUID) -> dict[str, Any] | None:
+    """Where the rule lives in the code: the list shows those lines without opening the rule."""
+    record = session.scalars(
+        _code_citations().where(EvidenceRecord.target_version_id == version_id).limit(1)
     ).first()
-    if record is None or "start_line" not in (record.locator or {}):
+    return None if record is None else _citation(record)
+
+
+def _citation(record: EvidenceRecord) -> dict[str, Any] | None:
+    if "start_line" not in (record.locator or {}):
         return None
     return {
         "revision_id": str(record.source_revision_id), "path": record.locator.get("path"),

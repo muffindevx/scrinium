@@ -244,7 +244,12 @@ def test_a_badly_worded_rule_is_corrected_with_its_citations(api: Api) -> None:
     assert lines == [
         (e["locator"]["path"], e["locator"]["start_line"]) for e in previous["evidence"]
     ]
-    assert client.get(base).json()["rules"][0]["evidence_count"] == listed["evidence_count"]
+    relisted = client.get(base).json()["rules"][0]
+    assert relisted["evidence_count"] == listed["evidence_count"]
+    # The list reads every rule's latest version and citation in bulk: the new version's.
+    assert relisted["latest_version"]["id"] == current["id"]
+    assert relisted["latest_version"]["version_number"] == previous["version_number"] + 1
+    assert relisted["citation"] == {**citation, "revision_id": relisted["citation"]["revision_id"]}
 
 
 def test_rules_carry_the_tickets_their_commits_name(runtime: Runtime, tmp_path: Path) -> None:

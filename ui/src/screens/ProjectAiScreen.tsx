@@ -336,7 +336,8 @@ function LimitsForm({
           {limit !== null && spent >= limit && <StatusBadge tone="attention">{t("Presupuesto agotado")}</StatusBadge>}
           {ai.cache_hits > 0 && (
             <Muted>
-              {tokens(ai.cache_hits)} {ai.cache_hits === 1 ? "respuesta reutilizada" : "respuestas reutilizadas"} {t("sin enviar nada: la misma petición ya tenía respuesta.")}
+              {ai.cache_hits === 1 ? t("1 respuesta reutilizada") : t("{0} respuestas reutilizadas", tokens(ai.cache_hits))}{" "}
+              {t("sin enviar nada: la misma petición ya tenía respuesta.")}
             </Muted>
           )}
         </div>
@@ -395,7 +396,7 @@ function RequestLog({ requests }: { requests: AiRequestRecord[] }) {
               {request.answered_by || request.model} · {request.host} · {tokens(request.prompt_tokens)} {t("tokens enviados")}
               {request.cached_tokens > 0 ? t(" ({0} en caché)", tokens(request.cached_tokens)) : ""} ·{" "}
               {tokens(request.completion_tokens)} {t("recibidos")}
-              {request.masked > 0 ? ` · ${request.masked} ${request.masked === 1 ? "valor enmascarado" : "valores enmascarados"}` : ""}
+              {request.masked > 0 ? ` · ${request.masked === 1 ? t("1 valor enmascarado") : t("{0} valores enmascarados", request.masked)}` : ""}
             </code>
             {request.sources.length > 0 && (
               <details className="text-xs">

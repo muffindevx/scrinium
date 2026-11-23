@@ -1,4 +1,4 @@
-import { t } from "@/lib/i18n"
+import { t, tn } from "@/lib/i18n"
 import { ArrowLeft, BookOpen, Check, ChevronRight, Pause, PenLine, Sparkles, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
@@ -151,10 +151,15 @@ function RemoteEstimate({ estimate }: { estimate: Extract<ExtractionEstimate, { 
     <div role="status" className="grid gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
       {estimate.remote_batches > 0 ? (
         <p>
-          {t("Se enviarán unos")} <strong>{count(estimate.input_tokens)} tokens</strong> {t("de")} {count(estimate.files)}{" "}
-          {estimate.files === 1 ? t("archivo") : t("archivos")} {t("a")} <strong>{estimate.host}</strong> ({estimate.model}{t(") en")}{" "}
-          {count(estimate.remote_batches)} {estimate.remote_batches === 1 ? t("lote") : t("lotes")}{t(", y volverán como mucho")}{" "}
-          {count(estimate.max_output_tokens)} {t("de respuesta.")}
+          {tn(
+            "Se enviarán unos {0} de {1} a {2} ({3}) en {4}, y volverán como mucho {5} de respuesta.",
+            <strong>{t("{0} tokens", count(estimate.input_tokens))}</strong>,
+            estimate.files === 1 ? t("1 archivo") : t("{0} archivos", count(estimate.files)),
+            <strong>{estimate.host}</strong>,
+            estimate.model,
+            estimate.remote_batches === 1 ? t("1 lote") : t("{0} lotes", count(estimate.remote_batches)),
+            count(estimate.max_output_tokens),
+          )}
         </p>
       ) : (
         <p>{t("Todos los lotes tocan rutas que nunca se envían: esta extracción se hará en este equipo.")}</p>
@@ -722,13 +727,43 @@ function RuleGroup({
         </button>
       </h2>
       {open && (
-        <ul className="divide-y border-t">
-          {rules.map((rule) => (
-            <RuleItem key={rule.entity_id} {...props} rule={rule} />
-          ))}
-        </ul>
+        <div className="border-t">
+          <RuleRows {...props} rules={rules} />
+        </div>
       )}
     </section>
+  )
+}
+
+/** Rules drawn per step: a list of thousands would otherwise paint them all at once. */
+const RULES_PER_STEP = 100
+
+/** The rules of a list or group, 100 at a time, with a button for the next 100. */
+function RuleRows({
+  rules,
+  ...props
+}: ScreenProps & { rules: RuleSummary[]; onChanged: () => void }) {
+  const [limit, setLimit] = useState(RULES_PER_STEP)
+  const left = rules.length - limit
+  return (
+    <>
+      <ul className="divide-y">
+        {rules.slice(0, limit).map((rule) => (
+          <RuleItem key={rule.entity_id} {...props} rule={rule} />
+        ))}
+      </ul>
+      {left > 0 && (
+        <div className="border-t p-2 text-center">
+          <Button variant="ghost" size="sm" onClick={() => setLimit(limit + RULES_PER_STEP)}>
+            {left === 1
+              ? t("Mostrar la última regla")
+              : left <= RULES_PER_STEP
+                ? t("Mostrar las {0} que quedan", left)
+                : t("Mostrar {0} más de {1} que quedan", RULES_PER_STEP, left)}
+          </Button>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -895,11 +930,9 @@ function RuleList(props: ScreenProps) {
         <div className="grid gap-3">
           {groups.map((item) =>
             grouping === "none" ? (
-              <ul key={item.key} className="divide-y overflow-hidden rounded-xl border bg-card">
-                {item.rules.map((rule) => (
-                  <RuleItem key={rule.entity_id} {...props} rule={rule} onChanged={load} />
-                ))}
-              </ul>
+              <div key={`${item.key}:${filter}:${query}`} className="overflow-hidden rounded-xl border bg-card">
+                <RuleRows {...props} rules={item.rules} onChanged={load} />
+              </div>
             ) : (
               <RuleGroup
                 // A new filter or search reopens the groups by the new count.
@@ -1196,7 +1229,7 @@ function relationLabel(relation: Relationship): string {
   if (kind === "permission") return t("Exige el mismo permiso «{0}» que:", detail)
   if (kind === "same_data") return t("Sobre la misma tabla ({0}):", detail)
   if (kind === "calls") {
-    const hops = detail === "1" ? "directamente" : t("a través de {0} función(es)", Number(detail) - 1)
+    const hops = detail === "1" ? t("directamente") : t("a través de {0} función(es)", Number(detail) - 1)
     return relation.direction === "out" ? t("Su código llama, {0}, al de:", hops) : t("La usa, {0}:", hops)
   }
   if (relation.relation_type === "depends_on") return relation.direction === "out" ? t("Depende de:") : t("Dependen de ella:")
@@ -1264,7 +1297,7 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
                           : "text-muted-foreground",
                       )}
                     >
-                      {t("importancia")} {CRITICALITY_LABELS[dependent.criticality].toLowerCase()}
+                      {t("importancia {0}", CRITICALITY_LABELS[dependent.criticality].toLowerCase())}
                     </span>
                   )}
                   {dependent.via && (
@@ -1352,9 +1385,9 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
         title={rule.name}
         description={
           <>
-            {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category} {t("· importancia")}{" "}
-            {CRITICALITY_LABELS[rule.criticality].toLowerCase()}
-            {!VERIFIED_STATUSES.includes(rule.versions[0]?.verification_status ?? "unverified") && " (propuesta)"} ·{" "}
+            {CATEGORY_LABELS[rule.rule_category as RuleCategory] ?? rule.rule_category}{" "}
+            {t("· importancia {0}", CRITICALITY_LABELS[rule.criticality].toLowerCase())}
+            {!VERIFIED_STATUSES.includes(rule.versions[0]?.verification_status ?? "unverified") && t(" (propuesta)")} ·{" "}
             <code className="text-xs">{rule.canonical_key}</code>
           </>
         }

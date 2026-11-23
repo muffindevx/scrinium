@@ -138,7 +138,7 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
                       <code>{shortSha(release.commit_sha)}</code>
                       {release.released_at && ` · ${new Date(release.released_at).toLocaleDateString()}`}
                       {release.previous_release_id &&
-                        t(" · después de {0}", names.get(release.previous_release_id) ?? "otra")}
+                        t(" · después de {0}", names.get(release.previous_release_id) ?? t("otra"))}
                     </span>
                   </div>
                   <Button size="sm" variant="ghost" onClick={() => snapshot(release)}>
