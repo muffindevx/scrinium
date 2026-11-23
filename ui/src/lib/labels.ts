@@ -7,6 +7,8 @@ import type {
   AssessmentStatus,
   Evidence,
   NodeState,
+  RuleCategory,
+  RuleSummary,
   Severity,
   VerificationStatus,
 } from "@/lib/api"
@@ -197,4 +199,23 @@ export function setupLabel(setup: AiSetup): string {
     return t("{0}: {1} en {2}", SETUP_LABELS.local_server, setup.local_server.model, setup.local_server.url)
   }
   return SETUP_LABELS[setup.choice]
+}
+
+export const CATEGORY_LABELS: Record<RuleCategory, string> = {
+  invariant: t("Invariante"),
+  validation: t("Validación"),
+  authorization: t("Permisos"),
+  calculation: t("Cálculo"),
+  state_transition: t("Cambio de estado"),
+  workflow: t("Proceso"),
+  integration_contract: t("Integración"),
+  performance_constraint: t("Rendimiento"),
+  security_constraint: t("Seguridad"),
+  other: t("Otra"),
+}
+export const CRITICALITY_LABELS: Record<RuleSummary["criticality"], string> = {
+  low: t("Baja"),
+  medium: t("Media"),
+  high: t("Alta"),
+  critical: t("Crítica"),
 }

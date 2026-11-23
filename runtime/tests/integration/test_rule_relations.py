@@ -164,6 +164,12 @@ def test_a_rule_says_what_depends_on_it(runtime: Runtime, tmp_path: Path) -> Non
     ]
     assert found["dependents"][0]["tickets"] == ["PAY-7"]
     assert [s["name"] for s in found["same_decision"]] == ["copia"]
+    # Each one says where it lives: two rules can share a name, the file and line tell them apart.
+    assert [(d["citation"]["path"], d["citation"]["start_line"]) for d in found["dependents"]] == [
+        ("src/pagos.ts", 2),
+        ("src/pagos.ts", 3),
+    ]
+    assert found["same_decision"][0]["citation"]["start_line"] == 12
     # The process reaches `tasa` through `maximo`, a step of it.
     assert found["flows"] == [{"id": found["flows"][0]["id"], "name": "Compra",
                                "through": ["maximo"]}]  # fmt: skip

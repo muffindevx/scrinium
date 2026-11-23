@@ -448,6 +448,8 @@ export interface ImpactedEntity {
   criticality: RuleSummary["criticality"] | null
   tickets: string[]
   basis: string | null
+  /** Where it lives: two rules can share a name, the file and line tell them apart. */
+  citation: { revision_id: string; path: string; start_line: number; end_line: number } | null
 }
 
 /** N7: what may break if this rule changes, read backwards from the relationships. */

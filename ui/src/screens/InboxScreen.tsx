@@ -19,6 +19,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router"
 import { cn } from "cn"
 import { CodeExcerpt } from "@/components/code-excerpt"
 import { EmptyState, PageHeader, Section } from "@/components/page"
+import { ImpactList, RuleDrawer } from "@/components/rule-impact"
 import { RuleLink } from "@/components/rule-link"
 import { StatusBadge } from "@/components/status"
 import { Button } from "@/components/ui/button"
@@ -37,6 +38,7 @@ import {
 } from "@/lib/api"
 import { RuleHistory } from "@/screens/RuleHistory"
 import { RuleTickets } from "@/screens/RuleTickets"
+import { relationLabel, shownAsImpact } from "@/lib/relations"
 import { useErrors } from "@/screens/hooks"
 import { ErrorText, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
@@ -782,9 +784,16 @@ function Related({
   const inProcesses = (processes ?? []).filter((process) =>
     process.steps.some((step) => step.rules.some((r) => r.id === item.entity_id)),
   )
-  const dependents = rule?.impact.dependents ?? []
-  const sameDecision = rule?.impact.same_decision ?? []
-  const related = (rule?.relationships ?? []).filter((relation) => relation.other.entity_type === "business_rule")
+  const [opened, setOpened] = useState<string | null>(null)
+  // What "Si cambias esta regla" already says is not repeated here, nor the same rule twice.
+  const named = new Set([...(rule?.impact.same_decision ?? []), ...(rule?.impact.dependents ?? [])].map((other) => other.id))
+  const related = (rule?.relationships ?? []).filter(
+    (relation, index, all) =>
+      relation.other.entity_type === "business_rule" &&
+      !shownAsImpact(relation) &&
+      !named.has(relation.other.id) &&
+      all.findIndex((other) => other.other.id === relation.other.id) === index,
+  )
   return (
     <div className="grid content-start gap-4">
       <RuleTickets projectId={project.id} entityId={item.entity_id} onSessionLost={onSessionLost} />
@@ -803,49 +812,31 @@ function Related({
           </ul>
         )}
       </Section>
-      <Section title={t("Si cambia, afecta a")} description={t("Reglas cuyo código llama al suyo, y la misma decisión en otro sitio.")}>
-        {rule === null ? (
-          <Muted>{t("Cargando…")}</Muted>
-        ) : dependents.length === 0 && sameDecision.length === 0 ? (
-          <Muted>{t("Según el código, ninguna otra regla depende de esta.")}</Muted>
-        ) : (
-          <ul className="grid gap-1 text-sm">
-            {sameDecision.map((other) => (
-              <li key={`same-${other.id}`} className="flex flex-wrap items-baseline gap-x-2">
-                <RuleLink id={other.id} className="hover:underline">
-                  {other.name}
-                </RuleLink>
-                <Muted>{t("misma decisión")}</Muted>
-              </li>
-            ))}
-            {dependents.slice(0, 8).map((other) => (
-              <li key={other.id}>
-                <RuleLink id={other.id} className="hover:underline">
-                  {other.name}
-                </RuleLink>
-              </li>
-            ))}
-            {dependents.length > 8 && <Muted>{t("y {0} más", dependents.length - 8)}</Muted>}
-          </ul>
-        )}
+      <Section
+        title={t("Si cambias esta regla")}
+        description={t("Lo que el código dice que depende de ella, sin IA. Pulsa una para verla aquí al lado, sin salir de la bandeja.")}
+      >
+        {rule === null ? <Muted>{t("Cargando…")}</Muted> : <ImpactList impact={rule.impact} onOpen={setOpened} />}
       </Section>
       {related.length > 0 && (
-        <Section title={t("Relacionadas")}>
+        <Section title={t("Otras relaciones")} description={t("Lo que el código dice de cómo se relaciona con otras reglas.")}>
           <ul className="grid gap-1 text-sm">
             {related.slice(0, 8).map((relation) => (
-              <li key={relation.id}>
-                <RuleLink id={relation.other.id} className="hover:underline">
+              <li key={relation.id} className="flex flex-wrap items-baseline gap-x-2">
+                <span className="text-muted-foreground">{relationLabel(relation)}</span>
+                <button type="button" className="font-medium hover:underline" onClick={() => setOpened(relation.other.id)}>
                   {relation.other.name}
-                </RuleLink>
+                </button>
               </li>
             ))}
           </ul>
         </Section>
       )}
+      <RuleDrawer projectId={project.id} entityId={opened} onClose={() => setOpened(null)} />
       <RuleHistory projectId={project.id} entityId={item.entity_id} onSessionLost={onSessionLost} />
       <RuleLink id={item.entity_id} className="flex w-fit items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ExternalLink className="size-3.5" aria-hidden="true" />
-        {t("Abrir la ficha completa")}
+        {t("Abrir la ficha completa en Reglas")}
       </RuleLink>
     </div>
   )

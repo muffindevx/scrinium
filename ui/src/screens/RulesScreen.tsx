@@ -21,7 +21,6 @@ import {
   type RuleCategory,
   type RuleDetail,
   type RuleImpact,
-  type Relationship,
   type RuleSummary,
   type RulebookSource,
   type RuleVersion,
@@ -42,31 +41,15 @@ import {
   type ExtractionEstimate,
   getExtractionEstimate,
 } from "@/lib/api"
-import { ASSESSMENT_LABELS, errorMessage } from "@/lib/labels"
+import { ASSESSMENT_LABELS, CATEGORY_LABELS, CRITICALITY_LABELS, errorMessage } from "@/lib/labels"
+import { ImpactList, RuleDrawer } from "@/components/rule-impact"
+import { relationLabel, shownAsImpact } from "@/lib/relations"
 import { RuleHistory } from "@/screens/RuleHistory"
 import { RuleTickets } from "@/screens/RuleTickets"
 import { useBackTarget, useErrors } from "@/screens/hooks"
 import { ModelPicker } from "@/screens/ModelPicker"
 import { AnalysisDetail, ErrorText, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
-const CATEGORY_LABELS: Record<RuleCategory, string> = {
-  invariant: t("Invariante"),
-  validation: t("Validación"),
-  authorization: t("Permisos"),
-  calculation: t("Cálculo"),
-  state_transition: t("Cambio de estado"),
-  workflow: t("Proceso"),
-  integration_contract: t("Integración"),
-  performance_constraint: t("Rendimiento"),
-  security_constraint: t("Seguridad"),
-  other: t("Otra"),
-}
-const CRITICALITY_LABELS: Record<RuleSummary["criticality"], string> = {
-  low: t("Baja"),
-  medium: t("Media"),
-  high: t("Alta"),
-  critical: t("Crítica"),
-}
 const ORIGIN_LABELS: Record<RuleVersion["origin"], string> = {
   human: t("Escrita por una persona"),
   source_extraction: t("Propuesta por la IA a partir del código"),
@@ -1219,42 +1202,20 @@ function VersionBlock({
   )
 }
 
-/** A relationship in words, from this rule's side. */
-function relationLabel(relation: Relationship): string {
-  const [kind, detail] = (relation.basis ?? "").split(":", 2)
-  if (kind === "duplicate") return t("Misma decisión, en otro sitio:")
-  if (kind === "same_function") return t("Junto a ella en {0}:", detail)
-  if (kind === "constant") return t("Comparte {0} con:", detail)
-  if (kind === "constraint") return t("Misma restricción ({0}) en otro sitio:", detail)
-  if (kind === "permission") return t("Exige el mismo permiso «{0}» que:", detail)
-  if (kind === "same_data") return t("Sobre la misma tabla ({0}):", detail)
-  if (kind === "calls") {
-    const hops = detail === "1" ? t("directamente") : t("a través de {0} función(es)", Number(detail) - 1)
-    return relation.direction === "out" ? t("Su código llama, {0}, al de:", hops) : t("La usa, {0}:", hops)
-  }
-  if (relation.relation_type === "depends_on") return relation.direction === "out" ? t("Depende de:") : t("Dependen de ella:")
-  if (relation.relation_type === "contradicts") return t("Contradice:")
-  return t("Relacionada con:")
-}
-
-function ImpactName({ id, name, entityType }: { id: string; name: string; entityType: string }) {
-  return entityType === "business_rule" ? (
-    <RuleLink id={id} className="font-medium hover:underline">
-      {name}
-    </RuleLink>
-  ) : (
-    <span className="font-medium">{name}</span>
-  )
-}
-
 /** N7: what may break if this rule changes. The relationships, read backwards; no AI. */
-function RuleImpactSection({ impact }: { impact: RuleImpact }) {
+function RuleImpactSection({
+  impact,
+  onOpen,
+}: {
+  impact: RuleImpact
+  onOpen: (id: string) => void
+}) {
   const nothing =
     impact.same_decision.length === 0 && impact.dependents.length === 0 && impact.flows.length === 0
   return (
     <Section
-      title={t("Si cambia esta regla")}
-      description={t("Lo que depende de ella según el código: las reglas cuyo código llama al suyo, los procesos que pasan por ellas y sus tickets. Sin IA.")}
+      title={t("Si cambias esta regla")}
+      description={t("Lo que el código dice que depende de ella, sin IA: reglas, procesos y tickets. Pulsa una regla para verla aquí al lado.")}
     >
       <div className="grid gap-4 text-sm">
         {impact.tickets.length > 0 && (
@@ -1266,58 +1227,8 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
           </div>
         )}
         {nothing && <Muted>{t("Según el código, ninguna otra regla ni proceso depende de esta.")}</Muted>}
-        {impact.same_decision.length > 0 && (
-          <div className="grid gap-1">
-            <Eyebrow>{t("La misma decisión en otro sitio: cambia con ella")}</Eyebrow>
-            <ul className="grid gap-1">
-              {impact.same_decision.map((other) => (
-                <li key={other.id} className="flex flex-wrap items-baseline gap-x-2">
-                  <ImpactName id={other.id} name={other.name} entityType={other.entity_type} />
-                  {other.tickets.map((ticket) => (
-                    <TicketChip key={ticket} ticket={ticket} />
-                  ))}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-        {impact.dependents.length > 0 && (
-          <div className="grid gap-1">
-            <Eyebrow>{t("Dependen de ella (")}{impact.dependents.length}{impact.truncated ? "+" : ""})</Eyebrow>
-            <ul className="grid gap-1">
-              {impact.dependents.map((dependent) => (
-                <li key={dependent.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                  <ImpactName id={dependent.id} name={dependent.name} entityType={dependent.entity_type} />
-                  {dependent.criticality && (
-                    <span
-                      className={cn(
-                        "text-xs",
-                        dependent.criticality === "high" || dependent.criticality === "critical"
-                          ? "font-medium text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      {t("importancia {0}", CRITICALITY_LABELS[dependent.criticality].toLowerCase())}
-                    </span>
-                  )}
-                  {dependent.via && (
-                    <span className="text-xs text-muted-foreground">
-                      {t("a través de")}{" "}
-                      <RuleLink id={dependent.via.id} className="hover:underline">
-                        {dependent.via.name}
-                      </RuleLink>
-                    </span>
-                  )}
-                  {dependent.tickets.map((ticket) => (
-                    <TicketChip key={ticket} ticket={ticket} />
-                  ))}
-                </li>
-              ))}
-            </ul>
-            {impact.truncated && (
-              <Muted>{t("Hay más; se muestran las más cercanas (hasta")} {impact.max_depth} {t("pasos).")}</Muted>
-            )}
-          </div>
+        {(impact.same_decision.length > 0 || impact.dependents.length > 0) && (
+          <ImpactList impact={impact} onOpen={onOpen} limit={20} />
         )}
         {impact.flows.length > 0 && (
           <div className="grid gap-1">
@@ -1337,16 +1248,12 @@ function RuleImpactSection({ impact }: { impact: RuleImpact }) {
   )
 }
 
-function shownAsImpact(relation: Relationship): boolean {
-  const kind = (relation.basis ?? "").split(":", 1)[0]
-  return (relation.relation_type === "depends_on" && relation.direction === "in") || kind === "duplicate" || kind === "constraint"
-}
-
 const isPending = (rule: RuleDetail | null) =>
   rule?.versions[0]?.content?.statement.startsWith(PENDING_STATEMENT_PREFIX) ?? false
 
 function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId: string }) {
   const [rule, setRule] = useState<RuleDetail | null>(null)
+  const [opened, setOpened] = useState<string | null>(null)
   const [writing, setWriting] = useState<"idle" | "writing" | "failed">("idle")
   const { error, fail } = useErrors(onSessionLost)
   const write = useCallback(() => {
@@ -1430,7 +1337,8 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
           </ul>
         </Section>
       )}
-      <RuleImpactSection impact={rule.impact} />
+      <RuleImpactSection impact={rule.impact} onOpen={setOpened} />
+      <RuleDrawer projectId={project.id} entityId={opened} onClose={() => setOpened(null)} />
       <RuleTickets projectId={project.id} entityId={entityId} onSessionLost={onSessionLost} />
       <RuleHistory projectId={project.id} entityId={entityId} onSessionLost={onSessionLost} />
       {rule.versions.map((version, index) => (

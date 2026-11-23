@@ -341,8 +341,24 @@ def rule_detail(session: Session, project: Project, entity_id: uuid.UUID) -> dic
         "entity_evidence": [_evidence(r) for r in entity_evidence],
         "relationships": _neighbours(session, entity.id),
         "tickets": list(entity.metadata_.get("tickets", [])),
-        "impact": rule_impact(session, project, entity),
+        "impact": _located(session, rule_impact(session, project, entity)),
     }  # fmt: skip
+
+
+def _located(session: Session, impact: dict[str, Any]) -> dict[str, Any]:
+    """Each rule the impact names, with where it lives: two rules can share a name, and the file
+    and line are what tell them apart (and say why one depends on the other)."""
+    named = [*impact["same_decision"], *impact["dependents"]]
+    versions = {
+        item["id"]: version
+        for item in named
+        if (version := latest_version(session, uuid.UUID(item["id"]))) is not None
+    }
+    citations = _first_code_citations(session, [version.id for version in versions.values()])
+    for item in named:
+        version = versions.get(item["id"])
+        item["citation"] = None if version is None else citations.get(version.id)
+    return impact
 
 
 def _node_state(version: KnowledgeEntityVersion | None) -> str:
