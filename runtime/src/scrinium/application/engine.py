@@ -4,9 +4,8 @@ from typing import Any
 
 from scrinium.core.config import ModelProvider, RuntimeConfig
 from scrinium.core.memory import total_memory_bytes
+from scrinium.infrastructure.tools import downloads
 from scrinium.infrastructure.tools.installer import (
-    MODELS_DIRNAME,
-    TOOLS_DIRNAME,
     ToolError,
     current_platform,
     locate,
@@ -29,9 +28,11 @@ def engine_info(config: RuntimeConfig) -> dict[str, Any]:
     except ToolError:
         os_name, arch = "", ""
     executable = (
-        locate(LLAMA_SERVER, config.data_dir / TOOLS_DIRNAME, os_name, arch) if os_name else None
+        locate(LLAMA_SERVER, downloads.tools_dir(config.data_dir), os_name, arch)
+        if os_name
+        else None
     )
-    models_dir = config.data_dir / MODELS_DIRNAME
+    models_dir = downloads.models_dir(config.data_dir)
     return {
         "provider": config.model_provider.value,
         "memory_bytes": total_memory_bytes(),

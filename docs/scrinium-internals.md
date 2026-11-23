@@ -63,7 +63,7 @@ Everything the LLM produces is a **proposal** until a person reviews it.
 
 ![Scrinium on one machine: the browser talks to the API, background runners share one local model through LlmService, and data is kept in SQLite, vectors included](diagrams/runtime-architecture.svg)
 
-Not drawn: `scrinium start` builds the app, starts llama-server and opens the link; `scrinium stop`, `attach` and `link` talk to `/control/*` with their own key. Models and tools live in `models/` and `tools/` in the data directory.
+Not drawn: `scrinium start` builds the app, starts llama-server and opens the link; `scrinium stop`, `attach` and `link` talk to `/control/*` with their own key. Models and tools live in `models/` and `tools/` of the downloads folder: the data directory unless moved ([ADR-015](decisions/ADR-015-downloads-folder.md)).
 
 Three details explain the rest of the system:
 
@@ -480,7 +480,7 @@ You need uv, Node, pnpm and `make`. Commands run from the repository root.
 | Command | What it does |
 |---|---|
 | `make setup` | `uv sync` in `runtime/` and `pnpm install` in `ui/`. It removes the `window` extra if you had it (see [traps](#known-traps)). |
-| `make tools` | `scrinium tools install`: gitleaks, llama.cpp (Vulkan if the system supports it; `ARGS=--cpu` forces CPU) and the two models, about 3.2 GB, each with a pinned version and SHA-256, into the data directory. |
+| `make tools` | `scrinium tools install`: gitleaks, llama.cpp (Vulkan if the system supports it; `ARGS=--cpu` forces CPU) and the two models, about 3.2 GB, each with a pinned version and SHA-256, into the downloads folder (the data directory unless moved). |
 | `make build` | Builds the UI into `runtime/src/scrinium/web_dist`. Without it, the runtime only serves the API and warns at startup. |
 | `make start` | Starts Scrinium on `http://127.0.0.1:47615` and opens the window or the browser. Options: `make start ARGS="--port 8000 --no-browser"`, or `--verbose`. |
 | `make dev` | Vite with hot reload on `127.0.0.1:5173`, with `make start` in another terminal. See the notes below. |
@@ -514,13 +514,16 @@ By default it is the `platformdirs` one:
 | macOS | `~/Library/Application Support/scrinium` |
 | Windows | `%LOCALAPPDATA%\scrinium` |
 
-It contains `scrinium.sqlite3`, `vectors/`, `tools/`, `models/` and `llama/`.
+It contains `scrinium.sqlite3`, `tools/`, `models/` and `llama/`, and `downloads.json` once the downloads have a folder of their own.
 
 `SCRINIUM_DATA_DIR` changes it. It must be an absolute path, on a disk with permissions (ext4, APFS; NTFS on Windows). Use it to test without touching your real data.
+
+**Downloads folder** ([ADR-015](decisions/ADR-015-downloads-folder.md)). `tools/` and `models/` can live elsewhere, for example on a larger disk, even one without permissions: Settings › AI models, `scrinium tools move <folder>` or `SCRINIUM_DOWNLOADS_DIR`. The data directory stays put. Outside it, `downloads.json` keeps size, time and SHA-256 of every file; llama.cpp is hashed in full before it starts, a model only when its size or time changed, and `scrinium doctor` hashes everything. A move copies, reads every file back, then switches; the old copy goes at the next start.
 
 Other variables:
 
 - `SCRINIUM_PORT`: default port (47615).
+- `SCRINIUM_DOWNLOADS_DIR`: where `tools/` and `models/` live; overrides the folder chosen in Settings.
 - `SCRINIUM_MODEL_PROVIDER`: `llama` (default) or `ollama`.
 - `SCRINIUM_OLLAMA_URL`, `SCRINIUM_LLM_MODEL`, `SCRINIUM_EMBEDDING_MODEL`: for Ollama only. The URL must be loopback.
 

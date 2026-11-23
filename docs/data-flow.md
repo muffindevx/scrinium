@@ -27,10 +27,12 @@ This describes Scrinium's own code. Installing dependencies (`uv sync`, `pnpm in
 Scrinium writes:
 
 - one SQLite database;
-- its downloaded tools and models;
+- its downloaded tools and models, unless you moved them to another folder ([ADR-015](decisions/ADR-015-downloads-folder.md));
 - shallow clones of sources you added by URL (`clones/`).
 
 All of it goes in its data directory (`~/.local/share/scrinium` on Linux). Files are created `0600`, inside a `0700` folder.
+
+The exception is the downloads (llama.cpp, gitleaks and the models), which you can move to another folder, for example on a larger disk. They are public files, so that folder may be on a disk without permissions; Scrinium keeps an integrity record of them in the data directory and checks them before using them. Nothing of your data goes there.
 
 **Encryption.** Scrinium does not encrypt them itself. They are protected by your system's disk encryption, if you have it, and the status screen says whether it was detected.
 

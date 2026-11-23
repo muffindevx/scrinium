@@ -75,6 +75,19 @@ export const NODE_STATE_LABELS: Record<NodeState, string> = {
 
 // Stable API codes (KnowledgeError and analyses) in the person's language.
 export const ERROR_LABELS: Record<string, string> = {
+  // Moving the downloads (ADR-015).
+  from_env: t("La carpeta la fija una variable de entorno: cámbiala allí o quítala para elegirla aquí."),
+  not_absolute: t("Escribe la ruta completa de la carpeta, desde la raíz (por ejemplo /media/disco/scrinium)."),
+  same_dir: t("Las descargas ya están en esa carpeta."),
+  inside_data_dir: t("Elige una carpeta fuera de la carpeta de datos de Scrinium, o ella misma."),
+  not_a_dir: t("Esa ruta es un archivo, no una carpeta."),
+  no_parent: t("La carpeta que la contiene no existe."),
+  not_writable: t("Scrinium no puede escribir en esa carpeta."),
+  not_empty: t("Esa carpeta ya tiene una carpeta tools o models con archivos. Elige una vacía: Scrinium no mezcla sus descargas con archivos que no instaló."),
+  no_space: t("No hay espacio suficiente en ese disco."),
+  busy: t("Ya se están moviendo las descargas."),
+  integrity: t("Un archivo no coincide con el que se instaló: no se ha movido nada. Comprueba con scrinium doctor."),
+  copy_failed: t("No se pudo copiar: no se ha movido nada."),
   llm_unavailable: t("El motor de IA local no está disponible."),
   low_memory: t("Al equipo le queda muy poca memoria libre. Cierra alguna aplicación y vuelve a preguntar."),
   model_error: t("El modelo no devolvió una respuesta válida."),

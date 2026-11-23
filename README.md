@@ -82,6 +82,7 @@ For the window on Linux, install `"scrinium[window] @ file://$PWD/dist/scrinium-
 
 - **Tools and models.**
   - `scrinium tools install` downloads gitleaks, llama.cpp and the embedding model (about 0.7 GB) into the data directory, each pinned and checked by SHA-256. Search by meaning always runs here.
+  - Short of space on that disk? `scrinium tools move /path/on/another/disk` (or Settings › AI models) moves llama.cpp and the models there, checking every byte; your data stays where it is. That disk may even be NTFS or exFAT: Scrinium checks those files before using them ([ADR-015](docs/decisions/ADR-015-downloads-folder.md)).
   - `scrinium tools install local` adds Scrinium's own chat model (2.5 GB, best with a GPU), for those who want the rules written on this machine without running a server of their own.
   - On Linux and Windows it picks the GPU build of llama.cpp (Vulkan) when the system supports it. `--cpu` forces the CPU-only build.
   - `scrinium tools status` shows what is installed.
@@ -274,7 +275,7 @@ make demo
 ```
 
 - Builds the UI and starts a Scrinium with its own data directory in `~/.cache/scrinium-demo/data` (`SCRINIUM_DEMO_DIR` moves it). Your real projects are never touched.
-- `tools/` and `models/` are symbolic links to the real data directory: nothing is copied or downloaded. Run `make tools` first if you have no models.
+- `tools/` and `models/` are symbolic links to the real downloads (or, if you moved them, the demo uses that folder and its integrity record): nothing is copied or downloaded. Run `make tools` first if you have no models.
 - The first time, it creates a small example Git repository (`~/.cache/scrinium-demo/repo`: a shop with discounts, shipping and stock, in two commits), the project «Demo» with that repository as its source, and the profile «Usuario de pruebas».
 - It opens the browser already signed in, on port 47630. Running `make demo` again while it runs only opens a new entry link; so does `SCRINIUM_DATA_DIR=~/.cache/scrinium-demo/data uv run --project runtime scrinium link --open` (with `uv run`: an installed `scrinium` may be an older copy without `link`).
 - Ctrl+C stops it. `rm -rf ~/.cache/scrinium-demo` starts over from scratch (the links do not take the real models with them).

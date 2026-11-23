@@ -28,6 +28,7 @@ import { type ThemePreference, setTheme, storedTheme } from "@/lib/theme"
 import { useCodeTheme } from "@/lib/use-code-theme"
 import { PrivacyCard } from "@/screens/PrivacyCard"
 import { setupLabel } from "@/lib/labels"
+import { DownloadsSection } from "@/screens/DownloadsSection"
 import { ModelSetup } from "@/screens/ModelSetup"
 import { ModelCatalog } from "@/screens/RemoteAiSection"
 import { useErrors } from "@/screens/hooks"
@@ -76,7 +77,7 @@ function EngineSection({ status }: { status: SecurityStatus }) {
           {t("Motor de IA local")}
         </span>
       }
-      description={t("Los modelos se ejecutan en este equipo. Para instalar o reparar el motor, usa scrinium tools install y scrinium doctor en la terminal.")}
+      description={t("Los modelos se ejecutan en este equipo. Para instalar o reparar el motor, usa scrinium tools install y scrinium doctor en la terminal; para moverlo a otro disco, aquí abajo.")}
       action={
         <Button size="sm" variant="outline" disabled={check === "running"} onClick={runCheck}>
           {check === "running" ? t("Probando…") : t("Probar el motor")}
@@ -160,6 +161,7 @@ function EngineSection({ status }: { status: SecurityStatus }) {
           </ul>
         </div>
       )}
+      {engine?.provider === "llama" && <DownloadsSection initial={engine.downloads} />}
     </Section>
   )
 }

@@ -28,7 +28,7 @@ from scrinium.cli.doctor import doctor
 from scrinium.cli.maintenance import UNINSTALL_CONFIRMATION, clean, uninstall
 from scrinium.cli.rules import add_commands as add_rule_commands
 from scrinium.cli.rules import run as run_rule_command
-from scrinium.cli.tools import install_tools, show_tools
+from scrinium.cli.tools import install_tools, move_tools, show_tools
 from scrinium.cli.window import close_window, quiet_window_engine, run_window, window_available
 from scrinium.core import instances
 from scrinium.core.config import (
@@ -49,9 +49,8 @@ from scrinium.core.session import LAUNCH_TOKEN_TTL_SECONDS, LocalSessionManager
 from scrinium.infrastructure.llama_server import LLAMA_DIRNAME, LlamaServer, ServedModel
 from scrinium.infrastructure.local_http import ModelStatus, check_loopback_url
 from scrinium.infrastructure.sqlite.database import IncompatibleDatabaseError
+from scrinium.infrastructure.tools import downloads
 from scrinium.infrastructure.tools.installer import (
-    MODELS_DIRNAME,
-    TOOLS_DIRNAME,
     ToolError,
     current_platform,
     locate,
@@ -181,8 +180,13 @@ def start_llama_server(data_dir: Path) -> LlamaServer | None:
     except ToolError as error:
         print(error, file=sys.stderr, flush=True)
         return None
-    executable = locate(LLAMA_SERVER, data_dir / TOOLS_DIRNAME, os_name, arch)
-    models_dir = data_dir / MODELS_DIRNAME
+    # The old copy of a move (ADR-015): nobody reads it any more, unless another Scrinium on
+    # this data directory is still running.
+    if not instances.running(data_dir):
+        downloads.finish_cleanup(data_dir)
+    tools_dir = downloads.tools_dir(data_dir)
+    executable = locate(LLAMA_SERVER, tools_dir, os_name, arch)
+    models_dir = downloads.models_dir(data_dir)
     served = [
         ServedModel(model, path, embeddings=model is EMBEDDING_MODEL)
         for model in (CHAT_MODEL, EMBEDDING_MODEL)
@@ -197,6 +201,14 @@ def start_llama_server(data_dir: Path) -> LlamaServer | None:
     if executable is None or not has_embeddings:
         print(_MODELS_MISSING, file=sys.stderr, flush=True)
     if executable is None or not served:
+        return None
+    try:
+        tree = tools_dir / Path(*executable.relative_to(tools_dir).parts[:2])
+        downloads.verify(data_dir, tree, full=True)
+        for entry in served:
+            downloads.verify(data_dir, entry.path, full=False)
+    except ToolError as error:
+        print(f"{error} Scrinium sigue sin modelos locales.", file=sys.stderr, flush=True)
         return None
     server = LlamaServer(executable, served, data_dir / LLAMA_DIRNAME)
     if not server.start():
@@ -413,7 +425,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     install_parser.add_argument(
         "--cpu", action="store_true", help="llama.cpp solo con CPU, aunque haya Vulkan."
     )
+    install_parser.add_argument(
+        "--dir",
+        type=Path,
+        metavar="carpeta",
+        help="Instala en esta carpeta (y mueve alli lo ya descargado). Ver: scrinium tools move.",
+    )
     tools_commands.add_parser("status", help="Muestra que esta instalado y donde.")
+    move_parser = tools_commands.add_parser(
+        "move",
+        help=(
+            "Mueve las descargas (llama.cpp y modelos) a otra carpeta, por ejemplo un disco "
+            "mas grande. Tus datos se quedan en la carpeta de datos."
+        ),
+    )
+    move_parser.add_argument("dir", type=Path, metavar="carpeta")
 
     commands.add_parser("doctor", help="Comprueba el equipo y dice como arreglar lo que falte.")
     coverage_parser = commands.add_parser(
@@ -530,7 +556,9 @@ def tools(args: argparse.Namespace) -> int:
         print(unsafe_data_dir_message(error.reason).format(path=data_dir), file=sys.stderr)
         return 1
     if args.tools_command == "install":
-        return install_tools(data_dir, args.names, args.cpu)
+        return install_tools(data_dir, args.names, args.cpu, args.dir)
+    if args.tools_command == "move":
+        return move_tools(data_dir, args.dir)
     return show_tools(data_dir)
 
 

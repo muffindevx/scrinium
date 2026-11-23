@@ -42,6 +42,7 @@ from scrinium.core import instances
 from scrinium.core.config import DEFAULT_WEB_DIST, LOOPBACK_HOST
 from scrinium.core.data_dir import prepare_data_dir
 from scrinium.core.session import LAUNCH_TOKEN_TTL_SECONDS
+from scrinium.infrastructure.tools.downloads import downloads_dir, is_private, share_downloads
 from scrinium.infrastructure.tools.installer import MODELS_DIRNAME, TOOLS_DIRNAME
 
 DEFAULT_PORT: Final = 47630
@@ -51,15 +52,22 @@ _START_TIMEOUT_SECONDS: Final = 90
 
 
 def link_shared_downloads(data_dir: Path, real_data_dir: Path) -> None:
-    """The tools and models, linked from the real data directory: no copy of 4 GB."""
+    """The tools and models, linked from the real downloads folder: no copy of 4 GB. Wherever
+    they live (ADR-015), the demo sees them inside its own data directory."""
+    real_downloads = downloads_dir(real_data_dir)
+    if not is_private(real_data_dir):
+        # Moved out of the data directory: the demo uses the same folder and the same integrity
+        # record, so it checks the files like the real one instead of trusting a link to them.
+        share_downloads(real_data_dir, data_dir)
+        return
     for name in (TOOLS_DIRNAME, MODELS_DIRNAME):
-        target, link = real_data_dir / name, data_dir / name
+        target, link = real_downloads / name, data_dir / name
         if link.exists() or link.is_symlink() or not target.is_dir():
             continue
         link.symlink_to(target, target_is_directory=True)
     if not (data_dir / MODELS_DIRNAME).exists():
         print(
-            f"No hay modelos en {real_data_dir}: la demo arranca sin IA local. "
+            f"No hay modelos en {real_downloads}: la demo arranca sin IA local. "
             "Descargalos antes con: make tools",
             file=sys.stderr,
             flush=True,

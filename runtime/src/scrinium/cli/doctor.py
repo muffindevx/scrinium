@@ -23,9 +23,8 @@ from scrinium.core.disk_encryption import DiskEncryption, check_disk_encryption
 from scrinium.core.memory import total_memory_bytes
 from scrinium.infrastructure.local_http import LocalHttpClient, ModelError
 from scrinium.infrastructure.secret_store import KeyringSecretStore
+from scrinium.infrastructure.tools import downloads
 from scrinium.infrastructure.tools.installer import (
-    MODELS_DIRNAME,
-    TOOLS_DIRNAME,
     ToolError,
     current_platform,
     has_vulkan,
@@ -113,33 +112,47 @@ def _memory(local_chat: bool) -> Check:
     return Check(Level.OK, f"Memoria: {gigabytes} GB")
 
 
-def _disk_space(data_dir: Path, models_dir: Path) -> Check:
+def _disk_space(data_dir: Path) -> Check:
+    root = downloads.downloads_dir(data_dir)
     missing = sum(
         m.size
         for m in MODELS.values()
-        if m.name in DEFAULT_INSTALL and locate_model(m, models_dir) is None
+        if m.name in DEFAULT_INSTALL and locate_model(m, downloads.models_dir(data_dir)) is None
     )
-    free = shutil.disk_usage(data_dir).free
+    free = shutil.disk_usage(root if root.is_dir() else data_dir).free
     if free < missing + _GB:
         return Check(
             Level.FAIL,
-            f"Espacio libre: {free // _GB} GB. Los modelos que faltan necesitan "
-            f"{missing // _GB + 1} GB.",
-            "Libera espacio o elige otra carpeta con SCRINIUM_DATA_DIR.",
+            f"Espacio libre para las descargas: {free // _GB} GB. Los modelos que faltan "
+            f"necesitan {missing // _GB + 1} GB.",
+            "Libera espacio o mueve las descargas a un disco más grande: "
+            "scrinium tools move <carpeta>",
         )
-    return Check(Level.OK, f"Espacio libre: {free // _GB} GB")
+    return Check(Level.OK, f"Descargas en {root}: {free // _GB} GB libres")
+
+
+def _verified(data_dir: Path, path: Path, label: str) -> Check:
+    """Every byte against what was installed (ADR-015); only outside the data directory."""
+    try:
+        downloads.verify(data_dir, path, full=True)
+    except ToolError as error:
+        return Check(Level.FAIL, str(error), _INSTALL_FIX)
+    return Check(Level.OK, label)
 
 
 def _tools(data_dir: Path, os_name: str, arch: str) -> list[Check]:
     checks = []
     for tool in TOOLS.values():
-        path = locate(tool, data_dir / TOOLS_DIRNAME, os_name, arch)
+        tools_dir = downloads.tools_dir(data_dir)
+        path = locate(tool, tools_dir, os_name, arch)
         if path is None:
             checks.append(Check(Level.FAIL, f"Falta {tool.name} {tool.version}.", _INSTALL_FIX))
         else:
-            checks.append(Check(Level.OK, f"{tool.name} {tool.version}"))
+            tree = tools_dir / Path(*path.relative_to(tools_dir).parts[:2])
+            checks.append(_verified(data_dir, tree, f"{tool.name} {tool.version}"))
     for model in MODELS.values():
-        if locate_model(model, data_dir / MODELS_DIRNAME) is None:
+        model_file = locate_model(model, downloads.models_dir(data_dir))
+        if model_file is None:
             if model.name not in DEFAULT_INSTALL:
                 checks.append(
                     Check(
@@ -151,15 +164,21 @@ def _tools(data_dir: Path, os_name: str, arch: str) -> list[Check]:
                 continue
             checks.append(Check(Level.FAIL, f"Falta el modelo {model.name}.", _INSTALL_FIX))
         else:
-            checks.append(Check(Level.OK, f"Modelo {model.name}"))
+            checks.append(_verified(data_dir, model_file, f"Modelo {model.name}"))
     return checks
 
 
 def _llama_runs(data_dir: Path, os_name: str, arch: str) -> Check | None:
     """Runs `llama-server --version`: fails if libraries are missing or the CPU is unsuitable."""
-    executable = locate(LLAMA_SERVER, data_dir / TOOLS_DIRNAME, os_name, arch)
+    tools_dir = downloads.tools_dir(data_dir)
+    executable = locate(LLAMA_SERVER, tools_dir, os_name, arch)
     if executable is None:
         return None
+    try:
+        tree = tools_dir / Path(*executable.relative_to(tools_dir).parts[:2])
+        downloads.verify(data_dir, tree, full=True)
+    except ToolError:
+        return None  # Already reported: it is not run.
     try:
         result = subprocess.run(  # noqa: S603  installed, verified executable
             [executable, "--version"],
@@ -261,9 +280,9 @@ def run_checks(data_dir: Path) -> list[Check]:
     steps: list[Callable[[], Check | list[Check] | None]] = [
         lambda: _disk_encryption(data_dir),
         _keyring,
-        lambda: _memory(locate_model(CHAT_MODEL, data_dir / MODELS_DIRNAME) is not None),
+        lambda: _memory(locate_model(CHAT_MODEL, downloads.models_dir(data_dir)) is not None),
         lambda: _ai_setup(data_dir),
-        lambda: _disk_space(data_dir, data_dir / MODELS_DIRNAME),
+        lambda: _disk_space(data_dir),
         lambda: _tools(data_dir, os_name, arch),
     ]
     try:

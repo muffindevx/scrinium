@@ -4,6 +4,7 @@ import os
 import uuid
 from collections.abc import Iterator
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, Response, status
@@ -21,6 +22,7 @@ from scrinium.application.ai.answering import QuestionRunner
 from scrinium.application.ai.providers import remote_destinations
 from scrinium.application.ai.service import LlmService
 from scrinium.application.ai.setup import read_setup
+from scrinium.application.downloads import DownloadsMover
 from scrinium.application.engine import engine_info
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion.sources import IngestionRunner
@@ -32,6 +34,7 @@ from scrinium.core.disk_encryption import DiskEncryption
 from scrinium.core.session import LocalSessionManager, Session
 from scrinium.domain.enums import ProjectStatus, WorkspaceType
 from scrinium.infrastructure.sqlite.database import Database
+from scrinium.infrastructure.tools.downloads import TargetError
 
 
 class HealthResponse(BaseModel):
@@ -130,6 +133,11 @@ class ProjectResponse(BaseModel):
 
 class ProjectListResponse(BaseModel):
     projects: list[ProjectResponse]
+
+
+class MoveDownloadsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    dir: str = Field(min_length=1, max_length=4096)
 
 
 class CreateProjectRequest(BaseModel):
@@ -333,10 +341,22 @@ def build_router(
             limits=_limits(environment),
         )
 
+    mover = DownloadsMover(config.data_dir)
+
     @router.get("/api/v1/system/engine")
     def engine() -> dict[str, Any]:
-        """Local AI engine, memory and installed models. Read only."""
-        return engine_info(config)
+        """Local AI engine, memory, installed models and where they are. Read only."""
+        return {**engine_info(config), "downloads": mover.info()}
+
+    @router.post("/api/v1/system/downloads/move", status_code=status.HTTP_202_ACCEPTED)
+    def move_downloads(body: MoveDownloadsRequest) -> dict[str, Any]:
+        """Starts moving llama.cpp and the models to another folder (ADR-015). The progress is
+        in the engine information; the old copy is deleted at the next start."""
+        try:
+            mover.start(Path(body.dir))
+        except TargetError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, error.code) from None
+        return mover.info()
 
     # POST with CSRF: it uses the GPU for seconds, and another site must not be able to trigger it.
     @router.post("/api/v1/llm/check")

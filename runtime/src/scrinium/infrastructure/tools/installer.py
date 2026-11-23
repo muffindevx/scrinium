@@ -1,4 +1,4 @@
-"""Downloads and installs the manifest's tools and models into the data directory.
+"""Downloads and installs the manifest's tools and models into the downloads folder (ADR-015).
 
 Each file is checked against its SHA256 before opening, and unpacked without letting an
 entry write outside its folder. Installation is atomic: either complete or not there at all.
@@ -64,7 +64,7 @@ def choose_variant(tool: Tool, os_name: str, arch: str, prefer_cpu: bool = False
     return Variant.CPU
 
 
-def _install_dir(tools_dir: Path, tool: Tool, variant: Variant) -> Path:
+def install_dir(tools_dir: Path, tool: Tool, variant: Variant) -> Path:
     return tools_dir / tool.name / f"{tool.version}-{variant}"
 
 
@@ -80,7 +80,7 @@ def locate(tool: Tool, tools_dir: Path, os_name: str, arch: str) -> Path | None:
     for (asset_os, asset_arch, variant), asset in tool.assets.items():
         if (asset_os, asset_arch) != (os_name, arch):
             continue
-        executable = _install_dir(tools_dir, tool, variant) / asset.executable
+        executable = install_dir(tools_dir, tool, variant) / asset.executable
         if executable.is_file():
             return executable
     return None
@@ -154,7 +154,7 @@ def install(
 ) -> Path:
     """Installs the tool if missing and returns its executable path."""
     asset = _asset(tool, os_name, arch, variant)
-    target = _install_dir(tools_dir, tool, variant)
+    target = install_dir(tools_dir, tool, variant)
     executable = target / asset.executable
     if executable.is_file():
         return executable
@@ -180,18 +180,18 @@ def install(
     return executable
 
 
-def _model_path(model: Model, models_dir: Path) -> Path:
+def model_path(model: Model, models_dir: Path) -> Path:
     return models_dir / model.name / model.revision / model.file
 
 
 def locate_model(model: Model, models_dir: Path) -> Path | None:
-    path = _model_path(model, models_dir)
+    path = model_path(model, models_dir)
     return path if path.is_file() else None
 
 
 def install_model(model: Model, models_dir: Path, progress: Progress | None = None) -> Path:
     """Downloads the GGUF if missing and returns its path. Not unpacked: it is a single file."""
-    path = _model_path(model, models_dir)
+    path = model_path(model, models_dir)
     if path.is_file():
         return path
     for directory in (models_dir, path.parent.parent, path.parent):

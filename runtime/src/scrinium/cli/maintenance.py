@@ -21,6 +21,7 @@ from scrinium.cli.control import stop
 from scrinium.core import instances
 from scrinium.infrastructure.llama_server import LLAMA_DIRNAME
 from scrinium.infrastructure.secret_store import KeyringSecretStore
+from scrinium.infrastructure.tools import downloads
 from scrinium.infrastructure.tools.installer import MODELS_DIRNAME, TOOLS_DIRNAME
 from scrinium.infrastructure.tools.manifest import MODELS, TOOLS
 
@@ -33,6 +34,7 @@ _OWNED_DIRS: Final = (
     LLAMA_DIRNAME,
     instances.RUN_DIRNAME,
     "vectors",
+    downloads.STATE_FILE,
 )
 
 Ask = Callable[[str], str]
@@ -62,7 +64,7 @@ def _remove(path: Path) -> None:
 def leftovers(data_dir: Path) -> list[tuple[Path, str]]:
     """What `clean` can delete without losing anything in use, with the reason."""
     found: list[tuple[Path, str]] = []
-    tools_dir = data_dir / TOOLS_DIRNAME
+    tools_dir = downloads.tools_dir(data_dir)
     for tool_dir in sorted(tools_dir.iterdir()) if tools_dir.is_dir() else []:
         tool = TOOLS.get(tool_dir.name)
         if tool is None:
@@ -73,7 +75,7 @@ def leftovers(data_dir: Path) -> list[tuple[Path, str]]:
                 found.append((version_dir, "descarga a medias"))
             elif not version_dir.name.startswith(f"{tool.version}-"):
                 found.append((version_dir, f"version antigua de {tool.name}"))
-    models_dir = data_dir / MODELS_DIRNAME
+    models_dir = downloads.models_dir(data_dir)
     for model_dir in sorted(models_dir.iterdir()) if models_dir.is_dir() else []:
         model = MODELS.get(model_dir.name)
         if model is None:
@@ -89,6 +91,13 @@ def leftovers(data_dir: Path) -> list[tuple[Path, str]]:
                 elif item.name != model.file:
                     found.append((item, "archivo que no es el modelo"))
     running = instances.running(data_dir)
+    old = downloads.pending_cleanup(data_dir)
+    if old is not None and not running:
+        found += [
+            (old / name, "copia anterior de las descargas, ya movidas")
+            for name in (TOOLS_DIRNAME, MODELS_DIRNAME)
+            if (old / name).exists()
+        ]
     for instance in instances.recorded(data_dir):
         if instance not in running:
             found.append(
@@ -118,13 +127,16 @@ def clean(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
     for path, reason in found:
         size = _size(path)
         total += size
-        print(f"  {path.relative_to(data_dir)}  ({_human(size)}): {reason}")
+        shown = path.relative_to(data_dir) if path.is_relative_to(data_dir) else path
+        print(f"  {shown}  ({_human(size)}): {reason}")
     print(f"Se liberan {_human(total)}. Tus proyectos, reglas y preguntas no se tocan.")
     if not _confirmed("¿Borrar? [s/N] ", assume_yes, ask):
         print("Cancelado: no se ha borrado nada.")
         return 1
     for path, _ in found:
         _remove(path)
+    if downloads.pending_cleanup(data_dir) is not None and not instances.running(data_dir):
+        downloads.finish_cleanup(data_dir)
     print("Limpio.")
     return 0
 
@@ -149,11 +161,16 @@ def _secret_refs(data_dir: Path) -> list[str]:
 def _owned(data_dir: Path) -> list[Path]:
     if not data_dir.is_dir():
         return []
-    return [
+    owned = [
         item
         for item in sorted(data_dir.iterdir())
         if item.name in _OWNED_DIRS or item.name.startswith(_DATABASE)
     ]
+    # Downloads moved elsewhere (ADR-015): only Scrinium's own folders there, never the rest.
+    roots = {downloads.downloads_dir(data_dir), downloads.pending_cleanup(data_dir)}
+    for root in sorted(r for r in roots if r is not None and not downloads.is_private(data_dir, r)):
+        owned += [root / name for name in (TOOLS_DIRNAME, MODELS_DIRNAME) if (root / name).exists()]
+    return owned
 
 
 def _uv() -> str | None:
@@ -205,6 +222,9 @@ def uninstall(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
     size = sum(_size(item) for item in owned)
     print("Se borrara todo Scrinium de este equipo:")
     print(f"  - Datos, herramientas y modelos en {data_dir} ({_human(size)})")
+    elsewhere = sorted({item.parent for item in owned if not item.is_relative_to(data_dir)})
+    for root in elsewhere:
+        print(f"  - Herramientas y modelos movidos a {root} (solo sus carpetas tools y models)")
     print(f"  - Credenciales de conectores en el llavero: {len(secrets)}")
     print("  - El programa scrinium")
     print("uv se queda: puede usarlo otro programa. Las exportaciones que descargaste no se tocan.")

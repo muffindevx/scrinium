@@ -866,9 +866,35 @@ export interface EngineInfo {
     accelerator: "vulkan" | "metal" | "cpu" | null
   }
   models: { role: "chat" | "embeddings"; name: string; file: string; size_bytes: number; installed: boolean }[]
+  downloads: DownloadsInfo
+}
+
+/** Where llama.cpp and the models live (ADR-015), and a move in progress. */
+export interface DownloadsInfo {
+  dir: string
+  data_dir: string
+  /** In the data directory: private to the account, nothing is checked. */
+  private: boolean
+  from_env: boolean
+  env_name: string
+  used_bytes: number
+  free_bytes: number
+  /** The previous folder of a move, deleted at the next start. */
+  pending_cleanup: string | null
+  move: {
+    target: string
+    state: "running" | "done" | "failed"
+    done: number
+    total: number
+    error: string | null
+    detail: string | null
+  } | null
 }
 
 export const getEngine = () => getJson<EngineInfo>("/api/v1/system/engine")
+
+export const moveDownloads = async (dir: string) =>
+  (await mutate("/api/v1/system/downloads/move", { dir })).json() as Promise<DownloadsInfo>
 
 export const getAiSetup = () => getJson<AiSetup>("/api/v1/ai-setup")
 
