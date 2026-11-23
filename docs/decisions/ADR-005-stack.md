@@ -44,7 +44,7 @@ The code lives in the current folder, on an NTFS disk, by the owner's decision. 
 
 ## Why
 
-- **Why Python for the backend?** The AI, parsing and data ecosystem is there: tree-sitter bindings, sqlglot, LanceDB, model clients. Rust would only pay off for a measured bottleneck, and none exists.
+- **Why Python for the backend?** The AI, parsing and data ecosystem is there: tree-sitter bindings, sqlglot, sqlite-vec, model clients. Rust would only pay off for a measured bottleneck, and none exists.
 - **Why FastAPI and Pydantic?** Typed request and response models double as validation and documentation. Pydantic also validates the model's structured output.
 - **Why uv?** Reproducible, fast installs that do not touch the system Python.
 - **Why `argparse`?** A handful of commands do not justify a CLI dependency.

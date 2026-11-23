@@ -24,7 +24,7 @@ Nothing it indexes or generates leaves the machine by default. Every knowledge e
 
 - The runtime listens only on `127.0.0.1` ([ADR-003](ADR-003-local-runtime-security.md)).
 - Data lives in a private directory of the user's account (`0700`, or the equivalent ACL on Windows).
-- Storage is embedded: SQLite and LanceDB ([ADR-002](ADR-002-storage.md)).
+- Storage is embedded: SQLite, with vectors in sqlite-vec inside the same database ([ADR-002](ADR-002-storage.md)).
 - Models run locally ([ADR-004](ADR-004-ai-data-egress.md)), unless a person turns a remote model on for a project ([ADR-010](ADR-010-remote-model-providers.md)).
 - One process holds the API, the background jobs (sync, indexing, rule extraction) and serves the UI.
 

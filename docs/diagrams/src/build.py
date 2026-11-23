@@ -40,7 +40,7 @@ def small(d, cx, cy, text):
 # 1. Runtime architecture ------------------------------------------------------------------
 d = D("runtime-architecture", 960, 504, "Scrinium on one machine",
       "Architecture of the Scrinium runtime: the browser talks to the API, background runners "
-      "share one local model through LlmService, and data is kept in SQLite and LanceDB.",
+      "share one local model through LlmService, and data is kept in SQLite, vectors included.",
       "Architecture")
 d.zone(232, 48, 432, 240, "SCRINIUM RUNTIME · ONE PYTHON PROCESS")
 d.zone(448, 304, 432, 128, "DATA DIRECTORY · 0700")
@@ -65,15 +65,16 @@ d.node(256, 200, 160, 64, "backend", "JOBS", "Background runners", "sync · ask 
 d.node(472, 200, 160, 64, "focal", "GATE", "LlmService", "turns · memory guard")
 d.node(712, 200, 168, 64, "backend", "PROC", "llama-server", "chat + embeddings")
 d.node(472, 336, 160, 64, "store", "DB", "SQLite + FTS5", "scrinium.sqlite3")
-d.node(696, 336, 160, 64, "store", "VEC", "LanceDB", "vectors/")
+d.node(696, 336, 160, 64, "store", "VEC", "sqlite-vec", "in scrinium.sqlite3")
 d.legend(456, [("input", "Input"), ("backend", "Component"), ("focal", "Shared model gate"),
                ("store", "Store"), ("arrow-link", "Local HTTP"), ("arrow-muted", "Internal call")])
 save(d)
 
 # 2. Trust boundaries (data-flow.md) ---------------------------------------------------------
 d = D("data-boundaries", 960, 504, "What stays on your machine",
-      "Data-flow boundaries: the browser, sources, local models, stores and keyring all sit on "
-      "the user's machine; ticket sources and remote AI are planned and not built.",
+      "Data-flow boundaries: the browser, sources, local models, stores and keyring sit on the "
+      "user's machine; a model provider, Linear or Jira, and a Git remote are reached only when "
+      "the person turns them on.",
       "Data flow")
 d.zone(32, 40, 640, 392, "YOUR MACHINE · LISTENS ON 127.0.0.1 ONLY")
 d.route([(208, 120), (352, 120), (352, 200)], "link")
@@ -85,22 +86,25 @@ d.hlabel(432, 496, 232, "PROMPTS", "link")
 d.route([(312, 264), (312, 336)])
 d.vlabel(312, 264, 336, "WRITES")
 d.route([(392, 264), (392, 300), (516, 300), (516, 336)])
-d.label(454, 286, "TOKENS")
-d.route([(408, 200), (408, 136), (720, 136)], dash=True)
-d.label(600, 122, "PLANNED")
-d.route([(432, 248), (464, 248), (464, 280), (720, 280)], dash=True)
-d.label(684, 266, "OPT-IN ONLY")
+d.label(454, 286, "KEYS")
+d.route([(400, 200), (400, 72), (720, 72)], "accent")
+d.label(560, 58, "REDACTED PASSAGES", "accent")
+d.route([(424, 200), (424, 168), (720, 168)], "accent")
+d.label(600, 154, "HTTPS · READ", "accent")
+d.route([(432, 248), (464, 248), (464, 280), (720, 280)], "accent")
+d.label(684, 266, "GIT FETCH", "accent")
 d.node(56, 88, 152, 64, "input", "UI", "Browser", "your session")
 d.node(56, 200, 152, 64, "input", "SRC", "Repos and folders", "you choose them")
 d.node(272, 200, 160, 64, "focal", "CORE", "Scrinium runtime", "API · jobs · checks")
-d.node(496, 200, 152, 64, "backend", "LLM", "Local models", "llama-server · Ollama")
-d.node(232, 336, 160, 64, "store", "DB", "SQLite + LanceDB", "data directory 0700")
-d.node(440, 336, 152, 64, "store", "KEY", "OS keyring", "connector tokens")
-d.node(720, 104, 200, 64, "optional", "PLAN", "GitHub · Jira · Linear", "planned · read only")
-d.node(720, 248, 200, 64, "optional", "PLAN", "Remote AI", "planned · off by default")
+d.node(496, 200, 152, 64, "backend", "LLM", "Local models", "embeddings · local chat")
+d.node(232, 336, 160, 64, "store", "DB", "SQLite + sqlite-vec", "data directory 0700")
+d.node(440, 336, 152, 64, "store", "KEY", "OS keyring", "provider keys · tokens")
+d.node(720, 40, 200, 64, "external", "AI", "Model provider", "consent per project, task")
+d.node(720, 136, 200, 64, "external", "TIX", "Linear · Jira", "metadata by default")
+d.node(720, 248, 200, 64, "external", "GIT", "Git remote", "sources added by URL")
 d.legend(456, [("input", "Input"), ("focal", "Scrinium runtime"), ("backend", "Local process"),
-               ("store", "Store"), ("optional", "Planned, not built"), ("arrow-link", "Local HTTP"),
-               ("arrow-muted-dash", "Planned flow")])
+               ("store", "Store"), ("external", "Outside, off by default"),
+               ("arrow-link", "Local HTTP"), ("arrow-accent", "Leaves the machine")])
 save(d)
 
 # 3. Sync ------------------------------------------------------------------------------------
@@ -123,7 +127,7 @@ d.node(208, 152, 136, 64, "backend", "PLAN", "build_plan", "excludes · secrets"
 d.node(392, 152, 144, 64, "focal", "REV", "Revisions", "only if content changed")
 d.node(616, 72, 144, 64, "store", "FTS", "Chunks + FTS5", "60–80 lines")
 d.node(616, 232, 144, 64, "store", "SYM", "Code symbols", "tree-sitter")
-d.node(816, 72, 120, 64, "optional", "VEC", "Vectors", "LanceDB")
+d.node(816, 72, 120, 64, "optional", "VEC", "Vectors", "sqlite-vec")
 d.node(816, 232, 120, 64, "backend", "WATCH", "Rule watch", "code changed?")
 d.legend(360, [("input", "Source"), ("backend", "Step"), ("focal", "Citable revision"),
                ("store", "Store"), ("optional", "Derived later"), ("arrow-muted", "Flow"),
@@ -151,7 +155,7 @@ d.vlabel(848, 216, 264, "NO CITATION")
 d.node(40, 152, 120, 64, "input", "ASK", "Question", "stored redacted")
 d.node(216, 56, 144, 64, "store", "SYM", "Function names", "code_symbols")
 d.node(216, 152, 144, 64, "store", "FTS", "Exact words", "FTS5")
-d.node(216, 248, 144, 64, "store", "VEC", "Meaning", "LanceDB vectors")
+d.node(216, 248, 144, 64, "store", "VEC", "Meaning", "sqlite-vec vectors")
 d.node(408, 152, 128, 64, "backend", "RRF", "Rank fusion", "k = 60 · top 16")
 d.node(576, 152, 144, 64, "backend", "CTX", "Select sources", "≤ 8 · 18 000 chars")
 d.node(776, 152, 144, 64, "backend", "LLM", "Model + schema", "sources in markers")

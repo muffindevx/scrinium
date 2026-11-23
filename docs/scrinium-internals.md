@@ -61,7 +61,7 @@ Everything the LLM produces is a **proposal** until a person reviews it.
 - HTTP requests are handled on the server thread.
 - The models run in a separate process, `llama-server`. `scrinium start` launches it on a free port and stops it on exit.
 
-![Scrinium on one machine: the browser talks to the API, background runners share one local model through LlmService, and data is kept in SQLite and LanceDB](diagrams/runtime-architecture.svg)
+![Scrinium on one machine: the browser talks to the API, background runners share one local model through LlmService, and data is kept in SQLite, vectors included](diagrams/runtime-architecture.svg)
 
 Not drawn: `scrinium start` builds the app, starts llama-server and opens the link; `scrinium stop`, `attach` and `link` talk to `/control/*` with their own key. Models and tools live in `models/` and `tools/` in the data directory.
 
