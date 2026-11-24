@@ -2,20 +2,24 @@ import { DialogHost } from "@/components/ui/confirm"
 import { adoptLanguage, t } from "@/lib/i18n"
 import {
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
   Cloud,
+  FileCode2,
   FolderGit2,
   GitCompare,
   Grid2x2,
   House,
   Inbox,
   LockKeyhole,
-  LogOut,
   type LucideIcon,
+  Moon,
   ScanSearch,
-  ScrollText,
+  Search,
   Settings,
   ShieldOff,
   Sparkles,
+  Sun,
   TriangleAlert,
   Workflow,
 } from "lucide-react"
@@ -45,6 +49,7 @@ import {
   logout,
 } from "@/lib/api"
 import { useFolderDrop } from "@/lib/folder-drop"
+import { setTheme } from "@/lib/theme"
 import { ChangesScreen } from "@/screens/ChangesScreen"
 import { ProcessesScreen } from "@/screens/ProcessesScreen"
 import { CoverageScreen } from "@/screens/CoverageScreen"
@@ -94,7 +99,7 @@ interface NavItem {
 }
 
 // The same routes the runtime accepts in api/static.py (UI_ROUTES).
-const NAVIGATION: { group: string | null; items: NavItem[] }[] = [
+const NAVIGATION: { group: string; items: NavItem[] }[] = [
   {
     group: t("Proyecto"),
     items: [
@@ -145,7 +150,17 @@ function storeProject(projectId: string) {
   }
 }
 
-function SidebarLink({ item }: { item: NavItem }) {
+const COLLAPSED_KEY = "scrinium.sidebarCollapsed"
+
+function storedCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(COLLAPSED_KEY) === "1"
+  } catch {
+    return false
+  }
+}
+
+function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
   const Icon = item.icon
   return (
     <NavLink
@@ -154,43 +169,94 @@ function SidebarLink({ item }: { item: NavItem }) {
       title={item.label}
       className={({ isActive }) =>
         cn(
-          "flex h-9 items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors max-lg:justify-center max-lg:px-0",
+          "flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
+          collapsed ? "justify-center px-0" : "max-lg:justify-center max-lg:px-0",
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
-            : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+            : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
         )
       }
     >
-      <Icon className="size-4 shrink-0" aria-hidden="true" />
-      <span className="max-lg:sr-only">{item.label}</span>
+      {({ isActive }) => (
+        <>
+          <Icon className={cn("size-[1.1rem] shrink-0", isActive && "text-primary")} aria-hidden="true" />
+          <span className={cn(collapsed ? "sr-only" : "max-lg:sr-only")}>{item.label}</span>
+        </>
+      )}
     </NavLink>
   )
 }
 
+/** Full labels or icons only; the choice is kept in this browser. Narrow windows always get icons. */
 function Sidebar() {
+  const [collapsed, setCollapsed] = useState(storedCollapsed)
+  const toggle = () => {
+    setCollapsed(!collapsed)
+    try {
+      window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "0" : "1")
+    } catch {
+      // Without storage the choice lasts as long as the window.
+    }
+  }
   return (
     <nav
       aria-label={t("Secciones")}
-      className="flex w-56 shrink-0 flex-col justify-between border-r bg-sidebar p-3 text-sidebar-foreground max-lg:w-14 max-lg:p-2"
+      className={cn(
+        "flex shrink-0 flex-col justify-between bg-sidebar p-3 text-sidebar-foreground transition-[width] max-lg:w-16 max-lg:p-2.5",
+        collapsed ? "w-16 p-2.5" : "w-52",
+      )}
     >
-      <div className="grid gap-4">
+      <div className="grid gap-5">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-expanded={!collapsed}
+          title={collapsed ? t("Expandir menú") : t("Contraer menú")}
+          className={cn(
+            "flex h-9 items-center gap-2 rounded-lg text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-lg:hidden",
+            collapsed ? "justify-center" : "px-3",
+          )}
+        >
+          {collapsed ? (
+            <ChevronRight className="size-4" aria-hidden="true" />
+          ) : (
+            <ChevronLeft className="size-4" aria-hidden="true" />
+          )}
+          <span className={cn(collapsed && "sr-only")}>{collapsed ? t("Expandir menú") : t("Contraer menú")}</span>
+        </button>
         {NAVIGATION.map(({ group, items }) => (
-          <div key={group} className="grid gap-0.5">
-            <p className="px-2.5 pb-1 text-[0.7rem] font-medium tracking-wide text-muted-foreground uppercase max-lg:sr-only">
-              {group}
-            </p>
+          <div key={group} role="group" aria-label={group} className="grid gap-1">
             {items.map((item) => (
-              <SidebarLink key={item.path} item={item} />
+              <SidebarLink key={item.path} item={item} collapsed={collapsed} />
             ))}
           </div>
         ))}
       </div>
-      <div className="grid gap-0.5 border-t pt-3">
+      <div className="grid gap-1">
         {FOOTER_NAVIGATION.map((item) => (
-          <SidebarLink key={item.path} item={item} />
+          <SidebarLink key={item.path} item={item} collapsed={collapsed} />
         ))}
       </div>
     </nav>
+  )
+}
+
+function ThemeToggle() {
+  const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"))
+  const label = dark ? t("Tema claro") : t("Tema oscuro")
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      title={label}
+      onClick={() => {
+        setTheme(dark ? "light" : "dark")
+        setDark(!dark)
+      }}
+    >
+      {dark ? <Sun /> : <Moon />}
+    </Button>
   )
 }
 
@@ -201,7 +267,7 @@ export function PrivacyPill({ ai, isolated = false }: { ai: ProjectAi | null; is
       <NavLink
         to="/ajustes/modelos"
         title={t("Modo aislado: no se puede registrar ni usar ningún proveedor externo.")}
-        className="inline-flex h-7 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium whitespace-nowrap text-emerald-600 hover:bg-emerald-500/20 dark:text-emerald-400"
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium whitespace-nowrap text-primary hover:bg-accent"
       >
         <ShieldOff className="size-3.5" aria-hidden="true" />
         <span className="max-sm:sr-only">{t("Modo aislado")}</span>
@@ -216,9 +282,9 @@ export function PrivacyPill({ ai, isolated = false }: { ai: ProjectAi | null; is
   )
   if (remote.length === 0) {
     return (
-      <span className="inline-flex h-7 items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 text-xs font-medium whitespace-nowrap text-emerald-600 dark:text-emerald-400">
+      <span className="inline-flex h-8 items-center gap-1.5 px-2 text-xs font-medium whitespace-nowrap text-primary">
         <LockKeyhole className="size-3.5" aria-hidden="true" />
-        <span className="max-sm:sr-only">{t("100% local y privado")}</span>
+        <span className="max-sm:sr-only">{t("Local y privado")}</span>
       </span>
     )
   }
@@ -227,7 +293,7 @@ export function PrivacyPill({ ai, isolated = false }: { ai: ProjectAi | null; is
     <NavLink
       to="/ia"
       title={t("Este proyecto envía tareas a {0}. Ver o cambiar en IA del proyecto.", names)}
-      className="inline-flex h-7 items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium whitespace-nowrap text-amber-700 hover:bg-amber-500/20 dark:text-amber-400"
+      className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2 text-xs font-medium whitespace-nowrap text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
     >
       <Cloud className="size-3.5" aria-hidden="true" />
       <span className="max-sm:sr-only">{t("IA externa:")} {names}</span>
@@ -306,14 +372,17 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
 
   return (
     <div className="flex h-dvh flex-col">
-      <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="flex items-center gap-2">
-            <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <ScrollText className="size-4" aria-hidden="true" />
+      <header className="flex h-16 shrink-0 items-center justify-between gap-3 bg-sidebar px-5 max-sm:px-3">
+        <div className="flex min-w-0 items-center gap-4">
+          <span className="flex items-center gap-2.5">
+            <span className="grid size-7 place-items-center rounded-lg bg-foreground text-background">
+              <FileCode2 className="size-4" aria-hidden="true" />
             </span>
-            <span className="font-heading text-base font-semibold tracking-tight max-sm:sr-only">
+            <span className="font-heading text-[1.05rem] font-semibold tracking-tight lowercase max-sm:sr-only">
               {t("Scrinium")}
+            </span>
+            <span className="text-[0.62rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase max-md:hidden">
+              {data.workspace.name}
             </span>
           </span>
           {data.projects.length > 0 && (
@@ -322,31 +391,38 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
               value={project?.id ?? ""}
               options={data.projects.map((candidate) => ({ value: candidate.id, label: candidate.name }))}
               onValueChange={choose}
-              className="max-w-56"
+              className="h-8 max-w-56 border-transparent bg-muted dark:bg-muted"
             />
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-muted-foreground max-sm:hidden"
+          <button
+            type="button"
+            className="flex h-8 w-56 items-center gap-2 rounded-lg bg-muted px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground max-md:w-auto max-sm:hidden"
             title={t("Buscar (Ctrl+K)")}
             onClick={() => window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", ctrlKey: true }))}
           >
-            {t("Buscar…")} <kbd className="text-xs">⌘K</kbd>
-          </Button>
+            <Search className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="flex-1 text-left max-md:sr-only">{t("Buscar en el proyecto")}</span>
+            <kbd className="text-[0.65rem] tracking-wider max-md:hidden">⌘K</kbd>
+          </button>
           <PrivacyPill ai={projectAi} isolated={setup?.isolated ?? data.status.profile === "isolated"} />
-          <Button variant="ghost" size="icon-sm" aria-label={t("Cerrar sesión")} title={t("Cerrar sesión")} onClick={endSession}>
-            <LogOut />
-          </Button>
+          <ThemeToggle />
+          <NavLink
+            to="/ajustes"
+            title={data.profileName ? t("{0} · Ajustes y sesión", data.profileName) : t("Ajustes y sesión")}
+            aria-label={t("Ajustes y sesión")}
+            className="grid size-8 place-items-center rounded-full bg-[oklch(0.86_0.03_60)] text-xs font-semibold text-[oklch(0.3_0.03_60)] dark:bg-[oklch(0.82_0.03_60)]"
+          >
+            {(data.profileName?.trim()[0] ?? "·").toUpperCase()}
+          </NavLink>
         </div>
       </header>
       <CommandPalette projectId={project?.id ?? null} />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto">
-          <div className="mx-auto grid max-w-5xl gap-6 px-6 py-6 *:min-w-0 max-sm:px-4">
+          <div className="mx-auto grid max-w-[66rem] gap-6 px-10 py-10 *:min-w-0 max-md:px-6 max-sm:px-4 max-sm:py-6">
             <Routes>
               <Route
                 path="/"
@@ -358,6 +434,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                     localOnly={(projectAi?.consents.length ?? 0) === 0}
                     setup={setup}
                     onSetupChosen={setupChosen}
+                    profileName={data.profileName}
                     onProjectCreated={addProject}
                     drop={drop}
                     onDropUsed={clearDrop}
@@ -471,10 +548,10 @@ export default function App() {
   return (
     <main className="mx-auto grid max-w-xl gap-6 px-4 py-16">
       <span className="flex items-center gap-2">
-        <span className="grid size-8 place-items-center rounded-lg bg-primary text-primary-foreground">
-          <ScrollText className="size-4" aria-hidden="true" />
+        <span className="grid size-8 place-items-center rounded-lg bg-foreground text-background">
+          <FileCode2 className="size-4" aria-hidden="true" />
         </span>
-        <span className="font-heading text-xl font-semibold tracking-tight">{t("Scrinium")}</span>
+        <span className="font-heading text-xl font-semibold tracking-tight lowercase">{t("Scrinium")}</span>
       </span>
       {view.kind === "loading" && <p className="text-sm text-muted-foreground">{t("Cargando…")}</p>}
       {view.kind === "signed_out" && (

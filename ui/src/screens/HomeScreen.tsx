@@ -1,20 +1,29 @@
 import { t } from "@/lib/i18n"
 import {
+  Activity,
   ArrowRight,
+  ArrowUpRight,
   BookOpen,
+  Check,
   CheckCircle2,
   Circle,
+  Cloud,
   Cpu,
-  ScanSearch,
+  GitCompareArrows,
+  type LucideIcon,
+  Server,
+  ShieldCheck,
+  X,
 } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useState } from "react"
 import { Link } from "react-router"
 import { cn } from "cn"
-import { ModelStatusBadge, StatusBadge } from "@/components/status"
+import { StatusBadge } from "@/components/status"
 import { sourceTone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
 import {
   type AiSetup,
+  type EmbeddingStatus,
   type IndexStatus,
   type Project,
   type RulebookHealth,
@@ -31,28 +40,175 @@ import { ModelSetup } from "@/screens/ModelSetup"
 import { QuickStart } from "@/screens/QuickStart"
 import { ErrorText } from "@/screens/shared"
 
-function HealthCard({
-  icon: Icon,
+/** "01 / CONFIGURACIÓN" over a section title, as on the Home mock-ups. */
+function SectionHead({
+  number,
+  eyebrow,
   title,
-  children,
-  footer,
+  description,
+  action,
 }: {
-  icon: typeof Cpu
+  number: string
+  eyebrow: string
   title: string
-  children: ReactNode
-  footer: ReactNode
+  description?: ReactNode
+  action?: ReactNode
 }) {
   return (
-    <section className="flex flex-col justify-between gap-4 rounded-xl border bg-card p-4">
-      <div className="grid gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Icon className="size-4" aria-hidden="true" />
-          {title}
-        </h2>
-        {children}
+    <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="grid gap-1.5">
+        <p className="text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+          <span className="text-primary">{number}</span> / {eyebrow}
+        </p>
+        <h2 className="font-heading text-lg font-semibold tracking-tight">{title}</h2>
+        {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
-      <div>{footer}</div>
+      {action}
+    </div>
+  )
+}
+
+function MoreLink({ to, children }: { to: string; children: ReactNode }) {
+  return (
+    <Link to={to} className="inline-flex shrink-0 items-center gap-1.5 text-xs whitespace-nowrap text-foreground/80 hover:text-foreground hover:underline">
+      {children} <ArrowRight className="size-3.5" aria-hidden="true" />
+    </Link>
+  )
+}
+
+const TILE = {
+  plum: "bg-accent text-primary",
+  plain: "bg-muted text-foreground/80",
+  amber: "bg-amber-500/15 text-amber-700 dark:text-amber-400",
+}
+
+function IconTile({ icon: Icon, tone = "plain" }: { icon: LucideIcon; tone?: keyof typeof TILE }) {
+  return (
+    <span className={cn("grid size-7 shrink-0 place-items-center rounded-md", TILE[tone])}>
+      <Icon className="size-4" aria-hidden="true" />
+    </span>
+  )
+}
+
+function Panel({ className, children }: { className?: string; children: ReactNode }) {
+  return (
+    <section
+      className={cn(
+        "flex min-w-0 flex-col gap-4 rounded-xl bg-card p-4 text-card-foreground shadow-[0_1px_2px_oklch(0_0_0/0.04)] ring-1 ring-border/70",
+        className,
+      )}
+    >
+      {children}
     </section>
+  )
+}
+
+function Dot({ className }: { className?: string }) {
+  return <span className={cn("inline-block size-1.5 shrink-0 rounded-full", className)} aria-hidden="true" />
+}
+
+/** A count as on the mock-ups: two digits at least, in the book serif. */
+function figure(value: number): string {
+  return value < 10 ? String(value).padStart(2, "0") : String(value)
+}
+
+function greeting(now = new Date()): string {
+  const hour = now.getHours()
+  if (hour >= 6 && hour < 13) return t("Buenos días")
+  if (hour >= 13 && hour < 21) return t("Buenas tardes")
+  return t("Buenas noches")
+}
+
+function ModelCheck({ status, children }: { status: EmbeddingStatus; children: ReactNode }) {
+  const ready = status === "ready"
+  const Icon = ready ? Check : X
+  return (
+    <span className={cn("inline-flex items-center gap-1.5", ready ? "text-primary" : "text-amber-700 dark:text-amber-400")}>
+      <Icon className="size-3.5" aria-hidden="true" />
+      {children}
+    </span>
+  )
+}
+
+/** Once chosen (ADR-013), Home shows the three modes with the one in use ticked; Ajustes changes it. */
+function ModeCards({ setup, status }: { setup: AiSetup; status: SecurityStatus }) {
+  const localModel = setup.local_server?.model ?? setup.local_model ?? status.providers.llm_model
+  const cards: {
+    choice: AiSetup["choice"]
+    icon: LucideIcon
+    eyebrow: string
+    title: string
+    text: string
+    meta: ReactNode
+    action: string
+  }[] = [
+    {
+      choice: "provider",
+      icon: Cloud,
+      eyebrow: t("Recomendado"),
+      title: t("Tu proveedor"),
+      text: t("DeepSeek, GLM, Claude o cualquier API compatible con OpenAI, con tu clave. No necesita GPU."),
+      meta: t("Compatible con OpenAI"),
+      action: t("Configurar"),
+    },
+    {
+      choice: "local_server",
+      icon: Server,
+      eyebrow: t("En tu equipo"),
+      title: t("Modelo local"),
+      text: t("Ollama, vLLM o llama-server en este equipo. El código no sale de aquí."),
+      meta: localModel ? (
+        <span className="inline-flex items-center gap-1.5">
+          <span className="font-mono">{localModel}</span>
+          <Dot className={status.providers.llm === "ready" ? "bg-primary" : "bg-amber-500"} />
+          {status.providers.llm === "ready" ? t("Disponible") : t("No responde")}
+        </span>
+      ) : (
+        t("Sin modelo elegido")
+      ),
+      action: t("Ver modelos"),
+    },
+    {
+      choice: "isolated",
+      icon: ShieldCheck,
+      eyebrow: t("Máxima privacidad"),
+      title: t("Modo aislado"),
+      text: t("Ningún proveedor externo. Para repositorios con requisitos estrictos."),
+      meta: t("Solo análisis local"),
+      action: t("Activar"),
+    },
+  ]
+  return (
+    <div className="grid gap-3 md:grid-cols-3">
+      {cards.map((card) => {
+        const current = setup.choice === card.choice
+        return (
+          <Panel key={card.choice} className={cn("justify-between gap-6", current && "ring-primary/40")}>
+            <div className="grid gap-3">
+              <div className="flex items-center gap-2.5">
+                <IconTile icon={card.icon} tone={current ? "plum" : "plain"} />
+                <span className="flex-1 text-[0.62rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+                  {card.eyebrow}
+                </span>
+                {current && <Check className="size-4 text-primary" aria-label={t("En uso")} />}
+              </div>
+              <div className="grid gap-1">
+                <h3 className="text-sm font-semibold">{card.title}</h3>
+                <p className="text-xs leading-relaxed text-muted-foreground">{card.text}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between gap-2 text-[0.7rem] text-muted-foreground">
+              <span className="min-w-0 truncate">{card.meta}</span>
+              {current && card.choice === "isolated" ? (
+                <span className="font-medium text-primary">{t("Activo")}</span>
+              ) : (
+                <MoreLink to="/ajustes/modelos">{card.action}</MoreLink>
+              )}
+            </div>
+          </Panel>
+        )
+      })}
+    </div>
   )
 }
 
@@ -84,6 +240,7 @@ export function HomeScreen({
   onDropUsed,
   setup = null,
   onSetupChosen = () => undefined,
+  profileName = null,
   onSessionLost,
 }: {
   project: Project | null
@@ -91,6 +248,7 @@ export function HomeScreen({
   localOnly?: boolean
   setup?: AiSetup | null
   onSetupChosen?: (setup: AiSetup) => void
+  profileName?: string | null
   onProjectCreated: (project: Project) => void
   drop: Drop | null
   onDropUsed: () => void
@@ -122,13 +280,13 @@ export function HomeScreen({
 
   // ADR-013: until someone chooses where the writing model lives, Home asks first.
   const firstRun = setup !== null && setup.choice === null && (
-    <section className="grid gap-3">
-      <div className="grid gap-1">
-        <h2 className="font-heading text-lg font-medium">{t("¿Qué modelo escribe las reglas?")}</h2>
-        <p className="text-sm text-muted-foreground">
-          {t("La búsqueda, el índice y las reglas se quedan en este equipo. Solo el modelo que redacta las propuestas puede estar fuera, y nada se envía sin tu permiso. Puedes cambiarlo en Ajustes.")}
-        </p>
-      </div>
+    <section className="grid gap-4">
+      <SectionHead
+        number="01"
+        eyebrow={t("Configuración")}
+        title={t("¿Qué modelo escribe las reglas?")}
+        description={t("La búsqueda, el índice y las reglas se quedan en este equipo. Solo el modelo que redacta las propuestas puede estar fuera, y nada se envía sin tu permiso. Puedes cambiarlo en Ajustes.")}
+      />
       <ModelSetup setup={setup} onChosen={onSetupChosen} onSessionLost={onSessionLost} />
     </section>
   )
@@ -163,32 +321,97 @@ export function HomeScreen({
     { done: (rules?.rules ?? 0) > 0, label: <Link to="/reglas" className="hover:underline">{t("Extrae las reglas del código")}</Link> },
   ]
   const pendingSetup = sources !== null && rules !== null && steps.some((step) => !step.done)
+  const rebuilding = index !== null && index.provider === "ready" && index.chunks > 0 && index.embedded < index.chunks
+  const name = profileName?.trim()
 
   return (
     <>
-      <header className="grid gap-1">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">{project.name}</h1>
-        <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          {syncing ? (
-            <StatusBadge tone="in_progress">{t("Sincronizando…")}</StatusBadge>
-          ) : synced ? (
-            <>{t("Sincronizado")} {relativeTime(synced)}</>
-          ) : sources !== null ? (
-            <>{t("Todavía sin sincronizar")}</>
-          ) : null}
-          {project.description && <span>· {project.description}</span>}
-        </p>
+      <header className="grid gap-8">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="grid gap-2">
+            <p className="flex items-center gap-2 text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+              <Dot className="bg-primary" />
+              {t("Proyecto activo")} <span className="text-muted-foreground/50">/</span> {project.name}
+            </p>
+            <h1 className="font-heading text-[2.1rem] leading-tight font-bold tracking-[-0.035em] max-sm:text-[1.7rem]">
+              {name ? `${greeting()}, ${name}` : greeting()}
+              <span className="text-primary">.</span>
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {project.description || t("Tu código, traducido en decisiones que el equipo entiende.")}
+            </p>
+          </div>
+          <p className="flex items-center gap-2 text-xs text-muted-foreground">
+            {syncing ? (
+              <StatusBadge tone="in_progress">{t("Sincronizando…")}</StatusBadge>
+            ) : synced ? (
+              <>
+                <Activity className="size-4" aria-hidden="true" />
+                {t("Sincronizado")} {relativeTime(synced)}
+              </>
+            ) : sources !== null ? (
+              t("Todavía sin sincronizar")
+            ) : null}
+          </p>
+        </div>
+        {rules !== null && sources !== null && (
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <ul className="flex flex-wrap gap-x-10 gap-y-4">
+              {[
+                { value: rules.rules, label: t("reglas de negocio"), to: "/reglas", accent: true },
+                { value: rules.drifted, label: t("cambios por revisar"), to: "/cambios", accent: false },
+                { value: sources.length, label: t("fuentes conectadas"), to: "/fuentes", accent: false },
+              ].map((stat) => (
+                <li key={stat.label}>
+                  <Link to={stat.to} className="group grid gap-1.5">
+                    <span className={cn("font-figure text-4xl leading-none tracking-tight", stat.accent && "text-primary")}>
+                      {figure(stat.value)}
+                    </span>
+                    <span className="text-xs text-muted-foreground group-hover:text-foreground">{stat.label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            {rules.last_review_at && (
+              <p className="text-xs text-muted-foreground">
+                {t("Última revisión")} · <span className="text-foreground/80">{relativeTime(rules.last_review_at)}</span>
+              </p>
+            )}
+          </div>
+        )}
       </header>
       <ErrorText>{error}</ErrorText>
       {firstRun}
-      {index && index.provider === "ready" && index.chunks > 0 && index.embedded < index.chunks && (
-        <p role="status" className="text-sm text-muted-foreground">
-          {t(
-            "La búsqueda por significado se está reconstruyendo: {0} de {1} fragmentos ya tienen vector. Mientras tanto, se busca por palabras.",
-            index.embedded,
-            index.chunks,
-          )}
-        </p>
+      {setup !== null && setup.choice !== null && !setup.managed && (
+        <section className="grid gap-4">
+          <SectionHead
+            number="01"
+            eyebrow={t("Configuración")}
+            title={t("¿Cómo quieres analizar el código?")}
+            description={t("Elige dónde se procesa el modelo. Tus fuentes nunca se envían sin permiso.")}
+            action={<MoreLink to="/ajustes/privacidad">{t("Privacidad y datos")}</MoreLink>}
+          />
+          <ModeCards setup={setup} status={status} />
+        </section>
+      )}
+      {rebuilding && (
+        <div role="status" className="flex flex-wrap items-center gap-4 rounded-xl bg-accent/70 px-4 py-3.5 dark:bg-accent/60">
+          <Activity className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          <div className="grid min-w-0 flex-1 gap-0.5">
+            <p className="text-xs font-semibold">{t("Tu índice semántico se está reconstruyendo")}</p>
+            <p className="text-[0.7rem] text-muted-foreground">
+              {t("{0} de {1} fragmentos listos · La búsqueda por palabras sigue disponible.", index.embedded, index.chunks)}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="h-1 w-24 overflow-hidden rounded-full bg-foreground/10">
+              <div className="h-full rounded-full bg-primary" style={{ width: `${Math.round((index.embedded / index.chunks) * 100)}%` }} />
+            </div>
+            <span className="w-8 text-right text-[0.7rem] text-muted-foreground tabular-nums">
+              {Math.round((index.embedded / index.chunks) * 100)}%
+            </span>
+          </div>
+        </div>
       )}
 
       {sources !== null && (!hasSources || drop !== null) && (
@@ -206,8 +429,8 @@ export function HomeScreen({
       )}
 
       {pendingSetup && (
-        <section className="grid gap-3 rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
-          <h2 className="text-sm font-medium">{t("Próximos pasos")}</h2>
+        <Panel className="gap-3 ring-primary/25">
+          <h2 className="text-sm font-semibold">{t("Próximos pasos")}</h2>
           <ol className="grid gap-2">
             {steps.map((step, index) => (
               <Step key={index} done={step.done}>
@@ -215,85 +438,107 @@ export function HomeScreen({
               </Step>
             ))}
           </ol>
-        </section>
+        </Panel>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <HealthCard
-          icon={BookOpen}
-          title={t("Reglas")}
-          footer={
-            <Link to="/reglas" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
-              {t("Revisar reglas")} <ArrowRight className="size-3.5" />
-            </Link>
-          }
-        >
-          {rules === null ? (
-            <p className="text-sm text-muted-foreground">{t("Cargando…")}</p>
-          ) : (
-            <div className="grid gap-2">
-              <p className="font-heading text-3xl font-semibold">{rules.rules}</p>
-              <div className="flex flex-wrap gap-1.5">
-                <StatusBadge tone="verified">{rules.verified} {t("verificadas")}</StatusBadge>
-                <StatusBadge tone="proposed">{rules.unreviewed} {t("sin revisar")}</StatusBadge>
-                {rules.drifted > 0 && <StatusBadge tone="attention">{rules.drifted} {t("cambiaron")}</StatusBadge>}
+      <section className="grid gap-4">
+        <SectionHead number="02" eyebrow={t("Vista general")} title={t("Lo que está pasando")} />
+        <div className="grid gap-3 md:grid-cols-3">
+          <Panel className="justify-between">
+            <div className="grid gap-4">
+              <div className="flex items-center justify-between gap-2">
+                <IconTile icon={BookOpen} tone="plum" />
+                {rules !== null && rules.inbox > 0 && (
+                  <Link to="/bandeja" className="inline-flex items-center gap-1 text-[0.7rem] font-medium text-primary hover:underline">
+                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
+                    {rules.inbox === 1 ? t("1 en la bandeja") : t("{0} en la bandeja", rules.inbox)}
+                  </Link>
+                )}
               </div>
-              {rules.inbox > 0 && (
-                <Link to="/bandeja" className="text-sm hover:underline">
-                  {rules.inbox === 1 ? t("1 regla en la bandeja") : t("{0} reglas en la bandeja", rules.inbox)}
-                </Link>
+              {rules === null ? (
+                <p className="text-sm text-muted-foreground">{t("Cargando…")}</p>
+              ) : (
+                <div className="grid gap-2">
+                  <p className="text-xs text-muted-foreground">{t("Reglas de negocio")}</p>
+                  <p className="font-figure text-4xl leading-none tracking-tight">{rules.rules}</p>
+                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.7rem] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Dot className="bg-primary" />
+                      {rules.verified} {t("verificadas")}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Dot className="bg-amber-500" />
+                      {rules.unreviewed} {t("por revisar")}
+                    </span>
+                    {rules.drifted > 0 && (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          <Dot className="bg-destructive" />
+                          {rules.drifted} {t("cambiaron")}
+                        </span>
+                      </>
+                    )}
+                  </p>
+                  <p className="text-[0.7rem] text-muted-foreground">
+                    {rules.oldest_unreviewed_at
+                      ? t("La propuesta más antigua sin revisar es de {0}.", relativeTime(rules.oldest_unreviewed_at))
+                      : rules.last_review_at
+                        ? t("Última revisión {0}", relativeTime(rules.last_review_at))
+                        : t("Nada revisado aún")}
+                  </p>
+                </div>
               )}
-              <p className="text-xs text-muted-foreground">
-                {rules.last_review_at ? t("Última revisión {0}", relativeTime(rules.last_review_at)) : t("Nada revisado aún")}
-                {rules.oldest_unreviewed_at &&
-                  t(" · la propuesta más antigua sin revisar es de {0}", relativeTime(rules.oldest_unreviewed_at))}
+            </div>
+            <MoreLink to="/reglas">{t("Revisar reglas")}</MoreLink>
+          </Panel>
+          <Panel className="justify-between">
+            <div className="grid gap-4">
+              <div className="flex items-center justify-between gap-2">
+                <IconTile icon={Cpu} />
+                <span className="text-[0.62rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+                  {localOnly ? t("LLM local") : t("Proveedor externo")}
+                </span>
+              </div>
+              <div className="grid gap-1.5">
+                <h3 className="text-sm font-semibold">{t("Motor de análisis")}</h3>
+                <p className="flex items-center gap-1.5 text-[0.7rem] text-muted-foreground">
+                  {status.providers.llm_model && <span className="font-mono">{status.providers.llm_model}</span>}
+                  <Dot className={status.providers.llm === "ready" ? "bg-primary" : "bg-amber-500"} />
+                  {status.providers.llm === "ready" ? t("en ejecución") : t("no responde")}
+                </p>
+              </div>
+              <p className="flex flex-wrap gap-x-4 gap-y-1 text-[0.7rem]">
+                <ModelCheck status={status.providers.llm}>{t("Respuestas")}</ModelCheck>
+                <ModelCheck status={status.providers.embeddings}>{t("Índice semántico")}</ModelCheck>
+              </p>
+              <p className="text-[0.7rem] text-muted-foreground">
+                {localOnly
+                  ? t("Todo se calcula en este equipo. Nada sale de aquí.")
+                  : t("La búsqueda se calcula aquí. Algunas tareas de este proyecto van a un proveedor externo: míralo en Ajustes.")}
               </p>
             </div>
-          )}
-        </HealthCard>
-        <HealthCard
-          icon={Cpu}
-          title={t("Motor de IA local")}
-          footer={
-            <Link to="/ajustes/modelos" className="inline-flex items-center gap-1 text-sm font-medium hover:underline">
-              {t("Ver el motor")} <ArrowRight className="size-3.5" />
-            </Link>
-          }
-        >
-          <dl className="grid gap-2 text-sm">
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">{t("Respuestas")}</dt>
-              <dd>
-                <ModelStatusBadge status={status.providers.llm} />
-              </dd>
+            <MoreLink to="/ajustes/modelos">{t("Ver el motor")}</MoreLink>
+          </Panel>
+          <Panel className="justify-between">
+            <div className="grid gap-4">
+              <IconTile icon={GitCompareArrows} tone="amber" />
+              <div className="grid gap-1.5">
+                <h3 className="text-sm font-semibold">{t("Impacto de cambios")}</h3>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t("Pega un diff o la descripción de un bug y mira qué reglas y tests se ven afectados antes de tocar nada.")}
+                </p>
+              </div>
             </div>
-            <div className="flex items-center justify-between gap-2">
-              <dt className="text-muted-foreground">{t("Búsqueda por significado")}</dt>
-              <dd>
-                <ModelStatusBadge status={status.providers.embeddings} />
-              </dd>
+            <div>
+              <Button size="sm" render={<Link to="/impacto" />} nativeButton={false}>
+                {t("Analizar un cambio")}
+              </Button>
             </div>
-          </dl>
-          <p className="text-xs text-muted-foreground">
-            {localOnly
-              ? t("Todo se calcula en este equipo. Nada sale de aquí.")
-              : t("La búsqueda se calcula aquí. Algunas tareas de este proyecto van a un proveedor externo: míralo en Ajustes.")}
-          </p>
-        </HealthCard>
-        <HealthCard
-          icon={ScanSearch}
-          title={t("Impacto de un cambio")}
-          footer={
-            <Button variant="outline" size="sm" render={<Link to="/impacto" />} nativeButton={false}>
-              {t("Analizar un cambio")}
-            </Button>
-          }
-        >
-          <p className="text-sm text-muted-foreground">
-            {t("Pega un diff o la descripción de un bug y mira qué reglas y tests se ven afectados antes de tocar nada.")}
-          </p>
-        </HealthCard>
-      </div>
+          </Panel>
+        </div>
+      </section>
     </>
   )
 }

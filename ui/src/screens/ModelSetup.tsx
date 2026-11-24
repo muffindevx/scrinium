@@ -82,7 +82,7 @@ export function ModelSetup({
         <Option
           icon={Cloud}
           title={t("Tu proveedor")}
-          badge="Recomendado"
+          badge={t("Recomendado")}
           current={setup.choice === "provider"}
         >
           <p>
@@ -173,8 +173,8 @@ function Option({
   return (
     <section
       className={cn(
-        "grid content-start gap-2 rounded-xl border bg-card p-4 text-sm text-muted-foreground",
-        current && "border-primary",
+        "grid content-start gap-2 rounded-xl bg-card p-4 text-sm text-muted-foreground shadow-[0_1px_2px_oklch(0_0_0/0.04)] ring-1 ring-border/70",
+        current && "ring-primary/40",
       )}
     >
       <h3 className="flex flex-wrap items-center gap-2 font-medium text-foreground">
