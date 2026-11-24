@@ -151,6 +151,11 @@ def decision_reach(lines: list[str], start: int, end: int) -> str:
     return "\n".join([*lines[max(0, start - 1 - _ABOVE_LINES) : end], *below])
 
 
+def quoted_literals(statement: str) -> list[str]:
+    """The literals a statement writes in quotes ('stale'), not in backquotes."""
+    return list(_STATEMENT_QUOTED.findall(_STATEMENT_NAME.sub(" ", statement)))
+
+
 def unanchored_literals(statement: str, reach: str) -> list[str]:
     """The literals in quotes ('stale') and dotted identifiers (agent.finished) of a statement
     that the decision's reach does not write: [] when anchored. A quoted phrase with spaces

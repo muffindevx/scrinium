@@ -12,9 +12,11 @@ item. The order is the value of the information a review gives:
   confirmed;
 - **cost:** how much code a person must read (the cited lines).
 
-**Groups** (Annex B.9): rules anchored to the same decision shape, or whose statements are
-near-identical (MinHash with banded LSH, Jaccard ≥ 0.75), joined with union-find. A group can
-be confirmed, rejected or merged in one action.
+**Groups** (Annex B.9): rules anchored to the same decision (its shape and its values), rules
+whose statements are near-identical (MinHash with banded LSH, Jaccard ≥ 0.75), and rules that
+name the same quoted values about the same subject in different files (B4: a column's allowed
+values in `schema.ts` and in its SQL migration), joined with union-find. A group can be
+confirmed, rejected or merged in one action.
 
 **F2** (phase 4.3): a proposal written by a model whose statement says a number or a `name`
 its anchored code does not hold never reaches the inbox; it is counted apart, to be redone.
@@ -25,6 +27,8 @@ more rules than a project has.
 """
 
 import math
+import re
+import unicodedata
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass
@@ -36,6 +40,7 @@ from sqlalchemy.orm import Session
 
 from scrinium.application.analysis.rule_checks import (
     decision_reach,
+    quoted_literals,
     unanchored_literals,
     unanchored_terms,
 )
@@ -83,6 +88,8 @@ _CHURN_DAYS: Final = 90
 _PENDING_PREFIX: Final = "Pendiente de redactar."
 _NOW_REASONS: Final = frozenset({"rule_changed", "code_changed", "code_contradicts"})
 _SIMILAR: Final = 0.75
+# B4: rules on the same decision must also say something alike to be grouped.
+_SAME_DECISION: Final = 0.3
 _BANDS: Final = 8
 # One bug weighs like a step of criticality; ten weigh about five (logarithmic).
 _BUG_WEIGHT: Final = 2.0
@@ -186,7 +193,9 @@ def _rules(session: Session, project: Project) -> list[_Rule]:
             rule.citation = record
             anchor = (record.locator or {}).get("anchor")
             if isinstance(anchor, dict) and str(anchor.get("version")) == DECISIONS_VERSION:
-                rule.shape = str(anchor.get("shape") or "") or None
+                # The shape alone is any `enum` column; with its values, this decision.
+                shape = str(anchor.get("shape") or "")
+                rule.shape = f"{shape}:{anchor.get('value') or ''}" if shape else None
     return rules
 
 
@@ -238,14 +247,66 @@ def _statement_sketch(rule: _Rule) -> str:
     return found
 
 
+# B4: words that say nothing about what a statement is about ("debe estar limitado a").
+_FILLER: Final = frozenset(
+    {
+        "a", "al", "con", "de", "del", "el", "en", "la", "las", "lo", "los", "o", "para", "por",
+        "se", "su", "sus", "un", "una", "unos", "unas", "y", "que", "como", "uno", "solo",
+        "debe", "deben", "ser", "estar", "esta", "estan", "es", "son", "tener", "tiene",
+        "limitado", "limitada", "limitados", "limitadas", "valor", "valores", "permitido",
+        "permitida", "permitidos", "permitidas", "lista", "pertenecer", "definido", "definida",
+        "definidos", "definidas", "posible", "posibles", "siguiente", "siguientes", "entre",
+    }
+)  # fmt: skip
+_SAME_SUBJECT: Final = 0.5
+
+
+def _subject(statement: str, literals: list[str]) -> frozenset[str]:
+    """What a statement is about: its words, without the quoted values, accents or plurals."""
+    text = statement
+    for literal in literals:
+        text = text.replace(literal, " ")
+    folded = unicodedata.normalize("NFKD", text.lower()).encode("ascii", "ignore").decode()
+    words = re.findall(r"[a-z]{2,}", folded)
+    return frozenset(
+        re.sub(r"(?<=[^aeiou])es$|s$", "", word) for word in words if word not in _FILLER
+    )
+
+
+def _same_values(rules: list[_Rule], groups: "_UnionFind") -> None:
+    """B4: the same quoted values (two or more) about the same subject, in different files."""
+    by_values: dict[frozenset[str], list[tuple[_Rule, frozenset[str]]]] = defaultdict(list)
+    for rule in rules:
+        literals = quoted_literals(rule.statement)
+        if len(set(literals)) >= 2 and rule.citation is not None:
+            by_values[frozenset(literals)].append((rule, _subject(rule.statement, literals)))
+    for members in by_values.values():
+        for index, (rule, subject) in enumerate(members):
+            path = (rule.citation.locator or {}).get("path") if rule.citation else None
+            for other, other_subject in members[index + 1 :]:
+                other_path = (other.citation.locator or {}).get("path") if other.citation else None
+                union = subject | other_subject
+                if (
+                    path != other_path
+                    and union
+                    and len(subject & other_subject) / len(union) >= _SAME_SUBJECT
+                ):
+                    groups.union(rule.entity_id, other.entity_id)
+
+
 def _groups(rules: list[_Rule]) -> _UnionFind:
     groups = _UnionFind()
-    by_shape: dict[str, uuid.UUID] = {}
+    sketches = {rule.entity_id: _statement_sketch(rule) for rule in rules}
+    by_shape: dict[str, list[uuid.UUID]] = defaultdict(list)
     for rule in rules:
         if rule.shape:
-            first = by_shape.setdefault(rule.shape, rule.entity_id)
-            groups.union(first, rule.entity_id)
-    sketches = {rule.entity_id: _statement_sketch(rule) for rule in rules}
+            by_shape[rule.shape].append(rule.entity_id)
+    for same in by_shape.values():
+        # The same decision says the same thing: `x > 0` is also "shown if any" and "positive".
+        for index, first in enumerate(same):
+            for other in same[index + 1 :]:
+                if similarity(sketches[first], sketches[other]) >= _SAME_DECISION:
+                    groups.union(first, other)
     width = 32 // _BANDS * 8  # Hex characters per band.
     buckets: dict[tuple[int, str], list[uuid.UUID]] = defaultdict(list)
     for entity_id, sketch in sketches.items():
@@ -257,6 +318,7 @@ def _groups(rules: list[_Rule]) -> _UnionFind:
                 similarity(sketches[members[0]], sketches[other]) >= _SIMILAR
             ):
                 groups.union(members[0], other)
+    _same_values(rules, groups)
     return groups
 
 
