@@ -86,6 +86,12 @@ def cited_text(text: str, first_line: int, start: int, end: int) -> str:
 _STATEMENT_NUMBER: Final = re.compile(r"(?<![\w.,])(\d+(?:[.,]\d+)?)(\s?%)?(?![\w])")
 _STATEMENT_NAME: Final = re.compile(r"`([A-Za-z_][\w.]*)`")
 _CODE_NUMBER: Final = re.compile(r"(?<![\w.])\d+(?:\.\d+)?(?![\w])")
+# B3: a literal in quotes ('agent.finished', "stale") and a dotted identifier (agent.started):
+# the code must write them. One word with no spaces, so a quoted phrase is not checked.
+_STATEMENT_QUOTED: Final = re.compile(
+    r"(?<!\w)['\"\u2018\u201c]([^\s'\"\u2018\u2019\u201c\u201d`]{2,80})['\"\u2019\u201d](?!\w)"
+)
+_STATEMENT_DOTTED: Final = re.compile(r"(?<![\w.`])([A-Za-z_]\w+(?:\.[A-Za-z_]\w+)+)(?![\w`])")
 
 
 def _number(text: str) -> float | None:
@@ -121,4 +127,38 @@ def unanchored_terms(statement: str, literals: tuple[str, ...], code: str) -> li
         if not options & known:
             missing.append(match[0].strip())
     missing += [name for name in _STATEMENT_NAME.findall(statement) if name not in code]
+    return missing
+
+
+# B3: how far a decision's own code reaches. Above, the condition or `case` that governs it;
+# below, its branch, until a sibling branch starts. A statement that takes a literal from the
+# next `case` ("pasa a running con 'agent.finished'" on the line of agent.started) is caught.
+_ABOVE_LINES: Final = 6
+_BELOW_LINES: Final = 4
+_SIBLING: Final = re.compile(r"^\s*(?:\}\s*)?(?:case\b|default\s*:|else\b|elif\b|except\b|catch\b)")
+_BRANCH_END: Final = re.compile(r"^\s*(?:break|continue)\b")
+
+
+def decision_reach(lines: list[str], start: int, end: int) -> str:
+    """Lines `start`-`end` (1-based) with what governs them above and their branch below."""
+    below = []
+    for line in lines[end : end + _BELOW_LINES]:
+        if _SIBLING.match(line):
+            break
+        below.append(line)
+        if _BRANCH_END.match(line):
+            break
+    return "\n".join([*lines[max(0, start - 1 - _ABOVE_LINES) : end], *below])
+
+
+def unanchored_literals(statement: str, reach: str) -> list[str]:
+    """The literals in quotes ('stale') and dotted identifiers (agent.finished) of a statement
+    that the decision's reach does not write: [] when anchored. A quoted phrase with spaces
+    is words, not a literal, and is not checked."""
+    bare = _STATEMENT_NAME.sub(" ", statement)
+    lowered = reach.lower()
+    missing: list[str] = []
+    for literal in (*_STATEMENT_QUOTED.findall(bare), *_STATEMENT_DOTTED.findall(bare)):
+        if literal.lower() not in lowered and literal not in missing:
+            missing.append(literal)
     return missing

@@ -34,7 +34,11 @@ from typing import Any, Final
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from scrinium.application.analysis.rule_checks import unanchored_terms
+from scrinium.application.analysis.rule_checks import (
+    decision_reach,
+    unanchored_literals,
+    unanchored_terms,
+)
 from scrinium.application.knowledge.evidence import decisions_of
 from scrinium.application.trackers.evidence import bug_tickets_by_rule
 from scrinium.domain.enums import (
@@ -272,8 +276,10 @@ def _unanchored(session: Session, rule: _Rule) -> list[str]:
     end = int(locator.get("end_line", start))
     path = str(locator.get("path", ""))
     decision = anchor_for(decisions_of(path, revision), start, end)
-    code = "\n".join(revision.text_content.splitlines()[start - 1 : end])
-    return unanchored_terms(statement, decision.literals if decision else (), code)
+    lines = revision.text_content.splitlines()
+    code = "\n".join(lines[start - 1 : end])
+    missing = unanchored_terms(statement, decision.literals if decision else (), code)
+    return missing + unanchored_literals(statement, decision_reach(lines, start, end))
 
 
 def inbox(session: Session, project: Project, offset: int = 0, limit: int = 100) -> dict[str, Any]:

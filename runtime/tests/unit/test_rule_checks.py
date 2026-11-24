@@ -51,3 +51,41 @@ def test_llama_server_timings_split_reading_from_writing() -> None:
         "draft_accepted": 30,
     }
     assert _timings({}) == {}
+
+
+_PROJECTOR = """\
+switch (event.type) {
+  case "agent.started":
+    if (!terminal) {
+      state.status = "running";
+    }
+    break;
+  case "agent.finished":
+    if (!terminal) {
+      state.status = "succeeded";
+    }
+    break;
+}""".splitlines()
+
+
+def test_a_literal_from_the_next_case_is_not_anchored() -> None:
+    # B3: line 4 runs on agent.started; agent.finished is the sibling case below it.
+    reach = rule_checks.decision_reach(_PROJECTOR, 4, 4)
+    said = "Si no es terminal, el estado pasa a 'running' con el evento 'agent.finished'."
+    assert rule_checks.unanchored_literals(said, reach) == ["agent.finished"]
+    right = "Si no es terminal, el estado pasa a 'running' con el evento agent.started."
+    assert rule_checks.unanchored_literals(right, reach) == []
+    # Line 9 belongs to agent.finished, written above it.
+    reach = rule_checks.decision_reach(_PROJECTOR, 9, 9)
+    assert rule_checks.unanchored_literals("Con 'agent.finished' pasa a 'succeeded'.", reach) == []
+
+
+def test_a_decision_reaches_its_own_branch_below() -> None:
+    lines = ["if (depth > 6) {", '  return "[truncated]";', "}"]
+    reach = rule_checks.decision_reach(lines, 1, 1)
+    assert rule_checks.unanchored_literals("Pasado 6 niveles devuelve '[truncated]'.", reach) == []
+
+
+def test_quoted_phrases_and_abbreviations_are_words_not_literals() -> None:
+    said = 'Un pedido "en borrador" no se factura, p.ej. tras cancelarlo; ver `sale.order`.'
+    assert rule_checks.unanchored_literals(said, "state == 'draft'") == []
