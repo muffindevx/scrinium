@@ -2,17 +2,12 @@ import { t } from "@/lib/i18n"
 import {
   Activity,
   ArrowRight,
-  Check,
   CheckCircle2,
   Circle,
-  Cloud,
   Cpu,
   GitCompareArrows,
   type LucideIcon,
   RefreshCw,
-  Server,
-  ShieldCheck,
-  X,
 } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useState } from "react"
 import { Link } from "react-router"
@@ -23,7 +18,6 @@ import { Button } from "@/components/ui/button"
 import {
   type AiSetup,
   type Analysis,
-  type EmbeddingStatus,
   type Inbox,
   type IndexStatus,
   type Project,
@@ -48,14 +42,12 @@ import { ErrorText } from "@/screens/shared"
 
 /** "01 / CONFIGURACIÓN" over a section title, as on the Home mock-ups. */
 function SectionHead({
-  number,
   eyebrow,
   title,
   description,
   action,
 }: {
-  number: string
-  eyebrow: string
+  eyebrow?: string
   title: string
   description?: ReactNode
   action?: ReactNode
@@ -63,9 +55,9 @@ function SectionHead({
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="grid gap-1.5">
-        <p className="text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
-          <span className="text-primary">{number}</span> / {eyebrow}
-        </p>
+        {eyebrow && (
+          <p className="text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">{eyebrow}</p>
+        )}
         <h2 className="font-heading text-lg font-semibold tracking-tight">{title}</h2>
         {description && <p className="text-sm text-muted-foreground">{description}</p>}
       </div>
@@ -118,99 +110,6 @@ function greeting(now = new Date()): string {
   if (hour >= 6 && hour < 13) return t("Buenos días")
   if (hour >= 13 && hour < 21) return t("Buenas tardes")
   return t("Buenas noches")
-}
-
-function ModelCheck({ status, children }: { status: EmbeddingStatus; children: ReactNode }) {
-  const ready = status === "ready"
-  const Icon = ready ? Check : X
-  return (
-    <span className={cn("inline-flex items-center gap-1.5", ready ? "text-primary" : "text-amber-700 dark:text-amber-400")}>
-      <Icon className="size-3.5" aria-hidden="true" />
-      {children}
-    </span>
-  )
-}
-
-/** Once chosen (ADR-013), Home shows the three modes with the one in use ticked; Ajustes changes it. */
-function ModeCards({ setup, status }: { setup: AiSetup; status: SecurityStatus }) {
-  const localModel = setup.local_server?.model ?? setup.local_model ?? status.providers.llm_model
-  const cards: {
-    choice: AiSetup["choice"]
-    icon: LucideIcon
-    eyebrow: string
-    title: string
-    text: string
-    meta: ReactNode
-    action: string
-  }[] = [
-    {
-      choice: "provider",
-      icon: Cloud,
-      eyebrow: t("Recomendado"),
-      title: t("Tu proveedor"),
-      text: t("DeepSeek, GLM, Claude o cualquier API compatible con OpenAI, con tu clave. No necesita GPU."),
-      meta: t("Compatible con OpenAI"),
-      action: t("Configurar"),
-    },
-    {
-      choice: "local_server",
-      icon: Server,
-      eyebrow: t("En tu equipo"),
-      title: t("Modelo local"),
-      text: t("Ollama, vLLM o llama-server en este equipo. El código no sale de aquí."),
-      meta: localModel ? (
-        <span className="inline-flex items-center gap-1.5">
-          <span className="font-mono">{localModel}</span>
-          <Dot className={status.providers.llm === "ready" ? "bg-primary" : "bg-amber-500"} />
-          {status.providers.llm === "ready" ? t("Disponible") : t("No responde")}
-        </span>
-      ) : (
-        t("Sin modelo elegido")
-      ),
-      action: t("Ver modelos"),
-    },
-    {
-      choice: "isolated",
-      icon: ShieldCheck,
-      eyebrow: t("Máxima privacidad"),
-      title: t("Modo aislado"),
-      text: t("Ningún proveedor externo. Para repositorios con requisitos estrictos."),
-      meta: t("Solo análisis local"),
-      action: t("Activar"),
-    },
-  ]
-  return (
-    <div className="grid gap-3 md:grid-cols-3">
-      {cards.map((card) => {
-        const current = setup.choice === card.choice
-        return (
-          <Panel key={card.choice} className={cn("justify-between gap-6", current && "ring-primary/40")}>
-            <div className="grid gap-3">
-              <div className="flex items-center gap-2.5">
-                <IconTile icon={card.icon} tone={current ? "plum" : "plain"} />
-                <span className="flex-1 text-[0.62rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                  {card.eyebrow}
-                </span>
-                {current && <Check className="size-4 text-primary" aria-label={t("En uso")} />}
-              </div>
-              <div className="grid gap-1">
-                <h3 className="text-sm font-semibold">{card.title}</h3>
-                <p className="text-xs leading-relaxed text-muted-foreground">{card.text}</p>
-              </div>
-            </div>
-            <div className="flex items-center justify-between gap-2 text-[0.7rem] text-muted-foreground">
-              <span className="min-w-0 truncate">{card.meta}</span>
-              {current && card.choice === "isolated" ? (
-                <span className="font-medium text-primary">{t("Activo")}</span>
-              ) : (
-                <MoreLink to="/ajustes/modelos">{card.action}</MoreLink>
-              )}
-            </div>
-          </Panel>
-        )
-      })}
-    </div>
-  )
 }
 
 function Step({ done, children }: { done: boolean; children: ReactNode }) {
@@ -325,7 +224,6 @@ export function HomeScreen({
   const firstRun = setup !== null && setup.choice === null && (
     <section className="grid gap-5 border-t pt-8">
       <SectionHead
-        number="01"
         eyebrow={t("Configuración")}
         title={t("¿Qué modelo escribe las reglas?")}
         description={t("La búsqueda, el índice y las reglas se quedan en este equipo. Solo el modelo que redacta las propuestas puede estar fuera, y nada se envía sin tu permiso. Puedes cambiarlo en Ajustes.")}
@@ -376,7 +274,7 @@ export function HomeScreen({
               <Dot className="bg-primary" />
               {t("Proyecto activo")} <span className="text-muted-foreground/50">/</span> {project.name}
             </p>
-            <h1 className="font-heading text-[2.1rem] leading-tight font-bold tracking-[-0.035em] max-sm:text-[1.7rem]">
+            <h1 className="font-heading text-[1.75rem] leading-tight font-bold tracking-[-0.03em] max-sm:text-[1.5rem]">
               {name ? `${greeting()}, ${name}` : greeting()}
               <span className="text-primary">.</span>
             </h1>
@@ -401,9 +299,20 @@ export function HomeScreen({
                   {t("Última revisión {0}", relativeTime(rules.last_review_at))}
                 </span>
               )}
+              {/* Where the model runs is a setting, not news: one line here, chosen in Ajustes. */}
+              {setup?.choice && (
+                <Link to="/ajustes/modelos" className="inline-flex items-center gap-1.5 hover:text-foreground hover:underline">
+                  <Cpu className="size-3.5" aria-hidden="true" />
+                  {setup.choice === "isolated"
+                    ? t("Modo aislado")
+                    : localOnly
+                      ? t("Modelo local: {0}", status.providers.llm_model || "—")
+                      : t("Algunas tareas van a un proveedor externo")}
+                </Link>
+              )}
             </p>
           </div>
-          <RulesStatus rules={rules} inbox={inboxSummary} />
+          <RulesStatus rules={rules} inbox={inboxSummary} engine={status.providers} localWriter={localOnly} />
         </header>
         <ErrorText>{error}</ErrorText>
       {rebuilding && (
@@ -454,59 +363,17 @@ export function HomeScreen({
       )}
       </div>
       {firstRun}
-      {setup !== null && setup.choice !== null && !setup.managed && (
-        <section className="grid gap-5 border-t pt-8">
-          <SectionHead
-            number="01"
-            eyebrow={t("Configuración")}
-            title={t("¿Cómo quieres analizar el código?")}
-            description={t("Elige dónde se procesa el modelo. Tus fuentes nunca se envían sin permiso.")}
-            action={<MoreLink to="/ajustes/privacidad">{t("Privacidad y datos")}</MoreLink>}
-          />
-          <ModeCards setup={setup} status={status} />
-        </section>
-      )}
       <section className="grid gap-5 border-t pt-8">
         <SectionHead
-          number="02"
-          eyebrow={t("Vista general")}
           title={t("Lo que está pasando")}
           action={<MoreLink to="/actividad">{t("Ver actividad")}</MoreLink>}
         />
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2">
           <RecentActivity project={project} />
           <Panel className="justify-between">
             <div className="grid gap-4">
               <div className="flex items-center justify-between gap-2">
-                <IconTile icon={Cpu} />
-                <span className="text-[0.62rem] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
-                  {localOnly ? t("LLM local") : t("Proveedor externo")}
-                </span>
-              </div>
-              <div className="grid gap-1.5">
-                <h3 className="text-sm font-semibold">{t("Motor de análisis")}</h3>
-                <p className="flex items-center gap-1.5 text-[0.7rem] text-muted-foreground">
-                  {status.providers.llm_model && <span className="font-mono">{status.providers.llm_model}</span>}
-                  <Dot className={status.providers.llm === "ready" ? "bg-primary" : "bg-amber-500"} />
-                  {status.providers.llm === "ready" ? t("en ejecución") : t("no responde")}
-                </p>
-              </div>
-              <p className="flex flex-wrap gap-x-4 gap-y-1 text-[0.7rem]">
-                <ModelCheck status={status.providers.llm}>{t("Respuestas")}</ModelCheck>
-                <ModelCheck status={status.providers.embeddings}>{t("Índice semántico")}</ModelCheck>
-              </p>
-              <p className="text-[0.7rem] text-muted-foreground">
-                {localOnly
-                  ? t("Todo se calcula en este equipo. Nada sale de aquí.")
-                  : t("La búsqueda se calcula aquí. Algunas tareas de este proyecto van a un proveedor externo: míralo en Ajustes.")}
-              </p>
-            </div>
-            <MoreLink to="/ajustes/modelos">{t("Ver el motor")}</MoreLink>
-          </Panel>
-          <Panel className="justify-between">
-            <div className="grid gap-4">
-              <div className="flex items-center justify-between gap-2">
-                <IconTile icon={GitCompareArrows} tone="amber" />
+                <IconTile icon={GitCompareArrows} />
                 {lastDiff !== null && lastDiff.pending > 0 && (
                   <Link
                     to={`/impacto/${lastDiff.id}`}

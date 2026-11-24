@@ -1,9 +1,9 @@
-import { CheckCircle2, ChevronRight, Clock, FileWarning, GitCompareArrows, type LucideIcon, TriangleAlert } from "lucide-react"
-import type { ReactNode } from "react"
+import { CheckCircle2, ChevronRight, Clock, Cpu, FileWarning, GitCompareArrows, type LucideIcon, TriangleAlert } from "lucide-react"
+import { type ReactNode, useState } from "react"
 import { Link } from "react-router"
 import { cn } from "cn"
 import { Placeholder } from "@/components/ui/skeleton"
-import type { Inbox, RulebookHealth } from "@/lib/api"
+import type { Inbox, RulebookHealth, SecurityStatus } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import { relativeTime } from "@/lib/time"
 
@@ -12,7 +12,18 @@ import { relativeTime } from "@/lib/time"
  * the rulebook be trusted (verified out of all, and the week's pace), and what to do now (the
  * few things that need a person, most urgent first, each a way into the inbox).
  */
-export function RulesStatus({ rules, inbox }: { rules: RulebookHealth | null; inbox: Inbox | null }) {
+export function RulesStatus({
+  rules,
+  inbox,
+  engine,
+  localWriter = true,
+}: {
+  rules: RulebookHealth | null
+  inbox: Inbox | null
+  engine: SecurityStatus["providers"]
+  /** False when an external provider writes the rules: the local model being down is no news. */
+  localWriter?: boolean
+}) {
   if (rules === null) {
     return (
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
@@ -22,9 +33,9 @@ export function RulesStatus({ rules, inbox }: { rules: RulebookHealth | null; in
     )
   }
   return (
-    <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
+    <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
       <Progress rules={rules} />
-      <Attention rules={rules} inbox={inbox} />
+      <Attention rules={rules} inbox={inbox} engine={engine} localWriter={localWriter} />
     </div>
   )
 }
@@ -90,6 +101,10 @@ function Progress({ rules }: { rules: RulebookHealth }) {
   )
 }
 
+// What breaks work first, then what risks being wrong, then what is merely waiting.
+const URGENCY = ["llm", "drift", "high", "unanchored", "embeddings", "oldest"]
+const FIRST = 4
+
 interface Need {
   key: string
   icon: LucideIcon
@@ -100,15 +115,50 @@ interface Need {
 }
 
 /** What needs a person now, most urgent first; a row only when it has something. */
-function Attention({ rules, inbox }: { rules: RulebookHealth; inbox: Inbox | null }) {
+function Attention({
+  rules,
+  inbox,
+  engine,
+  localWriter,
+}: {
+  rules: RulebookHealth
+  inbox: Inbox | null
+  engine: SecurityStatus["providers"]
+  localWriter: boolean
+}) {
+  const [expanded, setExpanded] = useState(false)
   const needs: Need[] = []
-  if (rules.drifted > 0)
+  // The engine is an exception, not a card: it shows here only when something is wrong.
+  if (localWriter && engine.llm !== "ready")
+    needs.push({
+      key: "llm",
+      icon: Cpu,
+      tone: "warning",
+      text: t("El modelo que escribe las reglas no responde"),
+      hint: engine.llm_model ? t("{0}: sin él no se extraen ni se redactan reglas", engine.llm_model) : undefined,
+      to: "/ajustes/modelos",
+    })
+  if (engine.embeddings !== "ready")
+    needs.push({
+      key: "embeddings",
+      icon: Cpu,
+      tone: "plain",
+      text: t("La búsqueda por significado no está disponible"),
+      hint: t("Se busca por palabras mientras tanto"),
+      to: "/ajustes/modelos",
+    })
+  // The same count as the inbox's first tab: code that changed, was removed or contradicts.
+  const attention = inbox?.buckets?.attention ?? rules.drifted
+  if (attention > 0)
     needs.push({
       key: "drift",
       icon: GitCompareArrows,
       tone: "warning",
-      text: rules.drifted === 1 ? t("1 regla cambió en el código") : t("{0} reglas cambiaron en el código", rules.drifted),
-      hint: t("Confirma si la regla sigue siendo cierta"),
+      text:
+        attention === 1
+          ? t("1 regla necesita atención: su código cambió")
+          : t("{0} reglas necesitan atención: su código cambió", attention),
+      hint: t("Confirma si siguen siendo ciertas"),
       to: "/bandeja?pestana=attention",
     })
   const high = inbox?.buckets?.high ?? 0
@@ -143,16 +193,20 @@ function Attention({ rules, inbox }: { rules: RulebookHealth; inbox: Inbox | nul
       to: "/bandeja",
     })
 
+  // Most urgent first, and only a few: past FIRST the rest folds behind one line.
+  const sorted = [...needs].sort((a, b) => URGENCY.indexOf(a.key) - URGENCY.indexOf(b.key))
+  const shown = expanded ? sorted : sorted.slice(0, FIRST)
+  const folded = sorted.length - shown.length
   return (
     <Card title={t("Qué necesita tu atención")}>
-      {needs.length === 0 ? (
+      {sorted.length === 0 ? (
         <p className="flex items-center gap-2 text-sm">
           <CheckCircle2 className="size-4 text-primary" aria-hidden="true" />
           {t("Todo al día: no hay nada esperando revisión.")}
         </p>
       ) : (
         <ul className="-mx-2 grid">
-          {needs.map((need) => {
+          {shown.map((need) => {
             const Icon = need.icon
             return (
               <li key={need.key} className="border-b last:border-b-0">
@@ -177,6 +231,11 @@ function Attention({ rules, inbox }: { rules: RulebookHealth; inbox: Inbox | nul
             )
           })}
         </ul>
+      )}
+      {folded > 0 && (
+        <button type="button" onClick={() => setExpanded(true)} className="w-fit text-xs text-muted-foreground hover:text-foreground hover:underline">
+          {folded === 1 ? t("1 aviso más") : t("{0} avisos más", folded)}
+        </button>
       )}
     </Card>
   )
