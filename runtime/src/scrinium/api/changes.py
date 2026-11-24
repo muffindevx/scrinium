@@ -26,8 +26,9 @@ from scrinium.application.knowledge.processes import processes, processes_by_rul
 from scrinium.application.knowledge.rulebook import known_rules
 from scrinium.application.trackers.evidence import change_tickets_of
 from scrinium.application.workspaces import local_workspace
+from scrinium.domain.enums import EntityType
 from scrinium.infrastructure.sqlite.database import Database
-from scrinium.infrastructure.sqlite.models import Project, SourceConnection
+from scrinium.infrastructure.sqlite.models import KnowledgeEntity, Project, SourceConnection
 
 # A ref as Git names it, never an option: no leading dash, no spaces or control characters.
 _REF: Final = re.compile(r"^(?!-)[\w./@^~{}+-]{1,200}$")
@@ -190,9 +191,19 @@ def build_changes_router(database: Database) -> APIRouter:
             rule = next(
                 (r for r in known_rules(session, project, source) if r.id == str(entity_id)), None
             )
+            entity = session.get(KnowledgeEntity, entity_id)
             session.expunge(source)
-        if rule is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+            if rule is None:
+                if (
+                    entity is None
+                    or entity.project_id != project_id
+                    or entity.entity_type is not EntityType.BUSINESS_RULE
+                ):
+                    raise HTTPException(status.HTTP_404_NOT_FOUND, "not_found")
+                # The rule exists, but its code holds no decision to follow between commits
+                # (or it was rejected): nothing to bisect, and that is not an error.
+                return {"rule_id": str(entity_id), "title": entity.name, "anchors": [],
+                        "reason": "no_decision"}  # fmt: skip
         repository = _repository(source)
 
         def commit(found: Commit | None) -> dict[str, str] | None:
@@ -220,7 +231,7 @@ def build_changes_router(database: Database) -> APIRouter:
                     for p in found.periods
                 ],
             })  # fmt: skip
-        return {"rule_id": rule.id, "title": rule.title, "anchors": anchors}
+        return {"rule_id": rule.id, "title": rule.title, "anchors": anchors, "reason": None}
 
     @router.post("/api/v1/projects/{project_id}/triage")
     def triage_trace(project_id: uuid.UUID, body: TraceBody) -> dict[str, Any]:

@@ -7,7 +7,6 @@ import {
   Ban,
   ExternalLink,
   Inbox as InboxIcon,
-  Keyboard,
   Merge,
   PenLine,
   RefreshCw,
@@ -111,53 +110,6 @@ function askReject(count: number, title: string) {
     confirmLabel: count === 1 ? t("Sí, rechazar") : t("Sí, rechazar las {0}", count),
     input: { label: t("Motivo (opcional)"), placeholder: t("Por qué no es correcta") },
   })
-}
-
-const SHORTCUTS: [string, string][] = [
-  ["J / K", t("Siguiente / anterior")],
-  ["Enter", t("Abrir la regla")],
-  ["X", t("Seleccionar")],
-  ["C", t("Es correcta")],
-  ["R", t("No es correcta")],
-  ["U", t("Deshacer, o volver a la lista")],
-  ["?", t("Ver estos atajos")],
-]
-
-/** The keys, in a dialog opened with "?" or the keyboard button, as Gmail does. */
-function showShortcuts() {
-  return Confirm.call({
-    icon: Keyboard,
-    title: t("Atajos de teclado"),
-    description: t("Una tecla sola, sin Ctrl ni Cmd, como en Gmail: así no chocan con los atajos del navegador (Ctrl+R recarga, Ctrl+C copia). No funcionan mientras escribes en un campo."),
-    content: (
-      <dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 text-sm">
-        {SHORTCUTS.map(([keys, what]) => (
-          <div key={keys} className="contents">
-            <dt>
-              <kbd className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs">{keys}</kbd>
-            </dt>
-            <dd className="text-muted-foreground">{what}</dd>
-          </div>
-        ))}
-      </dl>
-    ),
-    confirmLabel: t("Entendido"),
-    cancelLabel: null,
-  })
-}
-
-function ShortcutsButton() {
-  return (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      aria-label={t("Atajos de teclado")}
-      title={t("Atajos de teclado · ?")}
-      onClick={() => void showShortcuts()}
-    >
-      <Keyboard />
-    </Button>
-  )
 }
 
 function Key({ children }: { children: string }) {
@@ -327,14 +279,9 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
       if (event.metaKey || event.ctrlKey || event.altKey) return
       // A dialog is open: its keys are its own.
       if (document.querySelector('[role="dialog"]')) return
-      // "?" on any layout; some report Shift+/ instead.
-      if (event.key === "?" || (event.shiftKey && event.code === "Slash")) {
-        event.preventDefault()
-        void showShortcuts()
-        return
-      }
       const here = entityId ? ordered[open] : ordered[cursor]
-      const key = event.key
+      // Letters with Shift or Caps Lock count too: the help shows them as C, R, J…
+      const key = event.key.length === 1 ? event.key.toLowerCase() : event.key
       if (key === "j" && entityId) openAt(open + 1)
       else if (key === "j") setCursor((i) => Math.min(i + 1, ordered.length - 1))
       else if (key === "k" && entityId) openAt(Math.max(open - 1, 0))
@@ -514,7 +461,6 @@ function Toolbar({
       )}
       <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
         {shown === 1 ? t("1 regla") : t("{0} reglas", shown)}
-        <ShortcutsButton />
       </span>
     </div>
   )
@@ -694,7 +640,6 @@ function RuleReview({
           <PenLine data-icon="inline-start" />
           {t("Corregir el texto")}
         </Button>
-        <ShortcutsButton />
         <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
           {t("{0} de {1}", position + 1, total)}
           <Button size="icon-sm" variant="ghost" aria-label={t("Anterior")} disabled={position === 0} onClick={() => onMove(position - 1)}>

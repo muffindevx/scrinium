@@ -1,5 +1,5 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
-import { ArrowLeft, ChevronRight, ExternalLink, X } from "lucide-react"
+import { ArrowLeft, ExternalLink, X } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { cn } from "cn"
 import { CodeExcerpt } from "@/components/code-excerpt"
@@ -41,18 +41,18 @@ function Rows<T extends ImpactedEntity>({ items, onOpen }: { items: T[]; onOpen:
   return (
     <ul className="divide-y overflow-hidden rounded-lg border">
       {byName(items).map((group) => (
-        <li key={group.name} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2">
+        <li key={group.name} className={cn("flex flex-wrap items-center gap-x-3 gap-y-1.5", group.items.length > 1 && "px-3 py-2")}>
           {group.items.length === 1 ? (
+            // The whole row opens the rule: it is not a disclosure, so no chevron.
             <button
               type="button"
               onClick={() => onOpen(group.items[0].id)}
               title={t("Ver la regla sin salir de aquí")}
-              className="group flex min-w-0 flex-1 items-center gap-3 text-left outline-none focus-visible:underline"
+              className="flex min-w-0 flex-1 items-center gap-3 px-3 py-2 text-left outline-none hover:bg-muted/60 focus-visible:bg-muted/60"
             >
-              <span className="min-w-0 flex-1 truncate text-sm font-medium group-hover:underline">{group.name}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium">{group.name}</span>
               {isHigh(group.items[0]) && <HighDot />}
               <span className="shrink-0 font-mono text-xs text-muted-foreground">{where(group.items[0].citation)}</span>
-              <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
             </button>
           ) : (
             <>

@@ -1,12 +1,23 @@
-import { BookOpen, FileCode2, Search, SquareFunction, Tag } from "lucide-react"
+import { BookOpen, FileCode2, Keyboard, Search, SquareFunction, Tag } from "lucide-react"
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router"
 import { cn } from "cn"
+import { showShortcuts } from "@/components/shortcuts"
 import { Dialog } from "@/components/ui/dialog"
 import { type Palette, getPalette } from "@/lib/api"
 import { t } from "@/lib/i18n"
 
-type Entry = { key: string; group: string; icon: typeof Search; label: string; hint: string; to: string }
+type Entry = { key: string; group: string; icon: typeof Search; label: string; hint: string; to?: string; run?: () => void }
+
+/** What the palette can do besides finding: shown when it opens, and filtered as you type. */
+const COMMANDS: Entry[] = [
+  { key: "c-atajos", group: t("Comandos"), icon: Keyboard, label: t("Ver atajos de teclado"), hint: "?", run: () => void showShortcuts() },
+]
+
+function commands(query: string): Entry[] {
+  const wanted = query.trim().toLowerCase()
+  return COMMANDS.filter((command) => !wanted || command.label.toLowerCase().includes(wanted) || "atajos teclado shortcuts keys".includes(wanted))
+}
 
 function entries(found: Palette): Entry[] {
   const rules = (path: string) => `/reglas?q=${encodeURIComponent(path)}`
@@ -32,7 +43,8 @@ function entries(found: Palette): Entry[] {
 
 /**
  * ⌘K / Ctrl+K (phase 6.2): rules, functions, files and tickets by name, as you type. Enter opens
- * a rule, or the rules of a file. The same names `scrinium mcp` gives an agent.
+ * a rule, or the rules of a file. The same names `scrinium mcp` gives an agent. It also holds
+ * the commands, such as the keyboard shortcuts, which "?" opens from anywhere too.
  */
 export function CommandPalette({ projectId }: { projectId: string | null }) {
   const [open, setOpen] = useState(false)
@@ -46,6 +58,16 @@ export function CommandPalette({ projectId }: { projectId: string | null }) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault()
         setOpen((current) => !current)
+        return
+      }
+      // "?" anywhere, as in Gmail; some layouts report Shift+/ instead. Not while typing, and
+      // not over another dialog.
+      const target = event.target as HTMLElement | null
+      if (target && (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable)) return
+      if (event.metaKey || event.ctrlKey || event.altKey || document.querySelector('[role="dialog"]')) return
+      if (event.key === "?" || (event.shiftKey && event.code === "Slash")) {
+        event.preventDefault()
+        void showShortcuts()
       }
     }
     window.addEventListener("keydown", onKey)
@@ -71,14 +93,18 @@ export function CommandPalette({ projectId }: { projectId: string | null }) {
     }
   }, [open, projectId, query])
 
-  const list = useMemo(() => (found && query.trim().length >= 2 ? entries(found) : []), [found, query])
+  const list = useMemo(
+    () => [...commands(query), ...(found && query.trim().length >= 2 ? entries(found) : [])],
+    [found, query],
+  )
 
   const go = (entry: Entry | undefined) => {
     if (!entry) return
     setOpen(false)
     setQuery("")
     setFound(null)
-    navigate(entry.to)
+    if (entry.run) entry.run()
+    else if (entry.to) navigate(entry.to)
   }
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -90,7 +116,7 @@ export function CommandPalette({ projectId }: { projectId: string | null }) {
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen} title={t("Buscar")} className="w-[min(40rem,calc(100vw-2rem))]">
+    <Dialog open={open} onOpenChange={setOpen} title={t("Buscar o ejecutar un comando")} className="w-[min(40rem,calc(100vw-2rem))]">
       <div className="flex items-center gap-2 rounded-md border px-3">
         <Search className="size-4 text-muted-foreground" aria-hidden="true" />
         <input
@@ -104,7 +130,7 @@ export function CommandPalette({ projectId }: { projectId: string | null }) {
           onKeyDown={onKeyDown}
         />
       </div>
-      {!projectId ? (
+      {!projectId && list.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("Primero, un proyecto")}</p>
       ) : query.trim().length >= 2 && found && list.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t("Nada con ese nombre.")}</p>

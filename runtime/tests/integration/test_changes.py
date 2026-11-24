@@ -1,7 +1,12 @@
 """Cambios (phase 7.1): what a change does to the rules, between any two refs."""
 
+import uuid
 from typing import Any
 
+from scrinium.application.knowledge.content import RuleContent
+from scrinium.application.knowledge.entities import create_business_rule
+from scrinium.domain.enums import RuleCategory
+from scrinium.infrastructure.sqlite.models import KnowledgeEntityVersion, Project
 from tests.integration.test_analyses import Api
 from tests.integration.test_ingestion import commit_all, git, write
 from tests.integration.test_rule_watch import COMMISSION, api
@@ -120,3 +125,28 @@ def test_a_trace_leads_to_the_function_its_rules_and_its_history(api: Api) -> No
         "Arregla la comision de las ventas grandes"
     ]
     assert found["frames"][0]["path"] is None  # a library frame is not the project's
+
+
+def test_a_rule_without_a_decision_to_follow_has_no_history_but_no_error(api: Api) -> None:
+    """A rule whose code holds no decision (no anchor) answers with nothing to show, not 404."""
+    with api.runtime.database.session() as session:
+        project = session.get_one(Project, uuid.UUID(api.project_id))
+        version = create_business_rule(
+            session, project, canonical_key="manual/sin-codigo",
+            category=RuleCategory.WORKFLOW,
+            content=RuleContent(title="Sin codigo", statement="Una regla escrita a mano."),
+        )  # fmt: skip
+        entity_id = session.get_one(
+            KnowledgeEntityVersion, version.knowledge_entity_version_id
+        ).knowledge_entity_id
+    path = f"/api/v1/projects/{api.project_id}/rules/{entity_id}/history"
+    response = api.runtime.client.get(path)
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "rule_id": str(entity_id),
+        "title": "Sin codigo",
+        "anchors": [],
+        "reason": "no_decision",
+    }
+    missing = f"/api/v1/projects/{api.project_id}/rules/{uuid.uuid4()}/history"
+    assert api.runtime.client.get(missing).status_code == 404

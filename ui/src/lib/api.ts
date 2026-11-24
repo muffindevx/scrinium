@@ -973,6 +973,8 @@ export interface RuleHistory {
     seconds: number
     periods: { values: string[] | null; since: HistoryCommit; until: HistoryCommit | null }[]
   }[]
+  /** Why there is nothing to follow: its code holds no decision (a condition, a threshold). */
+  reason: "no_decision" | null
 }
 export const getRuleHistory = (projectId: string, entityId: string) =>
   getJson<RuleHistory>(`/api/v1/projects/${projectId}/rules/${entityId}/history`)

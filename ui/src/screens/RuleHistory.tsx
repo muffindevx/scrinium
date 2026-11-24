@@ -46,6 +46,11 @@ export function RuleHistory({
         </div>
       )}
       <ErrorText>{error}</ErrorText>
+      {history?.reason === "no_decision" && (
+        <Muted>
+          {t("No hay historia que mostrar: el código de esta regla no tiene una decisión (una condición, un umbral o un valor) que Scrinium pueda seguir entre commits.")}
+        </Muted>
+      )}
       {history?.anchors.map((anchor) => (
         <div key={`${anchor.path}${anchor.symbol}`} className="grid gap-2">
           <p className="font-mono text-xs break-all text-muted-foreground">
