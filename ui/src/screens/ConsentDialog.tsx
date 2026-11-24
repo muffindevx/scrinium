@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n"
+import { Placeholder } from "@/components/ui/skeleton"
 import { type FormEvent, useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog } from "@/components/ui/dialog"
@@ -6,7 +7,7 @@ import { TASK_LABELS } from "@/lib/ai"
 import { type AiTask, type ModelProvider, type Project, type RetentionNotice, getRetention, giveAiConsent } from "@/lib/api"
 import { RetentionDetails } from "@/screens/ai-shared"
 import { useErrors } from "@/screens/hooks"
-import { ErrorText, Muted } from "@/screens/shared"
+import { ErrorText } from "@/screens/shared"
 
 /** Consent to send these tasks of a project to this model, read in a modal (ADR-010). With
  * `makeDefault`, the tasks then use it by default; without it, it is only allowed for them. */
@@ -65,7 +66,7 @@ export function ConsentDialog({
         </p>
         <div className="grid gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
           <span className="font-medium">{t("Qué guarda")} {provider.name}</span>
-          {notice ? <RetentionDetails notice={notice} /> : <Muted>{t("Cargando el aviso…")}</Muted>}
+          {notice ? <RetentionDetails notice={notice} /> : <Placeholder shape="text" rows={4} label={t("Cargando")} />}
         </div>
         <label className="flex items-start gap-2 text-sm">
           <input

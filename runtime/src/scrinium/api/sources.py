@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from scrinium.application.ingestion import clone, sources
+from scrinium.application.ingestion import clone, relocation, sources
 from scrinium.application.ingestion.plan import Plan, SourceError
 from scrinium.application.ingestion.policy import (
     MAX_USER_PATTERNS,
@@ -112,6 +112,12 @@ class SourceResponse(BaseModel):
     head_moved: bool = False
     # False when the folder is gone: moved, renamed, or on a disk that is not mounted.
     root_exists: bool = True
+    # When it is gone: where the same folder seems to be now (a disk mounted under a new name).
+    suggested_root: str | None = None
+
+
+class RelocateRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
 
 
 class SourceListResponse(BaseModel):
@@ -180,7 +186,8 @@ def _source_response(session: DbSession, connection: SourceConnection) -> Source
         active_files=sources.count_active_items(session, connection.id),
         last_successful_sync_at=connection.last_successful_sync_at,
         latest_sync=SyncRunResponse.model_validate(run) if run else None,
-        root_exists=Path(settings.root).is_dir(),
+        root_exists=(exists := Path(settings.root).is_dir()),
+        suggested_root=None if exists else relocation.suggested_root(session, connection),
         **_git_position(session, connection, settings.kind, settings.root),
     )
 
@@ -302,6 +309,21 @@ def build_sources_router(
         return SourceListResponse(
             sources=[_source_response(db, c) for c in sources.list_sources(db, project)]
         )
+
+    @router.post("/api/v1/sources/{source_id}/relocate")
+    def relocate_source(
+        source_id: uuid.UUID, body: RelocateRequest, request: Request
+    ) -> SourceResponse:
+        """Points a source whose folder moved at its new path, keeping rules and history."""
+        with _http_errors(), database.session() as session:
+            try:
+                connection = relocation.relocate(
+                    session, source_id, body.path, config.data_dir, _request_id(request)
+                )
+            except relocation.RelocationError as error:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, error.code) from None
+            session.flush()
+            return _source_response(session, connection)
 
     @router.post("/api/v1/sources/{source_id}/sync", status_code=status.HTTP_202_ACCEPTED)
     def sync_source(source_id: uuid.UUID, request: Request) -> SyncRunResponse:

@@ -82,7 +82,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
   // What was loaded, with the view it is for: a stale level is never shown for a new one.
   const [loaded, setLoaded] = useState<{ key: string; coverage: Coverage } | null>(null)
   const found = loaded?.key === key ? loaded.coverage : null
-  const { error, fail, failure } = useErrors(onSessionLost)
+  const { error, fail, failure, attempt, retry } = useErrors(onSessionLost)
   const [conflicts, setConflicts] = useState<DocConflict[] | null>(null)
   useEffect(() => {
     getDocConflicts(project.id).then(setConflicts).catch(fail)
@@ -92,7 +92,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
     getCoverage(project.id, path, byDomain, domain === "·" ? "" : domain)
       .then((coverage) => setLoaded({ key, coverage }))
       .catch(fail)
-  }, [project.id, path, byDomain, domain, key, fail])
+  }, [project.id, path, byDomain, domain, key, fail, attempt])
 
   const update = (changes: Record<string, string | null>) =>
     setParams((current) => {
@@ -156,7 +156,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
         </Tabs>
       </div>
       {found === null ? (
-        <Loading failure={failure} />
+        <Loading failure={failure} onRetry={retry} />
       ) : found.total.decisions === 0 ? (
         <EmptyState icon={Grid2x2} title={t("Todavía no hay decisiones")}>
           {t("Añade y sincroniza una fuente con código: Scrinium busca sus decisiones al sincronizar.")}

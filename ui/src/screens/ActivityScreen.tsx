@@ -15,7 +15,8 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router"
 import { cn } from "cn"
 import { EmptyState, PageHeader } from "@/components/page"
-import { type ActivityEvent, getActivity } from "@/lib/api"
+import { Placeholder } from "@/components/ui/skeleton"
+import { type ActivityEvent, type Project, getActivity } from "@/lib/api"
 import { language, t } from "@/lib/i18n"
 import { relativeTime } from "@/lib/time"
 import { useErrors } from "@/screens/hooks"
@@ -31,7 +32,7 @@ interface Shown {
 const FAILED = new Set(["failed", "failure", "denied"])
 
 /** One event as a sentence a person reads, with where to look at it. */
-function describe(event: ActivityEvent): Shown {
+export function describe(event: ActivityEvent): Shown {
   const failed = FAILED.has(event.status)
   const running = event.status === "queued" || event.status === "running"
   const state = failed ? t(" (falló)") : running ? t(" (en curso)") : ""
@@ -75,10 +76,10 @@ function day(iso: string): string {
 /** What happened in the project, newest first: analyses, syncs, reviews and ticket links. */
 export function ActivityScreen({ project, onSessionLost }: ScreenProps) {
   const [events, setEvents] = useState<ActivityEvent[] | null>(null)
-  const { error, fail, failure } = useErrors(onSessionLost)
+  const { error, fail, failure, attempt, retry } = useErrors(onSessionLost)
   useEffect(() => {
     getActivity(project.id, 100).then(setEvents).catch(fail)
-  }, [project.id, fail])
+  }, [project.id, fail, attempt])
 
   const days: { day: string; events: ActivityEvent[] }[] = []
   for (const event of events ?? []) {
@@ -96,7 +97,7 @@ export function ActivityScreen({ project, onSessionLost }: ScreenProps) {
       />
       <ErrorText>{events !== null && error}</ErrorText>
       {events === null ? (
-        <Loading failure={failure} />
+        <Loading failure={failure} onRetry={retry} />
       ) : events.length === 0 ? (
         <EmptyState icon={Activity} title={t("Todavía no hay actividad")}>
           {t("Aparecerá aquí en cuanto sincronices una fuente, extraigas reglas o revises alguna.")}
@@ -147,5 +148,62 @@ export function ActivityScreen({ project, onSessionLost }: ScreenProps) {
         ))
       )}
     </>
+  )
+}
+
+/** Home's card: the last three things that happened, each a way to where it happened. */
+export function RecentActivity({ project }: { project: Project }) {
+  const [events, setEvents] = useState<ActivityEvent[] | null>(null)
+  useEffect(() => {
+    getActivity(project.id, 3)
+      .then(setEvents)
+      .catch(() => setEvents([]))
+  }, [project.id])
+  return (
+    <section className="flex min-w-0 flex-col gap-4 rounded-xl bg-card p-4 text-card-foreground shadow-[0_1px_2px_oklch(0_0_0/0.04)] ring-1 ring-border/70">
+      <div className="grid gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-7 place-items-center rounded-md bg-accent text-primary">
+            <Activity className="size-4" aria-hidden="true" />
+          </span>
+          <h3 className="text-sm font-semibold">{t("Última actividad")}</h3>
+        </div>
+        {events === null ? (
+          <Placeholder shape="text" rows={3} label={t("Cargando")} />
+        ) : events.length === 0 ? (
+          <p className="text-xs text-muted-foreground">{t("Todavía no hay actividad")}</p>
+        ) : (
+          <ol className="grid gap-2.5">
+            {events.map((event, index) => {
+              const shown = describe(event)
+              const Icon = shown.icon
+              const body = (
+                <>
+                  <Icon className={cn("mt-0.5 size-3.5 shrink-0", shown.failed ? "text-destructive" : "text-muted-foreground")} aria-hidden="true" />
+                  <span className="grid min-w-0 flex-1 gap-0.5">
+                    <span className="truncate text-xs">{shown.text}</span>
+                    <span className="truncate text-[0.7rem] text-muted-foreground">
+                      {event.at ? relativeTime(event.at) : ""}
+                      {event.subject ? ` · ${event.subject}` : ""}
+                    </span>
+                  </span>
+                </>
+              )
+              return (
+                <li key={`${event.kind}-${event.ref}-${index}`}>
+                  {shown.to ? (
+                    <Link to={shown.to} className="flex items-start gap-2 hover:underline">
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className="flex items-start gap-2">{body}</div>
+                  )}
+                </li>
+              )
+            })}
+          </ol>
+        )}
+      </div>
+    </section>
   )
 }

@@ -18,6 +18,7 @@ const ERRORS: Record<string, string> = {
   partial_clone: t("Es un clon parcial y faltan archivos en este equipo. Scrinium no los descarga: ejecuta git fetch o clona el repositorio entero."),
   git_unavailable: t("No se encontró git en este equipo."),
   git_failed: t("Git no pudo leer el repositorio."),
+  not_same_source: t("Esa carpeta no es el mismo repositorio: no tiene el último commit que Scrinium leyó."),
   sync_in_progress: t("Ya hay una sincronización en marcha."),
   interrupted: t("Se interrumpió al cerrar Scrinium."),
   internal_error: t("Error interno."),

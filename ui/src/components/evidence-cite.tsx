@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n"
+import { Placeholder } from "@/components/ui/skeleton"
 import { Check, ChevronDown, Copy, FileCode2 } from "lucide-react"
 import { type ReactNode, useState } from "react"
 import { cn } from "cn"
@@ -90,7 +91,7 @@ export function EvidenceCite({
       {open && (
         <div className="max-h-64 overflow-auto border-t bg-muted/50 py-2 font-mono text-xs">
           {lines === null ? (
-            <p className="px-3 text-muted-foreground">{t("Cargando…")}</p>
+            <div className="px-3"><Placeholder shape="text" rows={4} label={t("Cargando")} /></div>
           ) : lines === "error" ? (
             <p className="px-3 text-muted-foreground">{t("Este archivo ya no está en las fuentes: puede que se haya borrado.")}</p>
           ) : (

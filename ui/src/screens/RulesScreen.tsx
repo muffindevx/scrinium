@@ -1,4 +1,5 @@
 import { t, tn } from "@/lib/i18n"
+import { Placeholder } from "@/components/ui/skeleton"
 import { ArrowLeft, BookOpen, Check, ChevronRight, Pause, PenLine, Sparkles, X } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { Link, useParams, useSearchParams } from "react-router"
@@ -435,7 +436,7 @@ export function RuleEvidence({ project, entityId, onSessionLost }: ScreenProps &
     getRule(project.id, entityId).then(setRule).catch(fail)
   }, [project.id, entityId, fail])
   if (error) return <ErrorText>{error}</ErrorText>
-  if (!rule) return <Muted>{t("Cargando…")}</Muted>
+  if (!rule) return <Placeholder shape="text" rows={6} label={t("Cargando")} />
   const evidence = rule.versions[0]?.evidence ?? []
   if (evidence.length === 0) return <Muted>{t("Esta regla no tiene citas al código.")}</Muted>
   return (
@@ -819,7 +820,7 @@ function RuleList(props: ScreenProps) {
   const setQuery = (value: string) => setListParam("q", value, "")
   const [grouping, setGrouping] = useState<Grouping>(readGrouping)
   const [panel, setPanel] = useState<"extract" | "manual" | null>(null)
-  const { error, fail, failure } = useErrors(onSessionLost)
+  const { error, fail, failure, retry } = useErrors(onSessionLost)
   const load = useCallback(() => {
     listRules(project.id, { q: query.trim() || undefined })
       .then(setRules)
@@ -893,7 +894,7 @@ function RuleList(props: ScreenProps) {
       </div>
       <ErrorText>{rules !== null && error}</ErrorText>
       {rules === null ? (
-        <Loading failure={failure} />
+        <Loading failure={failure} onRetry={() => { retry(); load() }} />
       ) : shown.length === 0 ? (
         <EmptyState
           icon={BookOpen}
@@ -1279,7 +1280,7 @@ function RuleView({ project, onSessionLost, entityId }: ScreenProps & { entityId
   const pending = isPending(rule)
   const back = useBackTarget()
   if (error) return <ErrorText>{error}</ErrorText>
-  if (rule === null) return <Muted>{t("Cargando…")}</Muted>
+  if (rule === null) return <Placeholder shape="text" rows={6} label={t("Cargando")} />
   // What depends on this rule, and the same decision elsewhere, are under "Si cambia esta regla".
   const relationships = rule.relationships.filter((relation) => !shownAsImpact(relation))
   return (

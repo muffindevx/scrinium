@@ -40,7 +40,7 @@ export function ChangesScreen({ project, onSessionLost }: ScreenProps) {
   const [refs, setRefs] = useState<ChangeRefs | null>(null)
   const [result, setResult] = useState<Changes | null>(null)
   const [busy, setBusy] = useState(false)
-  const { error, setError, fail, failure } = useErrors(onSessionLost)
+  const { error, setError, fail, failure, attempt, retry } = useErrors(onSessionLost)
   const sourceId = params.get("fuente") ?? undefined
   const base = params.get("base") ?? ""
   const head = params.get("cabeza") ?? LOCAL
@@ -59,7 +59,7 @@ export function ChangesScreen({ project, onSessionLost }: ScreenProps) {
         }
       })
       .catch(fail)
-  }, [project.id, sourceId, base, setParams, fail])
+  }, [project.id, sourceId, base, setParams, fail, attempt])
 
   const options = useMemo(() => {
     if (!refs) return []
@@ -109,7 +109,7 @@ export function ChangesScreen({ project, onSessionLost }: ScreenProps) {
       />
       <ErrorText>{refs !== null && error}</ErrorText>
       {refs === null ? (
-        <Loading failure={failure} />
+        <Loading failure={failure} onRetry={retry} />
       ) : (
         <Section title={t("Comparar")}>
           <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto] md:items-end">

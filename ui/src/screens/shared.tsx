@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useState } from "react"
 import { AnalysisStatusBadge, StatusBadge } from "@/components/status"
 import { type Tone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
+import { Placeholder, type SkeletonShape } from "@/components/ui/skeleton"
 import { EvidenceCite } from "@/components/evidence-cite"
 import {
   ApiError,
@@ -14,6 +15,7 @@ import {
   type Project,
   isFinished,
   mergeRules,
+  relocateSource,
   sendFeedback,
 } from "@/lib/api"
 import { ANALYSIS_TYPE_LABELS, METHOD_LABELS, SEVERITY_LABELS, errorMessage } from "@/lib/labels"
@@ -43,11 +45,37 @@ const SOURCE_ERRORS = new Set(["source_path_missing", "git_failed", "no_git_sour
  * for ever. Says what happened, the path when it is a folder that is gone, and offers to try
  * again or to go where it can be fixed.
  */
-export function Loading({ failure, onRetry }: { failure: ApiError | null; onRetry?: () => void }) {
-  if (failure === null) return <Muted>{t("Cargando…")}</Muted>
+export function Loading({
+  failure,
+  onRetry,
+  shape = "list",
+}: {
+  failure: ApiError | null
+  onRetry: () => void
+  shape?: SkeletonShape
+}) {
+  if (failure === null) return <Placeholder shape={shape} label={t("Cargando")} />
+  return <LoadFailure failure={failure} onRetry={onRetry} />
+}
+
+function LoadFailure({ failure, onRetry }: { failure: ApiError; onRetry: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const [moveError, setMoveError] = useState<string | null>(null)
   const missing = failure.code === "source_path_missing"
-  const path = typeof failure.details.path === "string" ? failure.details.path : null
+  const text = (key: string) => (typeof failure.details[key] === "string" ? (failure.details[key] as string) : null)
+  const path = text("path")
+  const suggested = text("suggested_root")
+  const sourceId = text("source_id")
   const Icon = missing ? FolderX : TriangleAlert
+  const useSuggested = () => {
+    if (!sourceId || !suggested) return
+    setBusy(true)
+    setMoveError(null)
+    relocateSource(sourceId, suggested)
+      .then(onRetry)
+      .catch((caught: unknown) => setMoveError(errorMessage(caught instanceof ApiError ? caught.code : null)))
+      .finally(() => setBusy(false))
+  }
   return (
     <div role="alert" className="grid justify-items-start gap-3 rounded-xl bg-card p-5 ring-1 ring-destructive/25">
       <div className="flex items-start gap-3">
@@ -58,15 +86,27 @@ export function Loading({ failure, onRetry }: { failure: ApiError | null; onRetr
           <p className="text-sm font-semibold">{missing ? t("No se encuentra el repositorio") : t("No se pudo cargar")}</p>
           <p className="text-sm text-muted-foreground">{errorMessage(failure.code)}</p>
           {path && <code className="w-fit rounded bg-muted px-1.5 py-0.5 font-mono text-xs break-all">{path}</code>}
-          {missing && (
-            <p className="text-xs text-muted-foreground">
-              {t("Si la carpeta está en otra ruta, vuelve a conectar el disco o añade la fuente con la ruta nueva en Integraciones. Antes de borrar la antigua, Scrinium te dice qué reglas afecta.")}
+          {missing && suggested && (
+            <p className="flex flex-wrap items-center gap-1.5 pt-1 text-sm">
+              {t("Parece que ahora está en")}
+              <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs break-all">{suggested}</code>
             </p>
           )}
+          {missing && !suggested && (
+            <p className="text-xs text-muted-foreground">
+              {t("Si la carpeta está en otra ruta, cámbiala en Integraciones: las reglas, las revisiones y el historial se conservan.")}
+            </p>
+          )}
+          {moveError && <p className="text-xs text-destructive">{moveError}</p>}
         </div>
       </div>
       <div className="flex flex-wrap gap-2 pl-11">
-        <Button size="sm" variant="outline" onClick={onRetry ?? (() => window.location.reload())}>
+        {missing && suggested && sourceId && (
+          <Button size="sm" disabled={busy} onClick={useSuggested}>
+            {t("Usar esta ruta")}
+          </Button>
+        )}
+        <Button size="sm" variant="outline" disabled={busy} onClick={onRetry}>
           <RotateCw data-icon="inline-start" />
           {t("Reintentar")}
         </Button>
@@ -270,7 +310,7 @@ export function AnalysisDetail({
   useEffect(() => {
     if (finished) onFinished?.()
   }, [finished, onFinished])
-  if (analysis === null) return <Muted>{t("Cargando…")}</Muted>
+  if (analysis === null) return <Placeholder shape="text" rows={5} label={t("Cargando")} />
   return (
     <div className="grid gap-4">
       <div className="grid gap-2">

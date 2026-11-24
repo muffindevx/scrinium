@@ -131,6 +131,7 @@ export const ERROR_LABELS: Record<string, string> = {
   reviewer_required: t("Escribe tu nombre en el perfil local antes de revisar."),
   insufficient_evidence: t("No hay evidencia comprobada suficiente para ese estado."),
   git_failed: t("Git no pudo leer el repositorio."),
+  not_same_source: t("Esa carpeta no es el mismo repositorio: no tiene el último commit que Scrinium leyó."),
   source_path_missing: t("La carpeta del repositorio ya no está en esa ruta: se movió, se renombró o el disco no está montado."),
   analysis_in_progress: t("El análisis todavía está en marcha."),
   workspace_not_empty: t("Solo se puede restaurar con el workspace vacío. Borra todos los datos antes."),

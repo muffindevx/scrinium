@@ -20,7 +20,7 @@ export function AnalysisHistory({
   refresh,
 }: ScreenProps & { types: AnalysisType[]; basePath: string; refresh: number }) {
   const [analyses, setAnalyses] = useState<Analysis[] | null>(null)
-  const { error, fail, failure } = useErrors(onSessionLost)
+  const { error, fail, failure, retry } = useErrors(onSessionLost)
   const key = types.join(",")
   const load = useCallback(() => {
     listAnalyses(project.id)
@@ -39,7 +39,7 @@ export function AnalysisHistory({
       </p>
       <ErrorText>{analyses !== null && error}</ErrorText>
       {analyses === null ? (
-        <Loading failure={failure} />
+        <Loading failure={failure} onRetry={() => { retry(); load() }} />
       ) : analyses.length === 0 ? (
         <Muted>{t("Todavía no hay análisis.")}</Muted>
       ) : (

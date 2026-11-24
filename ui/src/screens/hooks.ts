@@ -13,6 +13,13 @@ export const POLL_MS = 1500
 export function useErrors(onSessionLost: (error: unknown) => void) {
   const [error, setMessage] = useState<string | null>(null)
   const [failure, setFailure] = useState<ApiError | null>(null)
+  // Bumped by `retry`: a screen puts it in its first load's dependencies to load again.
+  const [attempt, setAttempt] = useState(0)
+  const retry = useCallback(() => {
+    setMessage(null)
+    setFailure(null)
+    setAttempt((current) => current + 1)
+  }, [])
   const setError = useCallback((message: string | null) => {
     setMessage(message)
     if (message === null) setFailure(null)
@@ -26,7 +33,7 @@ export function useErrors(onSessionLost: (error: unknown) => void) {
     },
     [onSessionLost],
   )
-  return { error, setError, fail, failure }
+  return { error, setError, fail, failure, attempt, retry }
 }
 
 /** Polls an analysis until it finishes. */

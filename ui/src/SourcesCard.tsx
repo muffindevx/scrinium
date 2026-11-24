@@ -23,6 +23,7 @@ import {
   getDeletionImpact,
   listSources,
   previewSource,
+  relocateSource,
   syncSource,
 } from "@/lib/api"
 
@@ -134,6 +135,62 @@ function plural(count: number, one: string, many: string) {
   return `${count} ${count === 1 ? one : many}`
 }
 
+/**
+ * A source whose folder is gone: where it seems to be now (a disk mounted under another name),
+ * or a path to type. Moving it keeps its rules, reviews and history.
+ */
+function Relocate({ source, onDone }: { source: Source; onDone: () => void }) {
+  const [path, setPath] = useState(source.suggested_root ?? "")
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const move = (target: string) => {
+    setBusy(true)
+    setError(null)
+    relocateSource(source.id, target.trim())
+      .then(onDone)
+      .catch((caught: unknown) => setError(sourceErrorText(caught)))
+      .finally(() => setBusy(false))
+  }
+  const submit = (event: FormEvent) => {
+    event.preventDefault()
+    if (path.trim()) move(path)
+  }
+  return (
+    <div role="alert" className="grid gap-2 rounded-md bg-destructive/5 p-2.5 text-xs">
+      <p className="flex items-start gap-1.5 text-destructive">
+        <FolderX className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+        {t("Esta carpeta ya no existe en esa ruta: se movió, se renombró o el disco se montó con otro nombre.")}
+      </p>
+      {source.suggested_root && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-muted-foreground">{t("Parece que ahora está en")}</span>
+          <code className="rounded bg-muted px-1.5 py-0.5 font-mono break-all">{source.suggested_root}</code>
+          <Button size="xs" disabled={busy} onClick={() => move(source.suggested_root ?? "")}>
+            {t("Usar esta ruta")}
+          </Button>
+        </div>
+      )}
+      <form className="flex flex-wrap items-center gap-2" onSubmit={submit}>
+        <Label htmlFor={`relocate-${source.id}`} className="sr-only">
+          {t("Ruta nueva de la carpeta")}
+        </Label>
+        <Input
+          id={`relocate-${source.id}`}
+          className="h-7 min-w-0 flex-1 font-mono text-xs"
+          placeholder={t("Ruta nueva de la carpeta")}
+          value={path}
+          onChange={(event) => setPath(event.target.value)}
+        />
+        <Button type="submit" size="xs" variant="outline" disabled={busy || !path.trim()}>
+          {t("Cambiar la ruta")}
+        </Button>
+      </form>
+      <p className="text-muted-foreground">{t("Las reglas, las revisiones y el historial se conservan: solo cambia dónde se lee.")}</p>
+      {error && <p className="text-destructive">{error}</p>}
+    </div>
+  )
+}
+
 function SourceRow({
   source,
   onChanged,
@@ -171,12 +228,7 @@ function SourceRow({
           {t("Rama {0} · commit indexado {1}", source.branch ?? "—", source.indexed_commit.slice(0, 8))}
         </p>
       )}
-      {missing && (
-        <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
-          <FolderX className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-          {t("Esta carpeta ya no existe: se movió, se renombró o el disco no está montado. Vuelve a conectarlo, o añade la fuente con su ruta nueva y borra esta.")}
-        </p>
-      )}
+      {missing && <Relocate source={source} onDone={onChanged} />}
       {source.head_moved && (
         <p role="status" className="text-xs text-amber-700 dark:text-amber-400">
           {t("El repositorio avanzó desde la última sincronización: sincroniza para ver lo nuevo.")}

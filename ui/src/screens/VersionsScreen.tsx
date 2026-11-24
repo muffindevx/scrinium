@@ -37,7 +37,7 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
   const [base, setBase] = useState("")
   const [target, setTarget] = useState("")
   const [notice, setNotice] = useState<string | null>(null)
-  const { error, setError, fail, failure } = useErrors(onSessionLost)
+  const { error, setError, fail, failure, retry } = useErrors(onSessionLost)
 
   const load = useCallback(() => {
     Promise.all([listSources(project.id), listReleases(project.id)])
@@ -118,7 +118,7 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
             {t("Las versiones se leen de los tags de un repositorio. Añade uno en Fuentes.")}
           </EmptyState>
         ) : releases === null ? (
-          <Loading failure={failure} />
+          <Loading failure={failure} onRetry={() => { retry(); load() }} />
         ) : releases.length === 0 ? (
           <EmptyState icon={Tags} title={t("Todavía no hay versiones")}>
             {t("Pulsa \"Leer tags\" para descubrirlas.")}

@@ -1,4 +1,5 @@
 import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ArrowLeft, ExternalLink, X } from "lucide-react"
 import { type ReactNode, useEffect, useState } from "react"
 import { cn } from "cn"
@@ -232,7 +233,7 @@ export function RuleDrawer({
               </DialogPrimitive.Close>
             </div>
             <DialogPrimitive.Title className="font-heading text-lg leading-snug font-medium">
-              {rule?.name ?? t("Cargando…")}
+              {rule?.name ?? <Skeleton className="h-6 w-2/3" />}
             </DialogPrimitive.Title>
             {rule && (
               <DialogPrimitive.Description render={<div />} className="flex flex-wrap gap-1.5">

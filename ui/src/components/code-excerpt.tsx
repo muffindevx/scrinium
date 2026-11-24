@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n"
+import { Placeholder } from "@/components/ui/skeleton"
 import { type ReactNode, useEffect, useRef, useState } from "react"
 import { cn } from "cn"
 import { getCitedLines } from "@/lib/api"
@@ -75,7 +76,7 @@ export function CodeExcerpt({
     <div ref={ref}>
       {loaded === null ? (
         <CodeFrame className={className}>
-          <p className="px-3 text-muted-foreground">{t("Cargando código…")}</p>
+          <div className="px-3"><Placeholder shape="text" rows={4} label={t("Cargando")} /></div>
         </CodeFrame>
       ) : loaded === "error" ? (
         <CodeFrame className={className}>

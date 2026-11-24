@@ -122,14 +122,14 @@ def test_health_counts_without_listing_rules(api: Api) -> None:
 
     first = health()
     assert first["rules"] == 1 and first["unreviewed"] == 1 and first["inbox"] == 1
-    assert first["new_this_week"] == 1
+    assert first["new_this_week"] == 1 and first["reviewed_this_week"] == 0
     assert first["last_sync_at"] and first["last_review_at"] is None
     _verify(api)
     api.runtime.chat.state = ModelStatus.UNAVAILABLE
     _change(api, COMMISSION.replace("> 100", "> 150"))
     after = health()
     assert after["verified"] == 1 and after["drifted"] == 1 and after["inbox"] == 1
-    assert after["last_review_at"]
+    assert after["last_review_at"] and after["reviewed_this_week"] == 1
 
 
 def test_activity_lists_syncs_and_reviews_without_extraction_rows(api: Api) -> None:

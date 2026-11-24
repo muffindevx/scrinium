@@ -164,3 +164,26 @@ def test_a_moved_folder_names_its_path_instead_of_a_git_error(api: Api) -> None:
         "sources"
     ]
     assert source["root_exists"] is False
+
+
+def test_a_moved_source_takes_its_new_path_and_keeps_its_rules(api: Api) -> None:
+    before = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/rules").json()["rules"]
+    moved = api.repo.with_name("moved")
+    api.repo.rename(moved)
+    [source] = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/sources").json()[
+        "sources"
+    ]
+    relocate = f"/api/v1/sources/{source['id']}/relocate"
+    # Another repository is not the same source.
+    other = moved.with_name("other")
+    other.mkdir()
+    git(other, "init", "-q", "-b", "main")
+    write(other, "x.py", "x = 1\n")
+    commit_all(other, "otro")
+    assert api.post(relocate, {"path": str(other)}, expected=400)["error"] == "not_same_source"
+    done = api.post(relocate, {"path": str(moved)}, expected=200)
+    assert done["root"] == str(moved.resolve()) and done["root_exists"] is True
+    refs = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/changes/refs")
+    assert refs.status_code == 200
+    after = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/rules").json()["rules"]
+    assert [rule["entity_id"] for rule in after] == [rule["entity_id"] for rule in before]

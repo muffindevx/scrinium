@@ -20,7 +20,7 @@ from scrinium.application.analysis.traces import MAX_TRACE_CHARS, triage
 from scrinium.application.check.changes import ChangesResult, Side, compare, release_notes
 from scrinium.application.check.git import LOCAL, GitError, Repository, git
 from scrinium.application.check.history import Commit, rule_history
-from scrinium.application.ingestion import sources
+from scrinium.application.ingestion import relocation, sources
 from scrinium.application.knowledge.anchoring import OldAnchor
 from scrinium.application.knowledge.processes import processes, processes_by_rule
 from scrinium.application.knowledge.rulebook import known_rules
@@ -53,14 +53,19 @@ def _source(session: Any, project_id: uuid.UUID, source_id: uuid.UUID | None) ->
     return found  # type: ignore[no-any-return]
 
 
-def _repository(source: SourceConnection) -> Repository:
+def _repository(source: SourceConnection, database: Database) -> Repository:
     root = source.configuration.get("root")
     # A folder that moved or a disk that is not mounted: say which path, not "Git failed".
     if root and not Path(root).is_dir():
+        with database.session() as session:
+            suggested = relocation.suggested_root(
+                session, session.get_one(SourceConnection, source.id)
+            )
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
-            {"error": "source_path_missing", "path": root, "source_id": str(source.id)},
-        )
+            {"error": "source_path_missing", "path": root, "source_id": str(source.id),
+             "suggested_root": suggested},
+        )  # fmt: skip
     try:
         return Repository.at(Path(source.configuration["root"]))
     except (GitError, KeyError, OSError):
@@ -121,7 +126,7 @@ def build_changes_router(database: Database) -> APIRouter:
                 )
             }
             session.expunge(source)
-        repository = _repository(source)
+        repository = _repository(source, database)
         try:
             listed = git(repository.top, "for-each-ref", "--format=%(refname)",
                          "refs/heads", "refs/tags")  # fmt: skip
@@ -157,7 +162,7 @@ def build_changes_router(database: Database) -> APIRouter:
             # Phase 8.4: the processes each rule is a step of.
             by_rule = processes_by_rule(processes(session, project.id))
             session.expunge(source)
-        repository = _repository(source)
+        repository = _repository(source, database)
         try:
             result = compare(repository, base, head, rules)
         except GitError:
@@ -211,7 +216,7 @@ def build_changes_router(database: Database) -> APIRouter:
                 # (or it was rejected): nothing to bisect, and that is not an error.
                 return {"rule_id": str(entity_id), "title": entity.name, "anchors": [],
                         "reason": "no_decision"}  # fmt: skip
-        repository = _repository(source)
+        repository = _repository(source, database)
 
         def commit(found: Commit | None) -> dict[str, str] | None:
             if found is None:

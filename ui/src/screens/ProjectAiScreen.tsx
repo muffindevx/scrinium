@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n"
+import { Placeholder } from "@/components/ui/skeleton"
 import { Activity, Cpu, Gauge, Info } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router"
@@ -538,7 +539,7 @@ export function ProjectAiScreen({
         error ? (
           <ErrorText>{error}</ErrorText>
         ) : (
-          <Muted>{t("Cargando…")}</Muted>
+          <Placeholder shape="cards" label={t("Cargando")} />
         )
       ) : current === "modelos" ? (
         <ModelsTab project={project} ai={ai} providers={providers} onChanged={changed} onSessionLost={onSessionLost} />

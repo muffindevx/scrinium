@@ -1,4 +1,5 @@
 import { DialogHost } from "@/components/ui/confirm"
+import { Placeholder } from "@/components/ui/skeleton"
 import { adoptLanguage, t } from "@/lib/i18n"
 import {
   Blocks,
@@ -636,7 +637,7 @@ export default function App() {
         </span>
         <span className="font-heading text-xl font-semibold tracking-tight lowercase">{t("Scrinium")}</span>
       </span>
-      {view.kind === "loading" && <p className="text-sm text-muted-foreground">{t("Cargando…")}</p>}
+      {view.kind === "loading" && <Placeholder shape="text" rows={3} label={t("Cargando")} />}
       {view.kind === "signed_out" && (
         <Notice title={t("Sesión cerrada")}>
           {t("Para volver a entrar, reinicia Scrinium con")} <code>scrinium start</code>.

@@ -541,6 +541,13 @@ def health(session: Session, project: Project) -> dict[str, Any]:
             *live, KnowledgeEntity.created_at >= utc_now() - timedelta(days=_NEW_DAYS)
         )
     )
+    # Rules a person reviewed in the same week: the pace to set against the new ones.
+    reviewed_this_week = session.scalar(
+        select(func.count(func.distinct(KnowledgeEntityVersion.knowledge_entity_id))).where(
+            KnowledgeEntityVersion.project_id == project.id,
+            KnowledgeEntityVersion.reviewed_at >= utc_now() - timedelta(days=_NEW_DAYS),
+        )
+    )
 
     def iso(moment: Any) -> str | None:
         return moment.isoformat() if moment is not None else None
@@ -560,6 +567,7 @@ def health(session: Session, project: Project) -> dict[str, Any]:
             )
         },
         "new_this_week": new_this_week or 0,
+        "reviewed_this_week": reviewed_this_week or 0,
         "last_review_at": iso(last_review),
         "oldest_unreviewed_at": iso(oldest_unreviewed),
         "last_sync_at": iso(last_sync),

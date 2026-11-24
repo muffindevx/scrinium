@@ -1,4 +1,4 @@
-import { FileText, KeyRound, MessageSquare, Plus, RefreshCw, Ticket, Trash2 } from "lucide-react"
+import { FileText, KeyRound, Loader2, MessageSquare, Plus, RefreshCw, Ticket, Trash2 } from "lucide-react"
 import { type FormEvent, type ReactNode, useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "react-router"
 import { InfoRow, Section } from "@/components/page"
@@ -205,7 +205,8 @@ function ConnectionRow({
         </span>
         <span className="flex flex-wrap gap-2">
           <Button size="sm" variant="outline" disabled={busy !== null} onClick={teams}>
-            {busy === "teams" ? t("Cargando…") : connection.provider === "jira" ? t("Proyectos") : t("Equipos")}
+            {busy === "teams" && <Loader2 className="animate-spin" data-icon="inline-start" />}
+            {connection.provider === "jira" ? t("Proyectos") : t("Equipos")}
           </Button>
           <Button size="sm" variant="outline" disabled={busy !== null || connection.scope.length === 0} onClick={sync}>
             <RefreshCw data-icon="inline-start" />

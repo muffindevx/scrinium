@@ -2,8 +2,6 @@ import { t } from "@/lib/i18n"
 import {
   Activity,
   ArrowRight,
-  ArrowUpRight,
-  BookOpen,
   Check,
   CheckCircle2,
   Circle,
@@ -26,6 +24,7 @@ import {
   type AiSetup,
   type Analysis,
   type EmbeddingStatus,
+  type Inbox,
   type IndexStatus,
   type Project,
   type RulebookHealth,
@@ -33,6 +32,7 @@ import {
   type Source,
   getAnalysis,
   getHealth,
+  getInbox,
   getIndexStatus,
   listAnalyses,
   listSources,
@@ -41,6 +41,8 @@ import { relativeTime } from "@/lib/time"
 import { useErrors } from "@/screens/hooks"
 import type { Drop } from "@/lib/folder-drop"
 import { ModelSetup } from "@/screens/ModelSetup"
+import { RulesStatus } from "@/screens/RulesStatus"
+import { RecentActivity } from "@/screens/ActivityScreen"
 import { QuickStart } from "@/screens/QuickStart"
 import { ErrorText } from "@/screens/shared"
 
@@ -283,6 +285,14 @@ export function HomeScreen({
   // R2: after a restore (or a first sync) the vectors are rebuilt in the background.
   const [index, setIndex] = useState<IndexStatus | null>(null)
   const [lastDiff, setLastDiff] = useState<LastDiff | null>(null)
+  // The inbox's priority counts and the proposals kept out of it, for "Qué necesita tu atención".
+  const [inboxSummary, setInboxSummary] = useState<Inbox | null>(null)
+  useEffect(() => {
+    if (!project) return
+    getInbox(project.id, 0, 1)
+      .then(setInboxSummary)
+      .catch(() => setInboxSummary(null))
+  }, [project])
   const { error, fail } = useErrors(onSessionLost)
   // The last change analyzed, for the impact card: its files and what nobody judged yet.
   useEffect(() => {
@@ -393,25 +403,7 @@ export function HomeScreen({
               )}
             </p>
           </div>
-          {rules !== null && sources !== null && (
-            <ul className="grid grid-cols-3 divide-x divide-border/80 overflow-hidden rounded-xl bg-card ring-1 ring-border/70 max-sm:grid-cols-1 max-sm:divide-x-0 max-sm:divide-y">
-              {[
-                { value: rules.rules, label: t("reglas de negocio"), to: "/reglas" },
-                { value: rules.drifted, label: t("cambios por revisar"), to: "/cambios" },
-                { value: sources.length, label: t("fuentes conectadas"), to: "/integraciones" },
-              ].map((stat) => (
-                <li key={stat.label}>
-                  <Link to={stat.to} className="group grid gap-2 px-5 py-4 transition-colors hover:bg-muted/50">
-                    <span className="font-figure text-4xl leading-none tracking-tight tabular-nums">{stat.value}</span>
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground group-hover:text-foreground">
-                      {stat.label}
-                      <ArrowRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
-                    </span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+          <RulesStatus rules={rules} inbox={inboxSummary} />
         </header>
         <ErrorText>{error}</ErrorText>
       {rebuilding && (
@@ -482,59 +474,7 @@ export function HomeScreen({
           action={<MoreLink to="/actividad">{t("Ver actividad")}</MoreLink>}
         />
         <div className="grid gap-3 md:grid-cols-3">
-          <Panel className="justify-between">
-            <div className="grid gap-4">
-              <div className="flex items-center justify-between gap-2">
-                <IconTile icon={BookOpen} tone="plum" />
-                {rules !== null && (rules.new_this_week ?? 0) > 0 && (
-                  <Link
-                    to="/bandeja"
-                    title={t("Propuestas en los últimos 7 días")}
-                    className="inline-flex items-center gap-1 text-[0.7rem] font-medium text-primary hover:underline"
-                  >
-                    <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                    {rules.new_this_week === 1 ? t("1 nueva") : t("{0} nuevas", rules.new_this_week)}
-                  </Link>
-                )}
-              </div>
-              {rules === null ? (
-                <p className="text-sm text-muted-foreground">{t("Cargando…")}</p>
-              ) : (
-                <div className="grid gap-2">
-                  <p className="text-xs text-muted-foreground">{t("Reglas de negocio")}</p>
-                  <p className="font-figure text-4xl leading-none tracking-tight">{rules.rules}</p>
-                  <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.7rem] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1.5">
-                      <Dot className="bg-primary" />
-                      {rules.verified} {t("verificadas")}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span className="inline-flex items-center gap-1.5">
-                      <Dot className="bg-amber-500" />
-                      {rules.unreviewed} {t("por revisar")}
-                    </span>
-                    {rules.drifted > 0 && (
-                      <>
-                        <span aria-hidden="true">·</span>
-                        <span className="inline-flex items-center gap-1.5">
-                          <Dot className="bg-destructive" />
-                          {rules.drifted} {t("cambiaron")}
-                        </span>
-                      </>
-                    )}
-                  </p>
-                  <p className="text-[0.7rem] text-muted-foreground">
-                    {rules.oldest_unreviewed_at
-                      ? t("La propuesta más antigua sin revisar es de {0}.", relativeTime(rules.oldest_unreviewed_at))
-                      : rules.last_review_at
-                        ? t("Última revisión {0}", relativeTime(rules.last_review_at))
-                        : t("Nada revisado aún")}
-                  </p>
-                </div>
-              )}
-            </div>
-            <MoreLink to="/reglas">{t("Revisar reglas")}</MoreLink>
-          </Panel>
+          <RecentActivity project={project} />
           <Panel className="justify-between">
             <div className="grid gap-4">
               <div className="flex items-center justify-between gap-2">

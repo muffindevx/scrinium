@@ -1,4 +1,5 @@
 import { t } from "@/lib/i18n"
+import { Placeholder } from "@/components/ui/skeleton"
 import {
   ArrowLeft,
   Check,
@@ -139,7 +140,7 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
   const [cursor, setCursor] = useState(0)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [done, setDone] = useState<Done | null>(null)
-  const { error, setError, fail, failure } = useErrors(onSessionLost)
+  const { error, setError, fail, failure, retry } = useErrors(onSessionLost)
 
   const load = useCallback(() => {
     getInbox(project.id, 0, PAGE)
@@ -335,7 +336,7 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
       />
       <ErrorText>{box !== null && error}</ErrorText>
       {box === null ? (
-        <Loading failure={failure} />
+        <Loading failure={failure} onRetry={() => { retry(); load() }} />
       ) : items.length === 0 ? (
         <EmptyState icon={InboxIcon} title={t("Nada por revisar")}>
           {t("Todas las reglas están revisadas y ninguna tiene cambios pendientes.")}
@@ -744,7 +745,7 @@ function Related({
       <RuleTickets projectId={project.id} entityId={item.entity_id} onSessionLost={onSessionLost} />
       <Section title={t("Dónde se aplica")} description={t("Los procesos que pasan por esta regla.")}>
         {processes === null ? (
-          <Muted>{t("Cargando…")}</Muted>
+          <Placeholder shape="text" rows={6} label={t("Cargando")} />
         ) : inProcesses.length === 0 ? (
           <Muted>{t("Ningún proceso detectado pasa por ella.")}</Muted>
         ) : (
@@ -761,7 +762,7 @@ function Related({
         title={t("Si cambias esta regla")}
         description={t("Lo que el código dice que depende de ella, sin IA. Pulsa una para verla aquí al lado, sin salir de la bandeja.")}
       >
-        {rule === null ? <Muted>{t("Cargando…")}</Muted> : <ImpactList impact={rule.impact} onOpen={setOpened} />}
+        {rule === null ? <Placeholder shape="list" rows={3} label={t("Cargando")} /> : <ImpactList impact={rule.impact} onOpen={setOpened} />}
       </Section>
       {related.length > 0 && (
         <Section title={t("Otras relaciones")} description={t("Lo que el código dice de cómo se relaciona con otras reglas.")}>

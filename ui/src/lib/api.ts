@@ -152,6 +152,8 @@ export interface Source {
   head_moved?: boolean
   /** False when the folder is gone: moved, renamed, or on a disk that is not mounted. */
   root_exists?: boolean
+  /** When the folder is gone: where the same folder seems to be now. */
+  suggested_root?: string | null
 }
 
 export class SessionRequiredError extends Error {}
@@ -259,6 +261,9 @@ export const createSource = async (projectId: string, source: SourceRequest) =>
     source: Source
     sync_run: SyncRun
   }>
+/** Points a source whose folder moved at its new path; rules, reviews and history stay. */
+export const relocateSource = async (sourceId: string, path: string) =>
+  (await mutate(`/api/v1/sources/${sourceId}/relocate`, { path })).json() as Promise<Source>
 export const syncSource = async (sourceId: string) =>
   (await mutate(`/api/v1/sources/${sourceId}/sync`)).json() as Promise<SyncRun>
 export const deleteSource = async (sourceId: string, deleteCiting = false, deleteReviewed = false) => {
@@ -667,6 +672,8 @@ export type RulebookHealth = {
   inbox: number
   // Rules first proposed in the last seven days, still live.
   new_this_week?: number
+  // Rules a person reviewed in the last seven days.
+  reviewed_this_week?: number
   last_review_at: string | null
   oldest_unreviewed_at: string | null
   last_sync_at: string | null

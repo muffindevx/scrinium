@@ -43,10 +43,10 @@ export function ProcessesScreen({ project, onSessionLost }: ScreenProps) {
   const [found, setFound] = useState<Process[] | null>(null)
   const [query, setQuery] = useState("")
   const [open, setOpen] = useState<string | null>(null)
-  const { error, fail, failure } = useErrors(onSessionLost)
+  const { error, fail, failure, attempt, retry } = useErrors(onSessionLost)
   useEffect(() => {
     getProcesses(project.id).then(setFound).catch(fail)
-  }, [project.id, fail])
+  }, [project.id, fail, attempt])
   const shown = useMemo(() => {
     const text = query.trim().toLowerCase()
     if (!found || !text) return found ?? []
@@ -66,7 +66,7 @@ export function ProcessesScreen({ project, onSessionLost }: ScreenProps) {
       <Explainer />
       <ErrorText>{found !== null && error}</ErrorText>
       {found === null ? (
-        <Loading failure={failure} />
+        <Loading failure={failure} onRetry={retry} />
       ) : found.length === 0 ? (
         <EmptyState icon={Workflow} title={t("Todavía no hay procesos")}>
           {t("Un proceso aparece cuando algo que dispara el sistema (una ruta HTTP, una acción, una tarea programada) llama a código con reglas. Extrae reglas primero; si tu proyecto usa otra forma de declarar sus entradas, aquí no se verá todavía.")}
