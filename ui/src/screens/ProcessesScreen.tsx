@@ -1,4 +1,4 @@
-import { ArrowRight, Bug, ChevronDown, Clock, Globe, ListOrdered, MousePointerClick, Search, Workflow, Zap } from "lucide-react"
+import { ArrowRight, Bug, ChevronDown, ChevronRight, Clock, Globe, ListOrdered, MousePointerClick, Search, Workflow, Zap } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { cn } from "cn"
 import { EmptyState, PageHeader, Section } from "@/components/page"
@@ -107,7 +107,19 @@ export function ProcessesScreen({ project, onSessionLost }: ScreenProps) {
   )
 }
 
-/** What a process is, drawn as the three things the screen shows, and what it is for. */
+const EXPLAINER_KEY = "scrinium.processesExplainer"
+
+function explainerOpen(): boolean {
+  try {
+    // Open the first time, so the screen explains itself once; then as the person left it.
+    return window.localStorage.getItem(EXPLAINER_KEY) !== "closed"
+  } catch {
+    return true
+  }
+}
+
+/** What a process is, drawn as the three things the screen shows, and what it is for. Folds
+ * away once read, so the list, the reason to come back, sits at the top. */
 function Explainer() {
   const steps = [
     {
@@ -130,7 +142,22 @@ function Explainer() {
     },
   ]
   return (
-    <section className="grid gap-4 rounded-xl border bg-card p-4" aria-label={t("Qué es un proceso")}>
+    <details
+      open={explainerOpen()}
+      onToggle={(event) => {
+        try {
+          window.localStorage.setItem(EXPLAINER_KEY, event.currentTarget.open ? "open" : "closed")
+        } catch {
+          // Without storage it opens again next time.
+        }
+      }}
+      className="group rounded-xl border bg-card"
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-medium">
+        <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" />
+        {t("Qué es un proceso y para qué sirve")}
+      </summary>
+    <section className="grid gap-4 border-t p-4" aria-label={t("Qué es un proceso")}>
       <ol className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto_1fr] md:items-stretch">
         {steps.map(({ number, icon: Icon, title, text }, index) => (
           <li key={number} className="contents">
@@ -168,6 +195,7 @@ function Explainer() {
       </div>
       <p className="text-xs text-muted-foreground">{t("Todo sale del código, sin IA.")}</p>
     </section>
+    </details>
   )
 }
 

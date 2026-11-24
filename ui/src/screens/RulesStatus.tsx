@@ -50,7 +50,7 @@ function Progress({ rules }: { rules: RulebookHealth }) {
   const width = (part: number) => `${rules.rules ? (part / rules.rules) * 100 : 0}%`
   const parts = [
     { value: rules.verified, label: t("verificadas"), swatch: "bg-primary", to: "/reglas?filtro=verified" },
-    { value: rules.rejected, label: t("rechazadas"), swatch: "bg-muted-foreground/60", to: "/reglas?filtro=rejected" },
+    { value: rules.rejected, label: t("descartadas"), swatch: "bg-muted-foreground/60", to: "/reglas?filtro=rejected" },
     { value: rules.unreviewed, label: t("sin revisar"), swatch: "bg-foreground/10", to: "/reglas?filtro=unverified" },
   ]
   return (
@@ -63,7 +63,7 @@ function Progress({ rules }: { rules: RulebookHealth }) {
       </p>
       <div
         role="img"
-        aria-label={t("{0} verificadas, {1} rechazadas y {2} sin revisar", rules.verified, rules.rejected, rules.unreviewed)}
+        aria-label={t("{0} verificadas, {1} descartadas y {2} sin revisar", rules.verified, rules.rejected, rules.unreviewed)}
         className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-foreground/10"
       >
         {rules.verified > 0 && <div className="h-full min-w-1 bg-primary" style={{ width: width(rules.verified) }} />}
@@ -132,7 +132,7 @@ function Attention({ rules, inbox }: { rules: RulebookHealth; inbox: Inbox | nul
           ? t("1 propuesta cita un dato que el código no tiene")
           : t("{0} propuestas citan un dato que el código no tiene", unanchored),
       hint: t("Fuera de la bandeja hasta corregirlas"),
-      to: "/reglas?filtro=unverified",
+      to: "/bandeja#fuera-de-la-bandeja",
     })
   if (rules.oldest_unreviewed_at)
     needs.push({

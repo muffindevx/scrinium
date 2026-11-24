@@ -874,7 +874,7 @@ function RuleList(props: ScreenProps) {
         <Tabs value={filter} onValueChange={(value) => setFilter(value as Filter)}>
           <TabsList className="flex-wrap">
             <TabsTrigger value="all">{t("Todas (")}{count("all")})</TabsTrigger>
-            <TabsTrigger value="review">{t("Por revisar (")}{count("review")})</TabsTrigger>
+            <TabsTrigger value="review">{t("Necesitan atención (")}{count("review")})</TabsTrigger>
             <TabsTrigger value="unverified">{t("Sin verificar (")}{count("unverified")})</TabsTrigger>
             <TabsTrigger value="verified">{t("Verificadas (")}{count("verified")})</TabsTrigger>
             <TabsTrigger value="rejected">{t("Descartadas (")}{count("rejected")})</TabsTrigger>

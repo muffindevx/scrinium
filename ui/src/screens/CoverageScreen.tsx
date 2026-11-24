@@ -1,3 +1,4 @@
+import { cn } from "cn"
 import { Boxes, ChevronRight, FileCode2, FileText, Folder, FolderTree, Grid2x2 } from "lucide-react"
 import { useEffect, useState } from "react"
 import { Link, useSearchParams } from "react-router"
@@ -13,13 +14,18 @@ type Counts = Pick<CoverageNode, "decisions" | "verified" | "unverified" | "unco
 
 // The three layers in one bar, like a disk's used and free space.
 const LAYERS = [
-  { key: "verified", label: t("Con regla verificada"), color: "rgb(16 185 129)" },
-  { key: "unverified", label: t("Solo propuestas"), color: "rgb(14 165 233)" },
-  { key: "uncovered", label: t("Sin regla"), color: "rgb(245 158 11)" },
+  // One hue, more is darker: a verified rule is the plum, a proposal a light step of it, and a
+  // decision without a rule is the empty track. "Sin regla" is a gap to fill, not a warning.
+  { key: "verified", label: t("Con regla verificada"), color: "var(--primary)" },
+  { key: "unverified", label: t("Solo propuestas"), color: "color-mix(in oklch, var(--primary) 38%, transparent)" },
+  { key: "uncovered", label: t("Sin regla"), color: null },
 ] as const
 
 function percent(part: number, whole: number) {
-  return whole > 0 ? `${Math.round((part / whole) * 100)} %` : "0 %"
+  if (whole <= 0 || part <= 0) return "0 %"
+  const exact = (part / whole) * 100
+  // A share above zero never reads as 0 %, and one below the whole never as 100 %.
+  return exact < 1 ? "<1 %" : part < whole && exact > 99 ? "99 %" : `${Math.round(exact)} %`
 }
 
 /** One stacked bar: verified, unverified and uncovered decisions, in proportion. */
@@ -39,7 +45,7 @@ function LayerBar({ counts, size = "sm" }: { counts: Counts; size?: "sm" | "lg" 
       className={`flex w-full overflow-hidden rounded-full bg-muted ${size === "lg" ? "h-3" : "h-2"}`}
     >
       {LAYERS.map(({ key, color }) =>
-        counts[key] > 0 ? (
+        color && counts[key] > 0 ? (
           <span
             key={key}
             // A layer with any decision stays visible, however small its share.
@@ -56,7 +62,11 @@ function Legend({ counts }: { counts: Counts }) {
     <ul className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
       {LAYERS.map(({ key, label, color }) => (
         <li key={key} className="flex items-center gap-1.5">
-          <span aria-hidden="true" className="size-2.5 rounded-full" style={{ backgroundColor: color }} />
+          <span
+            aria-hidden="true"
+            className={cn("size-2.5 rounded-[3px]", !color && "bg-muted ring-1 ring-border")}
+            style={color ? { backgroundColor: color } : undefined}
+          />
           {label}
           <span className="font-medium text-foreground tabular-nums">{counts[key]}</span>
           <span className="tabular-nums">({percent(counts[key], counts.decisions)})</span>
@@ -165,10 +175,14 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
         <>
           <Section>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <p className="text-sm">
-                <span className="font-heading text-2xl font-medium tabular-nums">{percent(found.total.verified + found.total.unverified, found.total.decisions)}</span>{" "}
+              {/* Lead with what can be trusted: verified rules. Proposals are a step, not coverage. */}
+              <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <span className="text-2xl font-semibold tracking-tight">{percent(found.total.verified, found.total.decisions)}</span>
                 <span className="text-muted-foreground">
-                  {t("de {0} decisiones en {1} archivos tienen una regla", found.total.decisions, found.total.files)}
+                  {t("de {0} decisiones en {1} archivos tienen una regla verificada", found.total.decisions, found.total.files)}
+                </span>
+                <span className="text-muted-foreground">
+                  {t("· {0} más con una propuesta sin revisar", percent(found.total.unverified, found.total.decisions))}
                 </span>
               </p>
               {(found.total.bugs ?? 0) > 0 && (
@@ -216,7 +230,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
                         </span>
                         <span className="flex gap-3 text-xs text-muted-foreground tabular-nums sm:justify-end">
                           <span>{t("{0} decisiones", child.decisions)}</span>
-                          <span className="font-medium text-foreground">{percent(child.verified + child.unverified, child.decisions)}</span>
+                          <span className="font-medium text-foreground" title={t("Con regla verificada")}>{percent(child.verified, child.decisions)}</span>
                           {(child.bugs ?? 0) > 0 && <span>{child.bugs === 1 ? t("1 bug") : t("{0} bugs", child.bugs ?? 0)}</span>}
                         </span>
                       </button>

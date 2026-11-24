@@ -42,7 +42,7 @@ import {
   type Workspace,
   getAiSetup,
   getDataFlow,
-  getHealth,
+  getInbox,
   getLanguage,
   getProfile,
   getProjectAi,
@@ -401,15 +401,17 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
     setSetup(chosen)
     loadAi()
   }
-  // The inbox count beside "Revisar": read again on every screen change, so a review shows.
+  // The count beside "Revisar" is what the inbox lists (proposals whose code lacks their
+  // values stay out of it). Read again on entering and leaving the inbox, where reviews happen.
   const location = useLocation()
+  const inInbox = location.pathname.startsWith("/bandeja")
   const [inbox, setInbox] = useState<{ projectId: string; count: number } | null>(null)
   useEffect(() => {
     if (!projectKey) return
-    getHealth(projectKey)
-      .then((health) => setInbox({ projectId: projectKey, count: health.inbox }))
+    getInbox(projectKey, 0, 1)
+      .then((listed) => setInbox({ projectId: projectKey, count: listed.total }))
       .catch(() => setInbox(null))
-  }, [projectKey, location.pathname])
+  }, [projectKey, inInbox])
   const [drop, clearDrop] = useFolderDrop()
   const navigate = useNavigate()
   // A folder dropped anywhere opens the Home screen with its path ready to read, once per drop:

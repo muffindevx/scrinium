@@ -1422,4 +1422,13 @@ export const EN: Record<string, string> = {
   "Todo al día: no hay nada esperando revisión.": "All caught up: nothing is waiting for review.",
   "Última actividad": "Latest activity",
   "Esta semana: {0} revisadas · {1} propuestas nuevas": "This week: {0} reviewed · {1} new proposals",
+  ": su enunciado dice números o nombres que su código no tiene.": ": their statement names numbers or names their code does not have.",
+  "No está en el código: {0}": "Not in the code: {0}",
+  "Se muestran {0}; el resto está en Reglas, sin verificar.": "Showing {0}; the rest are in Rules, unverified.",
+  "descartadas": "dismissed",
+  "{0} verificadas, {1} descartadas y {2} sin revisar": "{0} verified, {1} dismissed and {2} not reviewed",
+  "Necesitan atención (": "Need attention (",
+  "de {0} decisiones en {1} archivos tienen una regla verificada": "of {0} decisions in {1} files have a verified rule",
+  "· {0} más con una propuesta sin revisar": "· {0} more with an unreviewed proposal",
+  "Qué es un proceso y para qué sirve": "What a process is and what it is for",
 }

@@ -15,7 +15,7 @@ import {
   X,
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useNavigate, useParams, useSearchParams } from "react-router"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import { cn } from "cn"
 import { CodeExcerpt } from "@/components/code-excerpt"
 import { EmptyState, PageHeader, Section } from "@/components/page"
@@ -152,6 +152,12 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
       .catch(fail)
   }, [project.id, fail])
   useEffect(load, [load])
+  // Home links to the proposals kept out of the inbox: bring them into view once listed.
+  const hasKeptOut = (box?.unanchored_total ?? 0) > 0
+  useEffect(() => {
+    if (hasKeptOut && window.location.hash === "#fuera-de-la-bandeja")
+      document.getElementById("fuera-de-la-bandeja")?.scrollIntoView({ block: "start" })
+  }, [hasKeptOut])
 
   const more = () => {
     getInbox(project.id, items.length, PAGE)
@@ -389,12 +395,36 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
         </Section>
       )}
       {box && box.unanchored_total > 0 && (
-        <Muted>
-          {box.unanchored_total === 1
-            ? t("1 propuesta del modelo no entra en la bandeja")
-            : t("{0} propuestas del modelo no entran en la bandeja", box.unanchored_total)}
-          {t(": su enunciado dice números o nombres que su código no tiene. Se pueden ver en Reglas.")}
-        </Muted>
+        // Kept out because their statement names values their code does not have: listed, so a
+        // person can open each one and correct or reject it.
+        <details id="fuera-de-la-bandeja" open={window.location.hash === "#fuera-de-la-bandeja"} className="group rounded-xl bg-card ring-1 ring-border/70">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm">
+            <ChevronRight className="size-4 text-muted-foreground transition-transform group-open:rotate-90" aria-hidden="true" />
+            <span className="flex-1">
+              {box.unanchored_total === 1
+                ? t("1 propuesta del modelo no entra en la bandeja")
+                : t("{0} propuestas del modelo no entran en la bandeja", box.unanchored_total)}
+              <span className="text-muted-foreground">{t(": su enunciado dice números o nombres que su código no tiene.")}</span>
+            </span>
+          </summary>
+          <ul className="grid border-t">
+            {box.unanchored.map((item) => (
+              <li key={item.entity_id} className="border-b last:border-b-0">
+                <Link to={`/reglas/${item.entity_id}`} className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/50">
+                  <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {t("No está en el código: {0}", item.missing.slice(0, 3).join(", "))}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {box.unanchored_total > box.unanchored.length && (
+            <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+              {t("Se muestran {0}; el resto está en Reglas, sin verificar.", box.unanchored.length)}
+            </p>
+          )}
+        </details>
       )}
 
     </>
