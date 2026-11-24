@@ -216,3 +216,28 @@ def test_constraints_in_a_row_are_separate_decisions() -> None:
         'ALTER TABLE "grc"."documents" ADD CONSTRAINT "ck_hash" CHECK (hash is null);\n'
     )
     assert decision_groups(migration) == [(0, 0), (1, 1), (2, 2)]
+
+
+def test_plumbing_by_its_name_is_not_worth_a_model_call() -> None:
+    """B5: formatting, language, time zone, ids, subscriptions, comparing two values."""
+    from scrinium.application.analysis.candidates import is_utility
+
+    for path, symbol in (
+        ("apps/web/src/lib/viewer-time.ts", "resolveTimeZone"),
+        ("apps/web/src/lib/i18n.ts", "intlLocale"),
+        ("apps/worker/src/projector.ts", "sameTime"),
+        ("apps/api/src/realtime.ts", "createNoopRunEvents"),
+        ("apps/api/src/realtime.ts", "RunEventBus.subscribe"),
+        ("sdk/python/src/supervisor_sdk/uuid7.py", "uuid7"),
+        ("sdk/python/src/supervisor_sdk/hooks/state.py", "_FileLock.__exit__"),
+        ("sale/static/src/js/dashboard/dashboard.js", "Dashboard.formatCurrency"),
+    ):
+        assert is_utility(path, symbol), symbol
+    # Business words that look like plumbing stay: locking an order, a duplicate receipt.
+    for path, symbol in (
+        ("sale/models/sale_order.py", "SaleOrder.action_lock"),
+        ("hr_expense/models/hr_expense.py", "HrExpense._compute_same_receipt_expense_ids"),
+        ("apps/api/src/keys.ts", "projectBelongsToOrg"),
+        ("app/models/order.py", "Order.__init__"),
+    ):
+        assert not is_utility(path, symbol), symbol

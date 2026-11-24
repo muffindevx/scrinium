@@ -37,7 +37,7 @@ from scrinium.infrastructure.sqlite.models import (
     SourceRevision,
 )
 
-CANDIDATES_VERSION: Final = "4"
+CANDIDATES_VERSION: Final = "5"
 DEFAULT_MIN_SCORE: Final = 2
 # A longer function is split: the small model loses track with huge texts.
 MAX_CANDIDATE_CHARS: Final = 6000
@@ -443,12 +443,48 @@ def decision_windows(candidate: "Candidate") -> list["Candidate"]:
     return windows or [candidate]
 
 
+# B5: a function or file whose name says it is plumbing: formatting, language and time zone,
+# ids, subscriptions, a no-op. It may hold a condition with a constant (`count === 1 ?
+# "herramienta" : "herramientas"`), never a business rule. Not "lock" nor "same": in Odoo
+# `action_lock` locks an order and `same_receipt` finds a duplicate expense.
+_UTILITY_PARTS: Final = frozenset(
+    {
+        "format", "formatter", "intl", "locale", "locales", "i18n", "l10n", "plural",
+        "pluralize", "timezone", "zone", "uuid", "uuid7", "noop", "subscribe", "unsubscribe",
+        "listener", "listeners", "serialize", "deserialize", "repr",
+    }
+)  # fmt: skip
+# Comparing two values (sameTime, isSameFilter, equals) and special methods but a constructor.
+_UTILITY_NAME: Final = re.compile(
+    r"^(?:is_?)?(?:same|equals?|compare)(?:[A-Z_]|$)|^__(?!init__|call__)\w+__$", _I
+)
+_UTILITY_PENALTY: Final = 2
+
+
+def _name_parts(name: str) -> set[str]:
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", name)
+    return {part.lower() for part in re.split(r"[^A-Za-z0-9]+|_", spaced) if part}
+
+
+def is_utility(path: str, symbol: str | None = None) -> bool:
+    """Plumbing by the function's name (any part of `Class.method`) or the file's."""
+    stem = path.rsplit("/", 1)[-1].split(".", 1)[0]
+    name = (symbol or "").rsplit(".", 1)[-1]
+    return _UTILITY_NAME.search(name) is not None or not _UTILITY_PARTS.isdisjoint(
+        _name_parts(symbol or "") | _name_parts(stem)
+    )
+
+
 def _visual_penalty(candidate: "Candidate") -> None:
     if is_visual(candidate.path, candidate.symbol):
         # An explicit error or rejection weighs more than the path: subtract less.
         penalty = 1 if "error o rechazo" in candidate.reasons else _VISUAL_PENALTY
         candidate.score = max(candidate.score - penalty, 0)
         candidate.reasons.append("interfaz o dibujo")
+    if is_utility(candidate.path, candidate.symbol):
+        penalty = 1 if "error o rechazo" in candidate.reasons else _UTILITY_PENALTY
+        candidate.score = max(candidate.score - penalty, 0)
+        candidate.reasons.append("utilidad")
 
 
 def _split(candidate: Candidate) -> list[Candidate]:
