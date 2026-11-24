@@ -150,6 +150,8 @@ export interface Source {
   indexed_commit?: string | null
   head_commit?: string | null
   head_moved?: boolean
+  /** False when the folder is gone: moved, renamed, or on a disk that is not mounted. */
+  root_exists?: boolean
 }
 
 export class SessionRequiredError extends Error {}
@@ -159,12 +161,15 @@ export class ApiError extends Error {
   readonly status: number
   readonly code: string | null
   readonly fields: string[]
+  /** What the server adds to help fix it, e.g. the `path` of a folder that is gone. */
+  readonly details: Record<string, unknown>
 
-  constructor(status: number, code: string | null, fields: string[] = []) {
+  constructor(status: number, code: string | null, fields: string[] = [], details: Record<string, unknown> = {}) {
     super(t("Respuesta inesperada: {0}", status))
     this.status = status
     this.code = code
     this.fields = fields
+    this.details = details
   }
 }
 
@@ -173,9 +178,10 @@ async function apiError(response: Response): Promise<ApiError> {
     const body = (await response.json()) as {
       error?: string
       fields?: { loc: (string | number)[] }[]
-    }
-    const fields = (body.fields ?? []).map((field) => String(field.loc.at(-1)))
-    return new ApiError(response.status, body.error ?? null, fields)
+    } & Record<string, unknown>
+    const { error, fields: rejected, ...details } = body
+    const fields = (rejected ?? []).map((field) => String(field.loc.at(-1)))
+    return new ApiError(response.status, error ?? null, fields, details)
   } catch {
     return new ApiError(response.status, null)
   }

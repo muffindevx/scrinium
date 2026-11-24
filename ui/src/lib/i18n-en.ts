@@ -1381,4 +1381,12 @@ export const EN: Record<string, string> = {
   "Los proveedores y servidores locales se registran una vez para todo el equipo; cada proyecto decide cuáles puede usar.": "Providers and local servers are registered once for the whole machine; each project decides which ones it may use.",
   "Proveedores y modelos": "Providers and models",
   "Permisos de este proyecto": "This project's permissions",
+  "Cerrar menú": "Close menu",
+  "Carpeta no encontrada": "Folder not found",
+  "Esta carpeta ya no existe: se movió, se renombró o el disco no está montado. Vuelve a conectarlo, o añade la fuente con su ruta nueva y borra esta.": "This folder no longer exists: it was moved, renamed, or its disk is not mounted. Connect it again, or add the source with its new path and delete this one.",
+  "No se encuentra el repositorio": "Repository not found",
+  "No se pudo cargar": "Could not load",
+  "Si la carpeta está en otra ruta, vuelve a conectar el disco o añade la fuente con la ruta nueva en Integraciones. Antes de borrar la antigua, Scrinium te dice qué reglas afecta.": "If the folder is at another path, connect the disk again or add the source with the new path in Integrations. Before you delete the old one, Scrinium tells you which rules it affects.",
+  "Ir a Integraciones": "Go to Integrations",
+  "La carpeta del repositorio ya no está en esa ruta: se movió, se renombró o el disco no está montado.": "The repository folder is no longer at that path: it was moved, renamed, or its disk is not mounted.",
 }

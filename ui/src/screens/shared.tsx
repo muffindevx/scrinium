@@ -1,11 +1,13 @@
 import { t } from "@/lib/i18n"
-import { TriangleAlert } from "lucide-react"
+import { FolderX, RotateCw, TriangleAlert } from "lucide-react"
+import { Link } from "react-router"
 import { type ReactNode, useEffect, useState } from "react"
 import { AnalysisStatusBadge, StatusBadge } from "@/components/status"
 import { type Tone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
 import { EvidenceCite } from "@/components/evidence-cite"
 import {
+  ApiError,
   type AssessmentStatus,
   type Evidence,
   type Finding,
@@ -30,6 +32,51 @@ export function ErrorText({ children }: { children: ReactNode }) {
       <TriangleAlert className="size-3.5" />
       {children}
     </p>
+  )
+}
+
+// Errors whose fix is in Integraciones: the source's folder or its Git repository.
+const SOURCE_ERRORS = new Set(["source_path_missing", "git_failed", "no_git_source"])
+
+/**
+ * What a screen shows while its first load is on its way, or why it failed: never "Cargando…"
+ * for ever. Says what happened, the path when it is a folder that is gone, and offers to try
+ * again or to go where it can be fixed.
+ */
+export function Loading({ failure, onRetry }: { failure: ApiError | null; onRetry?: () => void }) {
+  if (failure === null) return <Muted>{t("Cargando…")}</Muted>
+  const missing = failure.code === "source_path_missing"
+  const path = typeof failure.details.path === "string" ? failure.details.path : null
+  const Icon = missing ? FolderX : TriangleAlert
+  return (
+    <div role="alert" className="grid justify-items-start gap-3 rounded-xl bg-card p-5 ring-1 ring-destructive/25">
+      <div className="flex items-start gap-3">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-destructive/10 text-destructive">
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        <div className="grid gap-1">
+          <p className="text-sm font-semibold">{missing ? t("No se encuentra el repositorio") : t("No se pudo cargar")}</p>
+          <p className="text-sm text-muted-foreground">{errorMessage(failure.code)}</p>
+          {path && <code className="w-fit rounded bg-muted px-1.5 py-0.5 font-mono text-xs break-all">{path}</code>}
+          {missing && (
+            <p className="text-xs text-muted-foreground">
+              {t("Si la carpeta está en otra ruta, vuelve a conectar el disco o añade la fuente con la ruta nueva en Integraciones. Antes de borrar la antigua, Scrinium te dice qué reglas afecta.")}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2 pl-11">
+        <Button size="sm" variant="outline" onClick={onRetry ?? (() => window.location.reload())}>
+          <RotateCw data-icon="inline-start" />
+          {t("Reintentar")}
+        </Button>
+        {SOURCE_ERRORS.has(failure.code ?? "") && (
+          <Button size="sm" variant="outline" render={<Link to="/integraciones" />} nativeButton={false}>
+            {t("Ir a Integraciones")}
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }
 

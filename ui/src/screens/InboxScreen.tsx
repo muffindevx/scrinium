@@ -39,7 +39,7 @@ import { RuleHistory } from "@/screens/RuleHistory"
 import { RuleTickets } from "@/screens/RuleTickets"
 import { relationLabel, shownAsImpact } from "@/lib/relations"
 import { useErrors } from "@/screens/hooks"
-import { ErrorText, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
+import { ErrorText, Loading, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
 // Rows loaded at a time; the tabs' counts come from the server and are always exact.
 const PAGE = 500
@@ -139,7 +139,7 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
   const [cursor, setCursor] = useState(0)
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [done, setDone] = useState<Done | null>(null)
-  const { error, setError, fail } = useErrors(onSessionLost)
+  const { error, setError, fail, failure } = useErrors(onSessionLost)
 
   const load = useCallback(() => {
     getInbox(project.id, 0, PAGE)
@@ -333,9 +333,9 @@ export function InboxScreen({ project, onSessionLost }: ScreenProps) {
         title={t("Revisar reglas")}
         description={t("Scrinium propone reglas leyendo el código; tú dices si son ciertas. Lo que confirmas queda como regla verificada, y el check avisa si un cambio la rompe. Lo que rechazas no vuelve.")}
       />
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{box !== null && error}</ErrorText>
       {box === null ? (
-        <Muted>{t("Cargando…")}</Muted>
+        <Loading failure={failure} />
       ) : items.length === 0 ? (
         <EmptyState icon={InboxIcon} title={t("Nada por revisar")}>
           {t("Todas las reglas están revisadas y ninguna tiene cambios pendientes.")}

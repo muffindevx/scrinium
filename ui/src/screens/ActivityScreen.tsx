@@ -19,7 +19,7 @@ import { type ActivityEvent, getActivity } from "@/lib/api"
 import { language, t } from "@/lib/i18n"
 import { relativeTime } from "@/lib/time"
 import { useErrors } from "@/screens/hooks"
-import { ErrorText, Muted, type ScreenProps } from "@/screens/shared"
+import { ErrorText, Loading, type ScreenProps } from "@/screens/shared"
 
 interface Shown {
   icon: LucideIcon
@@ -75,7 +75,7 @@ function day(iso: string): string {
 /** What happened in the project, newest first: analyses, syncs, reviews and ticket links. */
 export function ActivityScreen({ project, onSessionLost }: ScreenProps) {
   const [events, setEvents] = useState<ActivityEvent[] | null>(null)
-  const { error, fail } = useErrors(onSessionLost)
+  const { error, fail, failure } = useErrors(onSessionLost)
   useEffect(() => {
     getActivity(project.id, 100).then(setEvents).catch(fail)
   }, [project.id, fail])
@@ -94,9 +94,9 @@ export function ActivityScreen({ project, onSessionLost }: ScreenProps) {
         title={t("Actividad")}
         description={t("Lo que ha pasado en el proyecto: análisis, sincronizaciones, reglas revisadas y tickets enlazados.")}
       />
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{events !== null && error}</ErrorText>
       {events === null ? (
-        <Muted>{t("Cargando…")}</Muted>
+        <Loading failure={failure} />
       ) : events.length === 0 ? (
         <EmptyState icon={Activity} title={t("Todavía no hay actividad")}>
           {t("Aparecerá aquí en cuanto sincronices una fuente, extraigas reglas o revises alguna.")}

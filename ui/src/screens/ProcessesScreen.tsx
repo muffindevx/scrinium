@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { type Process, getProcesses } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import { useErrors } from "@/screens/hooks"
-import { ErrorText, Muted, type ScreenProps } from "@/screens/shared"
+import { ErrorText, Loading, Muted, type ScreenProps } from "@/screens/shared"
 
 const TRIGGERS: Record<Process["trigger"]["kind"], { label: string; icon: typeof Globe }> = {
   http: { label: t("Petición HTTP"), icon: Globe },
@@ -43,7 +43,7 @@ export function ProcessesScreen({ project, onSessionLost }: ScreenProps) {
   const [found, setFound] = useState<Process[] | null>(null)
   const [query, setQuery] = useState("")
   const [open, setOpen] = useState<string | null>(null)
-  const { error, fail } = useErrors(onSessionLost)
+  const { error, fail, failure } = useErrors(onSessionLost)
   useEffect(() => {
     getProcesses(project.id).then(setFound).catch(fail)
   }, [project.id, fail])
@@ -64,9 +64,9 @@ export function ProcessesScreen({ project, onSessionLost }: ScreenProps) {
         description={t("Qué reglas de negocio se aplican, y en qué orden, cuando alguien usa el sistema.")}
       />
       <Explainer />
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{found !== null && error}</ErrorText>
       {found === null ? (
-        <Muted>{t("Cargando…")}</Muted>
+        <Loading failure={failure} />
       ) : found.length === 0 ? (
         <EmptyState icon={Workflow} title={t("Todavía no hay procesos")}>
           {t("Un proceso aparece cuando algo que dispara el sistema (una ruta HTTP, una acción, una tarea programada) llama a código con reglas. Extrae reglas primero; si tu proyecto usa otra forma de declarar sus entradas, aquí no se verá todavía.")}

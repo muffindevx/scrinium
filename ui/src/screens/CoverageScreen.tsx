@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { type Coverage, type CoverageNode, type DocConflict, getCoverage, getDocConflicts } from "@/lib/api"
 import { t } from "@/lib/i18n"
 import { useErrors } from "@/screens/hooks"
-import { ErrorText, Muted, type ScreenProps } from "@/screens/shared"
+import { ErrorText, Loading, Muted, type ScreenProps } from "@/screens/shared"
 
 type Counts = Pick<CoverageNode, "decisions" | "verified" | "unverified" | "uncovered">
 
@@ -82,7 +82,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
   // What was loaded, with the view it is for: a stale level is never shown for a new one.
   const [loaded, setLoaded] = useState<{ key: string; coverage: Coverage } | null>(null)
   const found = loaded?.key === key ? loaded.coverage : null
-  const { error, fail } = useErrors(onSessionLost)
+  const { error, fail, failure } = useErrors(onSessionLost)
   const [conflicts, setConflicts] = useState<DocConflict[] | null>(null)
   useEffect(() => {
     getDocConflicts(project.id).then(setConflicts).catch(fail)
@@ -116,7 +116,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
         title={t("Cobertura")}
         description={t("Dónde decide el código (condiciones, umbrales, tablas, validaciones) y cuántas de esas decisiones tienen una regla.")}
       />
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{found !== null && error}</ErrorText>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <nav className="flex min-w-0 flex-wrap items-center gap-1 text-sm" aria-label={t("Ruta")}>
           <button type="button" className="hover:underline" onClick={() => update({ ruta: null, dominio: null })}>
@@ -156,7 +156,7 @@ export function CoverageScreen({ project, onSessionLost }: ScreenProps) {
         </Tabs>
       </div>
       {found === null ? (
-        <Muted>{t("Cargando…")}</Muted>
+        <Loading failure={failure} />
       ) : found.total.decisions === 0 ? (
         <EmptyState icon={Grid2x2} title={t("Todavía no hay decisiones")}>
           {t("Añade y sincroniza una fuente con código: Scrinium busca sus decisiones al sincronizar.")}

@@ -9,9 +9,9 @@ from starlette.exceptions import HTTPException
 async def _http_error(_request: Request, error: Exception) -> JSONResponse:
     if not isinstance(error, HTTPException):
         raise error
-    return JSONResponse(
-        {"error": error.detail}, status_code=error.status_code, headers=error.headers
-    )
+    # A dict detail carries its code and the few facts a person needs to fix it (e.g. a path).
+    body = error.detail if isinstance(error.detail, dict) else {"error": error.detail}
+    return JSONResponse(body, status_code=error.status_code, headers=error.headers)
 
 
 async def _validation_error(_request: Request, error: Exception) -> JSONResponse:

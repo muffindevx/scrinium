@@ -54,6 +54,13 @@ def _source(session: Any, project_id: uuid.UUID, source_id: uuid.UUID | None) ->
 
 
 def _repository(source: SourceConnection) -> Repository:
+    root = source.configuration.get("root")
+    # A folder that moved or a disk that is not mounted: say which path, not "Git failed".
+    if root and not Path(root).is_dir():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {"error": "source_path_missing", "path": root, "source_id": str(source.id)},
+        )
     try:
         return Repository.at(Path(source.configuration["root"]))
     except (GitError, KeyError, OSError):

@@ -180,7 +180,7 @@ function SidebarLink({ item, collapsed, count = 0 }: { item: NavItem; collapsed:
       className={({ isActive }) =>
         cn(
           "relative flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
-          collapsed ? "justify-center px-0" : "max-lg:justify-center max-lg:px-0",
+          collapsed && "justify-center px-0",
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
             : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground",
@@ -190,15 +190,15 @@ function SidebarLink({ item, collapsed, count = 0 }: { item: NavItem; collapsed:
       {({ isActive }) => (
         <>
           <Icon className={cn("size-[1.1rem] shrink-0", isActive && "text-primary")} aria-hidden="true" />
-          <span className={cn("flex-1", collapsed ? "sr-only" : "max-lg:sr-only")}>{item.label}</span>
+          <span className={cn("flex-1", collapsed && "sr-only")}>{item.label}</span>
           {count > 0 && (
             <>
-              <span className={cn("text-xs text-muted-foreground tabular-nums", collapsed ? "sr-only" : "max-lg:sr-only")}>
+              <span className={cn("text-xs text-muted-foreground tabular-nums", collapsed && "sr-only")}>
                 {shown}
               </span>
               <span
                 aria-hidden="true"
-                className={cn("absolute top-2 right-2 size-1.5 rounded-full bg-primary", !collapsed && "lg:hidden")}
+                className={cn("absolute top-2 right-2 size-1.5 rounded-full bg-primary", !collapsed && "hidden")}
               />
             </>
           )}
@@ -208,23 +208,68 @@ function SidebarLink({ item, collapsed, count = 0 }: { item: NavItem; collapsed:
   )
 }
 
-/** Full labels or icons only; the choice is kept in this browser. Narrow windows always get icons. */
+const NARROW = "(max-width: 1023px)"
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches)
+  useEffect(() => {
+    const query = window.matchMedia(NARROW)
+    const follow = () => setNarrow(query.matches)
+    query.addEventListener("change", follow)
+    return () => query.removeEventListener("change", follow)
+  }, [])
+  return narrow
+}
+
+/**
+ * Full labels or icons only. On a wide window the choice is kept in this browser and the page
+ * makes room; on a narrow one the menu starts as icons and opens over the page, closing again
+ * when a section is chosen, so the content never gets squeezed.
+ */
 function Sidebar({ inbox }: { inbox: number }) {
-  const [collapsed, setCollapsed] = useState(storedCollapsed)
+  const narrow = useNarrow()
+  const [stored, setStored] = useState(storedCollapsed)
+  // Open only on the screen where it was opened: choosing a section closes it.
+  const location = useLocation()
+  const [openOn, setOpenOn] = useState<string | null>(null)
+  const open = narrow && openOn === location.pathname
+  const setOpen = (value: boolean) => setOpenOn(value ? location.pathname : null)
+  useEffect(() => {
+    if (!open) return
+    const close = (event: KeyboardEvent) => event.key === "Escape" && setOpenOn(null)
+    window.addEventListener("keydown", close)
+    return () => window.removeEventListener("keydown", close)
+  }, [open])
+  const collapsed = narrow ? !open : stored
   const toggle = () => {
-    setCollapsed(!collapsed)
+    if (narrow) {
+      setOpen(!open)
+      return
+    }
+    setStored(!stored)
     try {
-      window.localStorage.setItem(COLLAPSED_KEY, collapsed ? "0" : "1")
+      window.localStorage.setItem(COLLAPSED_KEY, stored ? "0" : "1")
     } catch {
       // Without storage the choice lasts as long as the window.
     }
   }
+  const overlay = narrow && open
   return (
+    <div className={cn("relative shrink-0 transition-[width]", narrow || stored ? "w-16" : "w-52")}>
+      {overlay && (
+        <button
+          type="button"
+          aria-label={t("Cerrar menú")}
+          className="fixed inset-0 top-16 z-30 bg-black/20"
+          onClick={() => setOpen(false)}
+        />
+      )}
     <nav
       aria-label={t("Secciones")}
       className={cn(
-        "flex shrink-0 flex-col justify-between bg-sidebar p-3 text-sidebar-foreground transition-[width] max-lg:w-16 max-lg:p-2.5",
-        collapsed ? "w-16 p-2.5" : "w-52",
+        "flex h-full flex-col justify-between bg-sidebar text-sidebar-foreground",
+        collapsed ? "w-16 p-2.5" : "w-52 p-3",
+        overlay && "absolute inset-y-0 left-0 z-40 shadow-xl",
       )}
     >
       <div className="grid gap-5">
@@ -234,7 +279,7 @@ function Sidebar({ inbox }: { inbox: number }) {
           aria-expanded={!collapsed}
           title={collapsed ? t("Expandir menú") : t("Contraer menú")}
           className={cn(
-            "flex h-9 items-center gap-2 rounded-lg text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground max-lg:hidden",
+            "flex h-9 items-center gap-2 rounded-lg text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
             collapsed ? "justify-center" : "px-3",
           )}
         >
@@ -264,6 +309,7 @@ function Sidebar({ inbox }: { inbox: number }) {
         ))}
       </div>
     </nav>
+    </div>
   )
 }
 

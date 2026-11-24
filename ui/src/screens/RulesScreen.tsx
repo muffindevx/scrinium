@@ -48,7 +48,7 @@ import { RuleHistory } from "@/screens/RuleHistory"
 import { RuleTickets } from "@/screens/RuleTickets"
 import { useBackTarget, useErrors } from "@/screens/hooks"
 import { ModelPicker } from "@/screens/ModelPicker"
-import { AnalysisDetail, ErrorText, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
+import { AnalysisDetail, ErrorText, Loading, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
 const ORIGIN_LABELS: Record<RuleVersion["origin"], string> = {
   human: t("Escrita por una persona"),
@@ -819,7 +819,7 @@ function RuleList(props: ScreenProps) {
   const setQuery = (value: string) => setListParam("q", value, "")
   const [grouping, setGrouping] = useState<Grouping>(readGrouping)
   const [panel, setPanel] = useState<"extract" | "manual" | null>(null)
-  const { error, fail } = useErrors(onSessionLost)
+  const { error, fail, failure } = useErrors(onSessionLost)
   const load = useCallback(() => {
     listRules(project.id, { q: query.trim() || undefined })
       .then(setRules)
@@ -891,9 +891,9 @@ function RuleList(props: ScreenProps) {
           <Select aria-label={t("Agrupar reglas")} value={grouping} options={GROUPING_OPTIONS} onValueChange={group} />
         </div>
       </div>
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{rules !== null && error}</ErrorText>
       {rules === null ? (
-        <Muted>{t("Cargando…")}</Muted>
+        <Loading failure={failure} />
       ) : shown.length === 0 ? (
         <EmptyState
           icon={BookOpen}

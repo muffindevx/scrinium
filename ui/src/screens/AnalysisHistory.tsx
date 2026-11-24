@@ -9,7 +9,7 @@ import { type Analysis, type AnalysisType, deleteAnalysis, listAnalyses } from "
 import { ANALYSIS_TYPE_LABELS } from "@/lib/labels"
 import { relativeTime } from "@/lib/time"
 import { useErrors } from "@/screens/hooks"
-import { ErrorText, Muted, type ScreenProps } from "@/screens/shared"
+import { ErrorText, Loading, Muted, type ScreenProps } from "@/screens/shared"
 
 /** History of analyses of some given types; each screen shows only its own. */
 export function AnalysisHistory({
@@ -20,7 +20,7 @@ export function AnalysisHistory({
   refresh,
 }: ScreenProps & { types: AnalysisType[]; basePath: string; refresh: number }) {
   const [analyses, setAnalyses] = useState<Analysis[] | null>(null)
-  const { error, fail } = useErrors(onSessionLost)
+  const { error, fail, failure } = useErrors(onSessionLost)
   const key = types.join(",")
   const load = useCallback(() => {
     listAnalyses(project.id)
@@ -37,9 +37,9 @@ export function AnalysisHistory({
         <History className="size-4 text-muted-foreground" aria-hidden="true" />
         {t("Historial")}
       </p>
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{analyses !== null && error}</ErrorText>
       {analyses === null ? (
-        <Muted>{t("Cargando…")}</Muted>
+        <Loading failure={failure} />
       ) : analyses.length === 0 ? (
         <Muted>{t("Todavía no hay análisis.")}</Muted>
       ) : (

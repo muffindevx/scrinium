@@ -6,17 +6,27 @@ import { errorMessage } from "@/lib/labels"
 
 export const POLL_MS = 1500
 
-/** Shows API errors as text; a lost session is handled by the application. */
+/**
+ * Shows API errors as text; a lost session is handled by the application. `failure` keeps the
+ * last error whole, so a screen whose first load failed can say why and offer a way out.
+ */
 export function useErrors(onSessionLost: (error: unknown) => void) {
-  const [error, setError] = useState<string | null>(null)
+  const [error, setMessage] = useState<string | null>(null)
+  const [failure, setFailure] = useState<ApiError | null>(null)
+  const setError = useCallback((message: string | null) => {
+    setMessage(message)
+    if (message === null) setFailure(null)
+  }, [])
   const fail = useCallback(
-    (failure: unknown) => {
-      if (failure instanceof ApiError) setError(errorMessage(failure.code))
-      else onSessionLost(failure)
+    (caught: unknown) => {
+      if (caught instanceof ApiError) {
+        setMessage(errorMessage(caught.code))
+        setFailure(caught)
+      } else onSessionLost(caught)
     },
     [onSessionLost],
   )
-  return { error, setError, fail }
+  return { error, setError, fail, failure }
 }
 
 /** Polls an analysis until it finishes. */

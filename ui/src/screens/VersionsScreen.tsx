@@ -20,7 +20,7 @@ import {
 import { shortSha } from "@/lib/labels"
 import { AnalysisHistory } from "@/screens/AnalysisHistory"
 import { useErrors } from "@/screens/hooks"
-import { AnalysisDetail, ErrorText, Muted, type ScreenProps } from "@/screens/shared"
+import { AnalysisDetail, ErrorText, Loading, Muted, type ScreenProps } from "@/screens/shared"
 
 const STATUS: Record<Release["status"], [Tone, string]> = {
   discovered: ["no_evidence", t("Sin estado guardado")],
@@ -37,7 +37,7 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
   const [base, setBase] = useState("")
   const [target, setTarget] = useState("")
   const [notice, setNotice] = useState<string | null>(null)
-  const { error, setError, fail } = useErrors(onSessionLost)
+  const { error, setError, fail, failure } = useErrors(onSessionLost)
 
   const load = useCallback(() => {
     Promise.all([listSources(project.id), listReleases(project.id)])
@@ -112,13 +112,13 @@ function Explorer({ project, onSessionLost }: ScreenProps) {
         }
       >
         {notice && <Muted>{notice}</Muted>}
-        <ErrorText>{error}</ErrorText>
+        <ErrorText>{releases !== null && error}</ErrorText>
         {sources.length === 0 && releases !== null ? (
           <EmptyState icon={Tags} title={t("Sin repositorio Git")}>
             {t("Las versiones se leen de los tags de un repositorio. Añade uno en Fuentes.")}
           </EmptyState>
         ) : releases === null ? (
-          <Muted>{t("Cargando…")}</Muted>
+          <Loading failure={failure} />
         ) : releases.length === 0 ? (
           <EmptyState icon={Tags} title={t("Todavía no hay versiones")}>
             {t("Pulsa \"Leer tags\" para descubrirlas.")}

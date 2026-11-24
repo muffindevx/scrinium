@@ -110,6 +110,8 @@ class SourceResponse(BaseModel):
     indexed_commit: str | None = None
     head_commit: str | None = None
     head_moved: bool = False
+    # False when the folder is gone: moved, renamed, or on a disk that is not mounted.
+    root_exists: bool = True
 
 
 class SourceListResponse(BaseModel):
@@ -178,6 +180,7 @@ def _source_response(session: DbSession, connection: SourceConnection) -> Source
         active_files=sources.count_active_items(session, connection.id),
         last_successful_sync_at=connection.last_successful_sync_at,
         latest_sync=SyncRunResponse.model_validate(run) if run else None,
+        root_exists=Path(settings.root).is_dir(),
         **_git_position(session, connection, settings.kind, settings.root),
     )
 

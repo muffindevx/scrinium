@@ -11,7 +11,7 @@ import { type ChangeRefs, type Changes, type ChangeSide, type ChangeTicket, comp
 import { t } from "@/lib/i18n"
 import { type Tone } from "@/lib/status"
 import { useErrors } from "@/screens/hooks"
-import { ErrorText, Muted, type ScreenProps } from "@/screens/shared"
+import { ErrorText, Loading, Muted, type ScreenProps } from "@/screens/shared"
 
 const LEVELS: Record<string, [Tone, string]> = {
   changed: ["attention", t("Cambia la regla")],
@@ -40,7 +40,7 @@ export function ChangesScreen({ project, onSessionLost }: ScreenProps) {
   const [refs, setRefs] = useState<ChangeRefs | null>(null)
   const [result, setResult] = useState<Changes | null>(null)
   const [busy, setBusy] = useState(false)
-  const { error, setError, fail } = useErrors(onSessionLost)
+  const { error, setError, fail, failure } = useErrors(onSessionLost)
   const sourceId = params.get("fuente") ?? undefined
   const base = params.get("base") ?? ""
   const head = params.get("cabeza") ?? LOCAL
@@ -107,9 +107,9 @@ export function ChangesScreen({ project, onSessionLost }: ScreenProps) {
           "Qué hace un cambio a las reglas entre dos referencias cualesquiera: una rama, un tag, un commit o tus cambios locales. El mismo motor que scrinium check, sin IA.",
         )}
       />
-      <ErrorText>{error}</ErrorText>
+      <ErrorText>{refs !== null && error}</ErrorText>
       {refs === null ? (
-        <Muted>{t("Cargando…")}</Muted>
+        <Loading failure={failure} />
       ) : (
         <Section title={t("Comparar")}>
           <div className="grid gap-3 md:grid-cols-[1fr_auto_1fr_auto] md:items-end">

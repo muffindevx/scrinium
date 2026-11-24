@@ -1,5 +1,6 @@
 import { t, tn } from "@/lib/i18n"
-import { FolderGit2, FolderOpen, GitBranch, RefreshCw, ScanSearch, Trash2 } from "lucide-react"
+import { cn } from "cn"
+import { FolderGit2, FolderOpen, FolderX, GitBranch, RefreshCw, ScanSearch, Trash2 } from "lucide-react"
 import { type FormEvent, useCallback, useEffect, useState } from "react"
 import { EmptyState, Section } from "@/components/page"
 import { StatusBadge } from "@/components/status"
@@ -151,11 +152,12 @@ function SourceRow({
   }
   const busy = source.latest_sync?.status === "queued" || source.latest_sync?.status === "running"
   const run = (action: Promise<unknown>) => action.then(onChanged).catch(onError)
-  const [tone, label] = sourceTone(source)
+  const missing = source.root_exists === false && !source.remote_url
+  const [tone, label] = missing ? (["attention", t("Carpeta no encontrada")] as const) : sourceTone(source)
   const KindIcon = source.kind === "git_repository" ? GitBranch : FolderOpen
 
   return (
-    <li className="grid gap-2 rounded-lg border p-3">
+    <li className={cn("grid gap-2 rounded-lg border p-3", missing && "border-destructive/40")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="flex items-center gap-2 font-medium">
           <KindIcon className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -169,6 +171,12 @@ function SourceRow({
           {t("Rama {0} · commit indexado {1}", source.branch ?? "—", source.indexed_commit.slice(0, 8))}
         </p>
       )}
+      {missing && (
+        <p role="alert" className="flex items-start gap-1.5 text-xs text-destructive">
+          <FolderX className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+          {t("Esta carpeta ya no existe: se movió, se renombró o el disco no está montado. Vuelve a conectarlo, o añade la fuente con su ruta nueva y borra esta.")}
+        </p>
+      )}
       {source.head_moved && (
         <p role="status" className="text-xs text-amber-700 dark:text-amber-400">
           {t("El repositorio avanzó desde la última sincronización: sincroniza para ver lo nuevo.")}
@@ -179,7 +187,7 @@ function SourceRow({
         {source.active_files} {t("archivos ·")} {syncSummary(source)}
       </p>
       <div className="flex gap-2">
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => run(syncSource(source.id))}>
+        <Button size="sm" variant="outline" disabled={busy || missing} onClick={() => run(syncSource(source.id))}>
           <RefreshCw data-icon="inline-start" />
           {t("Sincronizar")}
         </Button>

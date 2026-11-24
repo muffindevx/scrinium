@@ -11,6 +11,7 @@ import {
   Cpu,
   GitCompareArrows,
   type LucideIcon,
+  RefreshCw,
   Server,
   ShieldCheck,
   X,
@@ -108,11 +109,6 @@ function Panel({ className, children }: { className?: string; children: ReactNod
 
 function Dot({ className }: { className?: string }) {
   return <span className={cn("inline-block size-1.5 shrink-0 rounded-full", className)} aria-hidden="true" />
-}
-
-/** A count as on the mock-ups: two digits at least, in the book serif. */
-function figure(value: number): string {
-  return value < 10 ? String(value).padStart(2, "0") : String(value)
 }
 
 function greeting(now = new Date()): string {
@@ -317,7 +313,7 @@ export function HomeScreen({
 
   // ADR-013: until someone chooses where the writing model lives, Home asks first.
   const firstRun = setup !== null && setup.choice === null && (
-    <section className="grid gap-4">
+    <section className="grid gap-5 border-t pt-8">
       <SectionHead
         number="01"
         eyebrow={t("Configuración")}
@@ -362,9 +358,9 @@ export function HomeScreen({
   const name = profileName?.trim()
 
   return (
-    <>
-      <header className="grid gap-8">
-        <div className="flex flex-wrap items-end justify-between gap-4">
+    <div className="grid gap-14 *:min-w-0">
+      <div className="grid gap-8">
+        <header className="grid gap-7">
           <div className="grid gap-2">
             <p className="flex items-center gap-2 text-[0.65rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase">
               <Dot className="bg-primary" />
@@ -377,60 +373,47 @@ export function HomeScreen({
             <p className="text-sm text-muted-foreground">
               {project.description || t("Tu código, traducido en decisiones que el equipo entiende.")}
             </p>
+            {/* Freshness in one line under the title: when the code was read and when a person last reviewed. */}
+            <p className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-muted-foreground">
+              {syncing ? (
+                <StatusBadge tone="in_progress">{t("Sincronizando…")}</StatusBadge>
+              ) : synced ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <RefreshCw className="size-3.5" aria-hidden="true" />
+                  {t("Sincronizado")} {relativeTime(synced)}
+                </span>
+              ) : sources !== null ? (
+                <span>{t("Todavía sin sincronizar")}</span>
+              ) : null}
+              {rules?.last_review_at && (
+                <span className="inline-flex items-center gap-1.5">
+                  <CheckCircle2 className="size-3.5" aria-hidden="true" />
+                  {t("Última revisión {0}", relativeTime(rules.last_review_at))}
+                </span>
+              )}
+            </p>
           </div>
-          <p className="flex items-center gap-2 text-xs text-muted-foreground">
-            {syncing ? (
-              <StatusBadge tone="in_progress">{t("Sincronizando…")}</StatusBadge>
-            ) : synced ? (
-              <>
-                <Activity className="size-4" aria-hidden="true" />
-                {t("Sincronizado")} {relativeTime(synced)}
-              </>
-            ) : sources !== null ? (
-              t("Todavía sin sincronizar")
-            ) : null}
-          </p>
-        </div>
-        {rules !== null && sources !== null && (
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <ul className="flex flex-wrap gap-x-10 gap-y-4">
+          {rules !== null && sources !== null && (
+            <ul className="grid grid-cols-3 divide-x divide-border/80 overflow-hidden rounded-xl bg-card ring-1 ring-border/70 max-sm:grid-cols-1 max-sm:divide-x-0 max-sm:divide-y">
               {[
-                { value: rules.rules, label: t("reglas de negocio"), to: "/reglas", accent: true },
-                { value: rules.drifted, label: t("cambios por revisar"), to: "/cambios", accent: false },
-                { value: sources.length, label: t("fuentes conectadas"), to: "/integraciones", accent: false },
+                { value: rules.rules, label: t("reglas de negocio"), to: "/reglas" },
+                { value: rules.drifted, label: t("cambios por revisar"), to: "/cambios" },
+                { value: sources.length, label: t("fuentes conectadas"), to: "/integraciones" },
               ].map((stat) => (
                 <li key={stat.label}>
-                  <Link to={stat.to} className="group grid gap-1.5">
-                    <span className={cn("font-figure text-4xl leading-none tracking-tight", stat.accent && "text-primary")}>
-                      {figure(stat.value)}
+                  <Link to={stat.to} className="group grid gap-2 px-5 py-4 transition-colors hover:bg-muted/50">
+                    <span className="font-figure text-4xl leading-none tracking-tight tabular-nums">{stat.value}</span>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground group-hover:text-foreground">
+                      {stat.label}
+                      <ArrowRight className="size-3 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
                     </span>
-                    <span className="text-xs text-muted-foreground group-hover:text-foreground">{stat.label}</span>
                   </Link>
                 </li>
               ))}
             </ul>
-            {rules.last_review_at && (
-              <p className="text-xs text-muted-foreground">
-                {t("Última revisión")} · <span className="text-foreground/80">{relativeTime(rules.last_review_at)}</span>
-              </p>
-            )}
-          </div>
-        )}
-      </header>
-      <ErrorText>{error}</ErrorText>
-      {firstRun}
-      {setup !== null && setup.choice !== null && !setup.managed && (
-        <section className="grid gap-4">
-          <SectionHead
-            number="01"
-            eyebrow={t("Configuración")}
-            title={t("¿Cómo quieres analizar el código?")}
-            description={t("Elige dónde se procesa el modelo. Tus fuentes nunca se envían sin permiso.")}
-            action={<MoreLink to="/ajustes/privacidad">{t("Privacidad y datos")}</MoreLink>}
-          />
-          <ModeCards setup={setup} status={status} />
-        </section>
-      )}
+          )}
+        </header>
+        <ErrorText>{error}</ErrorText>
       {rebuilding && (
         <div role="status" className="flex flex-wrap items-center gap-4 rounded-xl bg-accent/70 px-4 py-3.5 dark:bg-accent/60">
           <Activity className="size-4 shrink-0 text-primary" aria-hidden="true" />
@@ -477,8 +460,21 @@ export function HomeScreen({
           </ol>
         </Panel>
       )}
-
-      <section className="grid gap-4">
+      </div>
+      {firstRun}
+      {setup !== null && setup.choice !== null && !setup.managed && (
+        <section className="grid gap-5 border-t pt-8">
+          <SectionHead
+            number="01"
+            eyebrow={t("Configuración")}
+            title={t("¿Cómo quieres analizar el código?")}
+            description={t("Elige dónde se procesa el modelo. Tus fuentes nunca se envían sin permiso.")}
+            action={<MoreLink to="/ajustes/privacidad">{t("Privacidad y datos")}</MoreLink>}
+          />
+          <ModeCards setup={setup} status={status} />
+        </section>
+      )}
+      <section className="grid gap-5 border-t pt-8">
         <SectionHead
           number="02"
           eyebrow={t("Vista general")}
@@ -618,6 +614,6 @@ export function HomeScreen({
           </Panel>
         </div>
       </section>
-    </>
+    </div>
   )
 }

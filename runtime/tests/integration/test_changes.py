@@ -150,3 +150,17 @@ def test_a_rule_without_a_decision_to_follow_has_no_history_but_no_error(api: Ap
     }
     missing = f"/api/v1/projects/{api.project_id}/rules/{uuid.uuid4()}/history"
     assert api.runtime.client.get(missing).status_code == 404
+
+
+def test_a_moved_folder_names_its_path_instead_of_a_git_error(api: Api) -> None:
+    moved = api.repo.with_name("moved")
+    api.repo.rename(moved)
+    response = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/changes/refs")
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error"] == "source_path_missing" and body["path"] == str(api.repo)
+    assert body["source_id"]
+    [source] = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/sources").json()[
+        "sources"
+    ]
+    assert source["root_exists"] is False
