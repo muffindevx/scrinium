@@ -307,9 +307,34 @@ def is_domain_decision(line: str) -> bool:
     )
 
 
+# B2: a name with one of these parts measures time, size or a count, not money (totalSeconds,
+# total_bytes, rate_limit_ms). And a line that only shows an amount decides nothing about it.
+_NOT_MONEY_PARTS: Final = frozenset(
+    {
+        "ms", "millis", "milliseconds", "sec", "secs", "seconds", "minutes", "mins", "hours",
+        "days", "weeks", "time", "duration", "bytes", "size", "length", "count", "items",
+        "pages", "tokens", "limit",
+    }
+)  # fmt: skip
+_IDENTIFIER: Final = re.compile(r"[A-Za-z_]\w*")
+_DISPLAY: Final = re.compile(r"<[A-Za-z][\w.]*[\s/>]|FractionDigits|\bformat\w*\(", _I)
+
+
+def _parts(identifier: str) -> list[str]:
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", identifier)
+    return [part.lower() for part in spaced.split("_") if part]
+
+
 def touches_money(text: str) -> bool:
-    """A price, an amount, a tax or a payment in the text (F7: proposed criticality)."""
-    return _MONEY.search(text) is not None
+    """A price, an amount, a tax or a payment in the text (F7: proposed criticality). Not a
+    duration or a size named "total", and not a line that only shows an amount (B2)."""
+    if _DISPLAY.search(text) is not None:
+        return False
+    for identifier in _IDENTIFIER.findall(text):
+        parts = _parts(identifier)
+        if _NOT_MONEY_PARTS.isdisjoint(parts) and any(_MONEY.fullmatch(p) for p in parts):
+            return True
+    return False
 
 
 def is_visual(path: str, symbol: str | None = None) -> bool:

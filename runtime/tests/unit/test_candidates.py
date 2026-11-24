@@ -171,6 +171,44 @@ def test_criticality_is_proposed_high_for_permissions_security_and_money() -> No
     assert proposed_criticality(RuleCategory.VALIDATION, "if (lives <= 0)") is Criticality.MEDIUM
 
 
+def test_durations_sizes_and_shown_amounts_are_not_money() -> None:
+    """B2: "total" names a duration or a size as often as an amount."""
+    from scrinium.application.analysis.candidates import touches_money
+
+    assert touches_money("total = subtotal * TAX_RATE")
+    assert touches_money("costUsd: scores.reduce((sum, s) => sum + s.costUsd, 0)")
+    assert touches_money("if not (0 <= company.prepayment_percent <= 1.0):")
+    assert not touches_money("const minutes = Math.floor(totalSeconds / 60);")
+    assert not touches_money("return (when - now).total_seconds()")
+    assert not touches_money("def total_bytes(self) -> int:")
+    assert not touches_money("{cost > 0 ? <span>{formatCost(locale, cost)}</span> : null}")
+
+
+def test_security_that_only_handles_a_status_or_a_time_limit_is_medium() -> None:
+    """B2: the model files HTTP errors and timeouts as security; they are plumbing."""
+    from scrinium.application.analysis.extraction import proposed_criticality
+    from scrinium.domain.enums import Criticality, RuleCategory
+
+    security = RuleCategory.SECURITY_CONSTRAINT
+    for line in (
+        "if (error instanceof ApiError && error.status === 401) {",
+        "if status == 429:",
+        "if 200 <= status < 300:",
+        "if time.monotonic() >= deadline:",
+        "if remaining <= 0:",
+    ):
+        assert proposed_criticality(security, line) is Criticality.MEDIUM, line
+    # A real safeguard stays high, also when its line is the raise (Odoo).
+    for line in (
+        "with check (org_id = current_org_id());",
+        "if hasher.hexdigest() != sha256:",
+        "raise UserError(_('You cannot delete a posted or approved expense.'))",
+    ):
+        assert proposed_criticality(security, line) is Criticality.HIGH, line
+    authorization = RuleCategory.AUTHORIZATION
+    assert proposed_criticality(authorization, "if status == 403:") is Criticality.HIGH
+
+
 def test_constraints_in_a_row_are_separate_decisions() -> None:
     migration = (
         'ALTER TABLE "grc"."app_users" ADD CONSTRAINT "ck_email" CHECK (email ~ \'@\');\n'

@@ -14,6 +14,7 @@ model can do nothing except return text that the code validates.
 
 import copy
 import logging
+import re
 import secrets
 import time
 import uuid
@@ -604,9 +605,25 @@ def _decision_line(decision: Decision) -> str:
 _HIGH_CATEGORIES: Final = frozenset({RuleCategory.AUTHORIZATION, RuleCategory.SECURITY_CONSTRAINT})
 
 
+# B2: security that is only routine plumbing: an HTTP status, a time limit, a retry. The model
+# files these as security; what breaks if they change is a request, not a safeguard.
+_ROUTINE: Final = re.compile(
+    r"\bstatus(?:_?code)?\s*(?:[!=]==?|[<>]=?)\s*[1-5]\d\d\b|\b[1-5]\d\d\s*<=?\s*status\b"
+    r"|\b(?:response|resp|res|error|err|exc)\.status(?:_?code)?\b|\bclassify_status\b"
+    r"|\b(?:deadline|timeout|timed_?out|monotonic|remaining|retry|retries|attempts?)\b",
+    re.IGNORECASE,
+)
+
+
 def proposed_criticality(category: RuleCategory, decision_line: str) -> Criticality:
-    """High for permissions, security and money; medium for the rest."""
-    if category in _HIGH_CATEGORIES or touches_money(decision_line):
+    """High for permissions, security and money; medium for the rest, and for security that
+    only handles an HTTP status, a time limit or a retry (B2). Not a bare `raise`: in Odoo the
+    raise is the line of a real permission rule."""
+    if touches_money(decision_line):
+        return Criticality.HIGH
+    if category is RuleCategory.SECURITY_CONSTRAINT and _ROUTINE.search(decision_line):
+        return Criticality.MEDIUM
+    if category in _HIGH_CATEGORIES:
         return Criticality.HIGH
     return Criticality.MEDIUM
 
