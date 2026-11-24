@@ -212,7 +212,7 @@ def build_tickets_router(
         """Linear sends the browser back here. The state must be one this Scrinium started."""
 
         def back(outcome: str) -> RedirectResponse:
-            return RedirectResponse(f"/fuentes?linear={outcome}", status_code=303)
+            return RedirectResponse(f"/integraciones?linear={outcome}", status_code=303)
 
         pending = flows.finish(state) if state else None
         client = oauth.client_id()

@@ -19,6 +19,7 @@ from scrinium.application.analysis.extraction import write_statement_now
 from scrinium.application.analysis.rule_relations import rebuild_relations
 from scrinium.application.ingestion import sources
 from scrinium.application.knowledge import views
+from scrinium.application.knowledge.activity import MAX_EVENTS, activity
 from scrinium.application.knowledge.architecture import architecture
 from scrinium.application.knowledge.common import KnowledgeError, KnowledgeNotFoundError
 from scrinium.application.knowledge.content import RuleContent
@@ -143,6 +144,14 @@ def build_knowledge_router(database: Database, llm: LlmService | None = None) ->
         """Counts and dates for the Home screen (phase 4.4)."""
         with database.session() as session:
             return health(session, _project(session, project_id))
+
+    @router.get("/api/v1/projects/{project_id}/activity")
+    def project_activity(
+        project_id: uuid.UUID, limit: Annotated[int, Query(ge=1, le=MAX_EVENTS)] = 50
+    ) -> dict[str, Any]:
+        """Analyses, syncs, reviews and ticket links of the project, newest first."""
+        with database.session() as session:
+            return {"events": activity(session, _project(session, project_id), limit)}
 
     @router.post("/api/v1/projects/{project_id}/inbox/review")
     def review_batch(

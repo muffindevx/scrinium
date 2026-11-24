@@ -19,7 +19,9 @@ The UI moved from a single page of stacked cards to separate screens, each with 
 | `/mapa/:entityId?` | System map |
 | `/impacto/:analysisId?` | Impact analysis |
 | `/versiones/:analysisId?` | Release comparison |
-| `/fuentes` | Sources |
+| `/actividad` | Activity: analyses, syncs, reviews and ticket links |
+| `/integraciones` | Integrations: sources, ticket trackers, AI models and projects |
+| `/fuentes` | Old name of `/integraciones`; redirects there |
 | `/ajustes` | Settings |
 
 - Any other path redirects to `/`.

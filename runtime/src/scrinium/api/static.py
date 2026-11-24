@@ -15,12 +15,14 @@ from starlette.types import Scope
 # The same routes the UI defines in ui/src/App.tsx.
 UI_ROUTES: Final = frozenset(
     {
+        "actividad",
         "bandeja",
         "cambios",
         "cobertura",
         "procesos",
         "reglas",
         "impacto",
+        "integraciones",
         "versiones",
         "fuentes",
         "ia",

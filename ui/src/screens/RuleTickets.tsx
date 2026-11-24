@@ -144,7 +144,7 @@ export function RuleTickets({
       {empty && !linking && (
         <Muted>
           {t("Ningún commit de estas líneas nombra un ticket.")}{" "}
-          <Link to="/fuentes" className="font-medium text-foreground underline-offset-4 hover:underline">
+          <Link to="/integraciones" className="font-medium text-foreground underline-offset-4 hover:underline">
             {t("Conecta Linear o Jira en Fuentes")}
           </Link>{" "}
           {t("para ver títulos y estados, o enlaza uno a mano.")}

@@ -659,11 +659,28 @@ export type RulebookHealth = {
   removed: number
   consistency: number
   inbox: number
+  // Rules first proposed in the last seven days, still live.
+  new_this_week?: number
   last_review_at: string | null
   oldest_unreviewed_at: string | null
   last_sync_at: string | null
 }
 export const getHealth = (projectId: string) => getJson<RulebookHealth>(`/api/v1/projects/${projectId}/health`)
+
+/** One thing that happened in the project: an analysis, a sync, a review or a ticket link. */
+export type ActivityEvent = {
+  at: string | null
+  kind: string
+  subject: string
+  status: string
+  ref: string
+  finished_at?: string | null
+  counts?: { created: number; updated: number; deleted: number }
+  to?: VerificationStatus
+  ticket?: string
+}
+export const getActivity = async (projectId: string, limit = 50) =>
+  (await getJson<{ events: ActivityEvent[] }>(`/api/v1/projects/${projectId}/activity?limit=${limit}`)).events
 export type InboxItem = {
   entity_id: string
   version_id: string
@@ -746,12 +763,14 @@ export const compareReleases = (projectId: string, baseId: string, targetId: str
 export const investigateBug = (projectId: string, description: string) =>
   started(`/api/v1/projects/${projectId}/analyses/bug`, { description })
 export const getAnalysis = (analysisId: string) => getJson<Analysis>(`/api/v1/analyses/${analysisId}`)
-export const listAnalyses = async (projectId: string, type?: AnalysisType) =>
-  (
+export const listAnalyses = async (projectId: string, type?: AnalysisType, limit?: number) => {
+  const query = new URLSearchParams({ ...(type ? { type } : {}), ...(limit ? { limit: String(limit) } : {}) })
+  return (
     await getJson<{ analyses: Analysis[] }>(
-      `/api/v1/projects/${projectId}/analyses${type ? `?${new URLSearchParams({ type })}` : ""}`,
+      `/api/v1/projects/${projectId}/analyses${query.size ? `?${query}` : ""}`,
     )
   ).analyses
+}
 export const deleteAnalysis = async (analysisId: string) => {
   await mutate(`/api/v1/analyses/${analysisId}`, undefined, "DELETE")
 }

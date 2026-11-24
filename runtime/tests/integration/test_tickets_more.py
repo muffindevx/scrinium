@@ -246,10 +246,10 @@ def test_oauth_with_pkce_end_to_end(client: Client, monkeypatch: pytest.MonkeyPa
     callback = urlsplit(query["redirect_uri"][0]).path
     wrong = client.runtime.client.get(callback, params={"state": "x", "code": "c"},
                                       headers=client.headers, follow_redirects=False)  # fmt: skip
-    assert wrong.headers["location"] == "/fuentes?linear=expired"
+    assert wrong.headers["location"] == "/integraciones?linear=expired"
     done = client.runtime.client.get(callback, params={"state": query["state"][0], "code": "c1"},
                                      headers=client.headers, follow_redirects=False)  # fmt: skip
-    assert done.status_code == 303 and done.headers["location"] == "/fuentes?linear=connected"
+    assert done.status_code == 303 and done.headers["location"] == "/integraciones?linear=connected"
     form = sent[0][1]
     assert (
         form["code_verifier"]
@@ -258,7 +258,7 @@ def test_oauth_with_pkce_end_to_end(client: Client, monkeypatch: pytest.MonkeyPa
     )
     again = client.runtime.client.get(callback, params={"state": query["state"][0], "code": "c1"},
                                       headers=client.headers, follow_redirects=False)  # fmt: skip
-    assert again.headers["location"] == "/fuentes?linear=expired"  # a state works once
+    assert again.headers["location"] == "/integraciones?linear=expired"  # a state works once
     connection = _connection(client)
     assert connection.auth == "oauth" and connection.key_hint == ""
     stored = client.runtime.environment.secret_store.get(connection.secret_ref or "")

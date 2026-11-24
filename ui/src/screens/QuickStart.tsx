@@ -117,7 +117,7 @@ export function QuickStart({
         </div>
         {!project && path.trim() && (
           <p className="text-xs text-muted-foreground">
-            {t("Se creará el proyecto «")}{folderName(path)}{t("». Podrás añadirle más fuentes en Fuentes.")}
+            {t("Se creará el proyecto «")}{folderName(path)}{t("». Podrás añadirle más fuentes en Integraciones.")}
           </p>
         )}
         {drop?.kind === "no_path" && !path && (

@@ -48,7 +48,7 @@ export function TicketTriage({ projectId, onSessionLost }: { projectId: string; 
         {bugs?.length === 0 && (
           <Muted>
             {query.trim() ? t("Ningún bug guardado coincide.") : t("No hay bugs guardados.")}{" "}
-            <Link to="/fuentes" className="font-medium text-foreground underline-offset-4 hover:underline">
+            <Link to="/integraciones" className="font-medium text-foreground underline-offset-4 hover:underline">
               {t("Conecta Linear o Jira en Fuentes")}
             </Link>
           </Muted>

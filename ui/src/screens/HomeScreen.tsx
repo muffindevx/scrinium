@@ -23,14 +23,17 @@ import { sourceTone } from "@/lib/status"
 import { Button } from "@/components/ui/button"
 import {
   type AiSetup,
+  type Analysis,
   type EmbeddingStatus,
   type IndexStatus,
   type Project,
   type RulebookHealth,
   type SecurityStatus,
   type Source,
+  getAnalysis,
   getHealth,
   getIndexStatus,
+  listAnalyses,
   listSources,
 } from "@/lib/api"
 import { relativeTime } from "@/lib/time"
@@ -222,6 +225,31 @@ function Step({ done, children }: { done: boolean; children: ReactNode }) {
   )
 }
 
+interface DiffFile {
+  path: string
+  added: number
+  removed: number
+}
+
+interface LastDiff {
+  id: string
+  at: string
+  files: DiffFile[]
+  pending: number
+}
+
+// A finding still waits for a person until it is confirmed, tested or dismissed.
+const JUDGED = new Set(["human_confirmed", "test_verified", "false_positive"])
+
+function lastDiffOf(run: Analysis): LastDiff {
+  const raw = Array.isArray(run.result?.files) ? (run.result.files as Partial<DiffFile>[]) : []
+  const files = raw
+    .filter((file): file is DiffFile => typeof file.path === "string")
+    .map((file) => ({ path: file.path, added: Number(file.added) || 0, removed: Number(file.removed) || 0 }))
+  const pending = (run.findings ?? []).filter((finding) => !JUDGED.has(finding.assessment_status)).length
+  return { id: run.id, at: run.created_at, files, pending }
+}
+
 function lastSync(sources: Source[]): string | null {
   const times = sources.map((source) => source.last_successful_sync_at).filter((at): at is string => Boolean(at))
   if (times.length === 0) return null
@@ -258,7 +286,16 @@ export function HomeScreen({
   const [rules, setRules] = useState<RulebookHealth | null>(null)
   // R2: after a restore (or a first sync) the vectors are rebuilt in the background.
   const [index, setIndex] = useState<IndexStatus | null>(null)
+  const [lastDiff, setLastDiff] = useState<LastDiff | null>(null)
   const { error, fail } = useErrors(onSessionLost)
+  // The last change analyzed, for the impact card: its files and what nobody judged yet.
+  useEffect(() => {
+    if (!project) return
+    listAnalyses(project.id, "code_diff", 1)
+      .then((runs) => (runs[0] ? getAnalysis(runs[0].id) : null))
+      .then((run) => setLastDiff(run ? lastDiffOf(run) : null))
+      .catch(() => setLastDiff(null))
+  }, [project])
 
   const load = useCallback(() => {
     if (!project) return
@@ -316,8 +353,8 @@ export function HomeScreen({
   const synced = lastSync(sources ?? [])
   const hasSources = (sources?.length ?? 0) > 0
   const steps = [
-    { done: hasSources, label: <Link to="/fuentes" className="hover:underline">{t("Añade el repositorio o la carpeta del proyecto")}</Link> },
-    { done: synced !== null, label: <Link to="/fuentes" className="hover:underline">{t("Sincronízalo para preparar el conocimiento")}</Link> },
+    { done: hasSources, label: <Link to="/integraciones" className="hover:underline">{t("Añade el repositorio o la carpeta del proyecto")}</Link> },
+    { done: synced !== null, label: <Link to="/integraciones" className="hover:underline">{t("Sincronízalo para preparar el conocimiento")}</Link> },
     { done: (rules?.rules ?? 0) > 0, label: <Link to="/reglas" className="hover:underline">{t("Extrae las reglas del código")}</Link> },
   ]
   const pendingSetup = sources !== null && rules !== null && steps.some((step) => !step.done)
@@ -360,7 +397,7 @@ export function HomeScreen({
               {[
                 { value: rules.rules, label: t("reglas de negocio"), to: "/reglas", accent: true },
                 { value: rules.drifted, label: t("cambios por revisar"), to: "/cambios", accent: false },
-                { value: sources.length, label: t("fuentes conectadas"), to: "/fuentes", accent: false },
+                { value: sources.length, label: t("fuentes conectadas"), to: "/integraciones", accent: false },
               ].map((stat) => (
                 <li key={stat.label}>
                   <Link to={stat.to} className="group grid gap-1.5">
@@ -442,16 +479,25 @@ export function HomeScreen({
       )}
 
       <section className="grid gap-4">
-        <SectionHead number="02" eyebrow={t("Vista general")} title={t("Lo que está pasando")} />
+        <SectionHead
+          number="02"
+          eyebrow={t("Vista general")}
+          title={t("Lo que está pasando")}
+          action={<MoreLink to="/actividad">{t("Ver actividad")}</MoreLink>}
+        />
         <div className="grid gap-3 md:grid-cols-3">
           <Panel className="justify-between">
             <div className="grid gap-4">
               <div className="flex items-center justify-between gap-2">
                 <IconTile icon={BookOpen} tone="plum" />
-                {rules !== null && rules.inbox > 0 && (
-                  <Link to="/bandeja" className="inline-flex items-center gap-1 text-[0.7rem] font-medium text-primary hover:underline">
+                {rules !== null && (rules.new_this_week ?? 0) > 0 && (
+                  <Link
+                    to="/bandeja"
+                    title={t("Propuestas en los últimos 7 días")}
+                    className="inline-flex items-center gap-1 text-[0.7rem] font-medium text-primary hover:underline"
+                  >
                     <ArrowUpRight className="size-3.5" aria-hidden="true" />
-                    {rules.inbox === 1 ? t("1 en la bandeja") : t("{0} en la bandeja", rules.inbox)}
+                    {rules.new_this_week === 1 ? t("1 nueva") : t("{0} nuevas", rules.new_this_week)}
                   </Link>
                 )}
               </div>
@@ -523,13 +569,46 @@ export function HomeScreen({
           </Panel>
           <Panel className="justify-between">
             <div className="grid gap-4">
-              <IconTile icon={GitCompareArrows} tone="amber" />
+              <div className="flex items-center justify-between gap-2">
+                <IconTile icon={GitCompareArrows} tone="amber" />
+                {lastDiff !== null && lastDiff.pending > 0 && (
+                  <Link
+                    to={`/impacto/${lastDiff.id}`}
+                    title={t("Hallazgos del último análisis que nadie ha confirmado ni descartado")}
+                    className="text-[0.7rem] text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    {lastDiff.pending === 1 ? t("1 pendiente") : t("{0} pendientes", lastDiff.pending)}
+                  </Link>
+                )}
+              </div>
               <div className="grid gap-1.5">
                 <h3 className="text-sm font-semibold">{t("Impacto de cambios")}</h3>
                 <p className="text-xs leading-relaxed text-muted-foreground">
                   {t("Pega un diff o la descripción de un bug y mira qué reglas y tests se ven afectados antes de tocar nada.")}
                 </p>
               </div>
+              {lastDiff !== null && lastDiff.files.length > 0 && (
+                <Link
+                  to={`/impacto/${lastDiff.id}`}
+                  title={t("Último cambio analizado, {0}", relativeTime(lastDiff.at))}
+                  className="grid gap-1 rounded-md bg-muted px-2.5 py-2 font-mono text-[0.68rem] hover:bg-muted/70"
+                >
+                  <span className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 truncate">{lastDiff.files[0].path}</span>
+                    <span className="shrink-0 tabular-nums">
+                      <span className="text-emerald-700 dark:text-emerald-400">+{lastDiff.files[0].added}</span>{" "}
+                      <span className="text-amber-700 dark:text-amber-400">−{lastDiff.files[0].removed}</span>
+                    </span>
+                  </span>
+                  {lastDiff.files.length > 1 && (
+                    <span className="font-sans text-muted-foreground">
+                      {lastDiff.files.length === 2
+                        ? t("y 1 archivo más")
+                        : t("y {0} archivos más", lastDiff.files.length - 1)}
+                    </span>
+                  )}
+                </Link>
+              )}
             </div>
             <div>
               <Button size="sm" render={<Link to="/impacto" />} nativeButton={false}>

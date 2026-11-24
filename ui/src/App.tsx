@@ -1,6 +1,7 @@
 import { DialogHost } from "@/components/ui/confirm"
 import { adoptLanguage, t } from "@/lib/i18n"
 import {
+  Blocks,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -24,7 +25,7 @@ import {
   Workflow,
 } from "lucide-react"
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react"
-import { BrowserRouter, NavLink, Navigate, Route, Routes, useNavigate } from "react-router"
+import { BrowserRouter, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router"
 import { cn } from "cn"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
@@ -40,6 +41,7 @@ import {
   type Workspace,
   getAiSetup,
   getDataFlow,
+  getHealth,
   getLanguage,
   getProfile,
   getProjectAi,
@@ -50,6 +52,7 @@ import {
 } from "@/lib/api"
 import { useFolderDrop } from "@/lib/folder-drop"
 import { setTheme } from "@/lib/theme"
+import { ActivityScreen } from "@/screens/ActivityScreen"
 import { ChangesScreen } from "@/screens/ChangesScreen"
 import { ProcessesScreen } from "@/screens/ProcessesScreen"
 import { CoverageScreen } from "@/screens/CoverageScreen"
@@ -60,7 +63,7 @@ import { InboxScreen } from "@/screens/InboxScreen"
 import { ProjectAiScreen } from "@/screens/ProjectAiScreen"
 import { RulesScreen } from "@/screens/RulesScreen"
 import { SettingsScreen } from "@/screens/SettingsScreen"
-import { SourcesScreen } from "@/screens/SourcesScreen"
+import { IntegrationsScreen } from "@/screens/IntegrationsScreen"
 import { VersionsScreen } from "@/screens/VersionsScreen"
 
 export interface ReadyData {
@@ -119,10 +122,16 @@ const NAVIGATION: { group: string; items: NavItem[] }[] = [
   },
 ]
 const FOOTER_NAVIGATION: NavItem[] = [
-  { path: "/fuentes", label: t("Fuentes"), icon: FolderGit2 },
+  { path: "/integraciones", label: t("Integraciones"), icon: Blocks },
   { path: "/ia", label: t("IA del proyecto"), icon: Sparkles },
   { path: "/ajustes", label: t("Ajustes"), icon: Settings },
 ]
+
+/** `/fuentes` was the old name of `/integraciones`: old links (and the Linear return) still work. */
+function OldSourcesPath() {
+  const location = useLocation()
+  return <Navigate to={{ pathname: "/integraciones", search: location.search }} replace />
+}
 
 const PROJECT_KEY = "scrinium.project"
 
@@ -160,16 +169,17 @@ function storedCollapsed(): boolean {
   }
 }
 
-function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean }) {
+function SidebarLink({ item, collapsed, count = 0 }: { item: NavItem; collapsed: boolean; count?: number }) {
   const Icon = item.icon
+  const shown = count > 999 ? "999+" : String(count)
   return (
     <NavLink
       to={item.path}
       end={item.path === "/"}
-      title={item.label}
+      title={count > 0 ? `${item.label} · ${count}` : item.label}
       className={({ isActive }) =>
         cn(
-          "flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
+          "relative flex h-10 items-center gap-3 rounded-lg px-3 text-sm transition-colors",
           collapsed ? "justify-center px-0" : "max-lg:justify-center max-lg:px-0",
           isActive
             ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
@@ -180,7 +190,18 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
       {({ isActive }) => (
         <>
           <Icon className={cn("size-[1.1rem] shrink-0", isActive && "text-primary")} aria-hidden="true" />
-          <span className={cn(collapsed ? "sr-only" : "max-lg:sr-only")}>{item.label}</span>
+          <span className={cn("flex-1", collapsed ? "sr-only" : "max-lg:sr-only")}>{item.label}</span>
+          {count > 0 && (
+            <>
+              <span className={cn("text-xs text-muted-foreground tabular-nums", collapsed ? "sr-only" : "max-lg:sr-only")}>
+                {shown}
+              </span>
+              <span
+                aria-hidden="true"
+                className={cn("absolute top-2 right-2 size-1.5 rounded-full bg-primary", !collapsed && "lg:hidden")}
+              />
+            </>
+          )}
         </>
       )}
     </NavLink>
@@ -188,7 +209,7 @@ function SidebarLink({ item, collapsed }: { item: NavItem; collapsed: boolean })
 }
 
 /** Full labels or icons only; the choice is kept in this browser. Narrow windows always get icons. */
-function Sidebar() {
+function Sidebar({ inbox }: { inbox: number }) {
   const [collapsed, setCollapsed] = useState(storedCollapsed)
   const toggle = () => {
     setCollapsed(!collapsed)
@@ -227,7 +248,12 @@ function Sidebar() {
         {NAVIGATION.map(({ group, items }) => (
           <div key={group} role="group" aria-label={group} className="grid gap-1">
             {items.map((item) => (
-              <SidebarLink key={item.path} item={item} collapsed={collapsed} />
+              <SidebarLink
+                key={item.path}
+                item={item}
+                collapsed={collapsed}
+                count={item.path === "/bandeja" ? inbox : 0}
+              />
             ))}
           </div>
         ))}
@@ -328,6 +354,15 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
     setSetup(chosen)
     loadAi()
   }
+  // The inbox count beside "Revisar": read again on every screen change, so a review shows.
+  const location = useLocation()
+  const [inbox, setInbox] = useState<{ projectId: string; count: number } | null>(null)
+  useEffect(() => {
+    if (!projectKey) return
+    getHealth(projectKey)
+      .then((health) => setInbox({ projectId: projectKey, count: health.inbox }))
+      .catch(() => setInbox(null))
+  }, [projectKey, location.pathname])
   const [drop, clearDrop] = useFolderDrop()
   const navigate = useNavigate()
   // A folder dropped anywhere opens the Home screen with its path ready to read, once per drop:
@@ -420,7 +455,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
       </header>
       <CommandPalette projectId={project?.id ?? null} />
       <div className="flex min-h-0 flex-1">
-        <Sidebar />
+        <Sidebar inbox={inbox?.projectId === projectKey ? inbox.count : 0} />
         <main className="min-w-0 flex-1 overflow-y-auto">
           <div className="mx-auto grid max-w-[66rem] gap-6 px-10 py-10 *:min-w-0 max-md:px-6 max-sm:px-4 max-sm:py-6">
             <Routes>
@@ -458,10 +493,12 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                 path="/versiones/:analysisId?"
                 element={needsProject((c) => <VersionsScreen key={c.id} {...props(c)} />)}
               />
+              <Route path="/actividad" element={needsProject((c) => <ActivityScreen key={c.id} {...props(c)} />)} />
+              <Route path="/fuentes" element={<OldSourcesPath />} />
               <Route
-                path="/fuentes"
+                path="/integraciones"
                 element={
-                  <SourcesScreen
+                  <IntegrationsScreen
                     project={project}
                     workspace={data.workspace}
                     projects={data.projects}
@@ -497,7 +534,7 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
                     onWiped={() => {
                       forgetProject()
                       // Full reload: nothing the screen had in memory remains.
-                      window.location.assign("/fuentes")
+                      window.location.assign("/integraciones")
                     }}
                     onEndSession={endSession}
                     onSessionLost={sessionLost}

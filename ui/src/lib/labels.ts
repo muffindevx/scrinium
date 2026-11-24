@@ -154,7 +154,7 @@ export const ERROR_LABELS: Record<string, string> = {
   isolated_mode: t("El modo aislado no permite conectar servicios externos."),
   invalid_email: t("Escribe el e-mail de la cuenta de Atlassian del token."),
   invalid_auth: t("Ese tipo de acceso no sirve para este tracker."),
-  comments_not_allowed: t("Esta conexión no permite comentar. Actívalo en Fuentes › Tickets."),
+  comments_not_allowed: t("Esta conexión no permite comentar. Actívalo en Integraciones › Tickets."),
   oauth_not_configured: t("Conectar con Linear por OAuth no está configurado; usa una clave personal."),
 }
 

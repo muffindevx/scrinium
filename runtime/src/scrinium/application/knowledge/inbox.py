@@ -464,6 +464,10 @@ _DRIFT: Final = frozenset({"rule_changed", "code_changed", "code_contradicts"})
 _CONSISTENCY: Final = frozenset({"possible_duplicate", "contradiction", "ambiguous"})
 
 
+# How far back a rule still counts as new on Home.
+_NEW_DAYS: Final = 7
+
+
 def health(session: Session, project: Project) -> dict[str, Any]:
     """The rulebook's health and freshness for the Home screen (phase 4.4), in aggregate
     queries: no work per rule, so it stays fast with thousands of rules."""
@@ -531,6 +535,12 @@ def health(session: Session, project: Project) -> dict[str, Any]:
             SourceConnection.project_id == project.id
         )
     )
+    # Rules first proposed in the last week, still live: Home's "N nuevas".
+    new_this_week = session.scalar(
+        select(func.count(KnowledgeEntity.id)).where(
+            *live, KnowledgeEntity.created_at >= utc_now() - timedelta(days=_NEW_DAYS)
+        )
+    )
 
     def iso(moment: Any) -> str | None:
         return moment.isoformat() if moment is not None else None
@@ -549,6 +559,7 @@ def health(session: Session, project: Project) -> dict[str, Any]:
                 "inbox",
             )
         },
+        "new_this_week": new_this_week or 0,
         "last_review_at": iso(last_review),
         "oldest_unreviewed_at": iso(oldest_unreviewed),
         "last_sync_at": iso(last_sync),

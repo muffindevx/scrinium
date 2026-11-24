@@ -122,6 +122,7 @@ def test_health_counts_without_listing_rules(api: Api) -> None:
 
     first = health()
     assert first["rules"] == 1 and first["unreviewed"] == 1 and first["inbox"] == 1
+    assert first["new_this_week"] == 1
     assert first["last_sync_at"] and first["last_review_at"] is None
     _verify(api)
     api.runtime.chat.state = ModelStatus.UNAVAILABLE
@@ -129,6 +130,18 @@ def test_health_counts_without_listing_rules(api: Api) -> None:
     after = health()
     assert after["verified"] == 1 and after["drifted"] == 1 and after["inbox"] == 1
     assert after["last_review_at"]
+
+
+def test_activity_lists_syncs_and_reviews_without_extraction_rows(api: Api) -> None:
+    _verify(api)
+    events = api.runtime.client.get(f"/api/v1/projects/{api.project_id}/activity").json()["events"]
+    kinds = [event["kind"] for event in events]
+    assert "sync" in kinds and "knowledge_version.verify" in kinds
+    review = next(event for event in events if event["kind"] == "knowledge_version.verify")
+    assert review["subject"] == "Comision por venta" and review["to"] == "human_verified"
+    # The bulk rows an extraction writes stay out; newest first.
+    assert not {"evidence.create", "knowledge_version.create"} & set(kinds)
+    assert [event["at"] for event in events] == sorted((e["at"] for e in events), reverse=True)
 
 
 def test_consistency_runs_on_its_own_after_an_extraction(api: Api) -> None:

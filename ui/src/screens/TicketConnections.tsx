@@ -64,7 +64,7 @@ export function TicketConnections({
       .catch(fail)
   }, [project.id, fail])
   useEffect(load, [load])
-  // The outcome is read once; the URL goes back to plain /fuentes.
+  // The outcome is read once; the URL goes back to plain /integraciones.
   useEffect(() => {
     if (params.has("linear")) setParams({}, { replace: true })
   }, [params, setParams])
