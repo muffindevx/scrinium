@@ -117,7 +117,7 @@ MAX_DECISIONS_PER_BATCH: Final = 24
 # GTX 1060): short title and statement, and the category as a 3-letter code. The model does
 # not write the citation: it is its decision's.
 TITLE_MIN_CHARS: Final = 12
-TITLE_MAX_CHARS: Final = 60
+TITLE_MAX_CHARS: Final = detail.TITLE_MAX_CHARS
 STATEMENT_MAX_CHARS: Final = 160
 # Output tokens: in the map a rule is ~20 and a null ~10; with margin, 35 per decision,
 # the verdicts on existing rules, and a fixed base.
@@ -187,16 +187,6 @@ CATEGORY_CODES: Final[dict[str, RuleCategory]] = {
     "int": RuleCategory.INTEGRATION_CONTRACT, "ren": RuleCategory.PERFORMANCE_CONSTRAINT,
     "seg": RuleCategory.SECURITY_CONSTRAINT, "otr": RuleCategory.OTHER,
 }  # fmt: skip
-
-
-def _whole_words(text: str, limit: int) -> str:
-    """Cuts at the last whole word: the grammar cuts exactly at the cap, mid
-    word ("...si haya")."""
-    text = text.strip()
-    if len(text) < limit:
-        return text
-    cut = text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:")
-    return cut or text[:limit]
 
 
 class _ModelVerdict(BaseModel):
@@ -648,7 +638,7 @@ def interpret(raw: str, fragments: list[Fragment]) -> tuple[list[ValidRule], int
         try:
             content = RuleContent.model_validate(
                 {
-                    "title": _whole_words(rule.t, TITLE_MAX_CHARS),
+                    "title": detail.whole_words(rule.t, TITLE_MAX_CHARS),
                     # Provisional until phase 2 (rule_detail): says what is missing and shows the
                     # decision.
                     "statement": pending_statement(_decision_line(decision)),
@@ -1006,7 +996,7 @@ def _write_statements(
                 )  # fmt: skip
             usage.add(completion)
             result["tokens"] = usage.as_dict()
-            statements = detail.interpret_details(completion.text, group)
+            written = detail.interpret_details(completion.text, group)
         except ModelError as error:
             if error.outcome is Outcome.BUDGET:
                 # T6: stop without yielding, or the statements would be queued again at once.
@@ -1020,7 +1010,7 @@ def _write_statements(
             run = session.get_one(AnalysisRun, run_id)
             project = session.get_one(Project, run.project_id)
             result["detailed"] += detail.store_details(
-                session, project, run, group, statements, completion.model_id
+                session, project, run, group, written, completion.model_id
             )
         result["pending"] = len(items) - start - len(group)
         report_progress(database, run_id, result)
@@ -1120,7 +1110,7 @@ def write_statement_now(
                     detail.build_detail_messages(items, detail.new_nonce()),
                     detail.output_tokens(items), detail.detail_schema(items),
                 )  # fmt: skip
-            statements = detail.interpret_details(completion.text, items)
+            written = detail.interpret_details(completion.text, items)
         except ModelError:
             finish_run(database, run_id, AnalysisStatus.FAILED, result, "model_error")
             raise
@@ -1128,7 +1118,7 @@ def write_statement_now(
         run = session.get_one(AnalysisRun, run_id)
         project = session.get_one(Project, project_id)
         result["detailed"] = detail.store_details(
-            session, project, run, items, statements, completion.model_id
+            session, project, run, items, written, completion.model_id
         )
     finish_run(database, run_id, AnalysisStatus.COMPLETED, result)
     return bool(result["detailed"])

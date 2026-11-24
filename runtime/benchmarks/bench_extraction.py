@@ -202,7 +202,7 @@ def _phase_two(chat: OpenAICompatibleChat, rows: list[dict[str, Any]]) -> dict[s
                 rule_detail.build_detail_messages(group, secrets.token_hex(8)),
                 rule_detail.output_tokens(group), rule_detail.detail_schema(group),
             )  # fmt: skip
-            statements = rule_detail.interpret_details(completion.text, group)
+            written = rule_detail.interpret_details(completion.text, group)
         except ModelError:
             failed += 1
             continue
@@ -212,7 +212,11 @@ def _phase_two(chat: OpenAICompatibleChat, rows: list[dict[str, Any]]) -> dict[s
         written += completion.generation_ms / 1000
         for item in group:
             row = rows[int(item.ref[1:]) - 1]
-            row["statement"] = statements.get(item.ref, row["statement"])
+            row["statement"] = written.statements.get(item.ref, row["statement"])
+            row["title"] = written.titles.get(item.ref, row["title"])
+            row["checks"]["truncated_title"] = rule_checks.is_truncated(
+                row["title"], rule_detail.TITLE_MAX_CHARS
+            )
             row["checks"]["language"] = rule_checks.language(f"{row['title']} {row['statement']}")
     batches = -(-len(items) // rule_detail.DETAIL_BATCH)
     print(f"fase 2: {len(items)} enunciados en {batches} lotes, {seconds:.1f} s", flush=True)

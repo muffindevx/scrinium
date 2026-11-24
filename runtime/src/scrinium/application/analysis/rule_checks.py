@@ -37,9 +37,23 @@ _ENGLISH: Final = frozenset({
 Language = Literal["es", "en", "?"]
 
 
+# Words a Spanish or English sentence cannot end on: a title that does was cut (B1).
+_DANGLING: Final = frozenset(
+    {
+        "a", "al", "como", "con", "cuando", "de", "del", "el", "en", "entre", "la", "las",
+        "lo", "los", "o", "para", "por", "que", "se", "si", "sin", "su", "sus", "un", "una",
+        "unos", "unas", "y",
+        "and", "as", "at", "by", "for", "from", "in", "into", "of", "on", "or", "than",
+        "that", "the", "to", "when", "with",
+    }
+)  # fmt: skip
+
+
 def is_truncated(title: str, limit: int) -> bool:
-    """The title hit the schema cap: the grammar cut it, almost certainly mid-sentence."""
-    return len(title) >= limit
+    """The title was cut: it hit the schema cap, carries phase 1's mark, or ends on a word
+    no sentence ends on ("...debe ser uno de los")."""
+    words = title.rstrip(" .").lower().split()
+    return len(title) >= limit or title.endswith("…") or (len(words) > 2 and words[-1] in _DANGLING)
 
 
 def language(text: str) -> Language:

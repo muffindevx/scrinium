@@ -61,3 +61,26 @@ def test_without_the_model_a_statement_cannot_be_written(api: Api) -> None:
     url = f"/api/v1/projects/{api.project_id}/rules/{entity_id}/statement"
     refused = api.runtime.client.post(url, headers=api.headers)
     assert refused.status_code == 503 and refused.json()["error"] == "llm_unavailable"
+
+
+def test_a_title_the_schema_cut_is_marked_and_written_again_whole(api: Api) -> None:
+    # B1: past 60 characters the title is cut at a word, and marked as cut.
+    long = "El estado de un nodo de agente debe ser uno de los valores definidos"
+    api.runtime.chat.reply = _extraction_reply(_rule(long))
+    api.runtime.chat.fail_statements = True
+    api.read(api.post(f"/api/v1/projects/{api.project_id}/extractions", {})["id"])
+    # Until phase 2, the cut shows: it does not read as a whole title.
+    assert _rules(api)[0]["name"] == "El estado de un nodo de agente debe ser uno de los valores…"
+
+    api.runtime.chat.fail_statements = False
+    entity_id = _rules(api)[0]["entity_id"]
+    url = f"/api/v1/projects/{api.project_id}/rules/{entity_id}/statement"
+    content = api.runtime.client.post(url, headers=api.headers).json()["versions"][0]["content"]
+    assert content["title"] == "Titulo completo de R1"
+    assert content["statement"] == "Enunciado de R1."
+
+
+def test_only_a_cut_title_is_written_again(api: Api) -> None:
+    api.runtime.chat.reply = _extraction_reply(_rule())
+    api.read(api.post(f"/api/v1/projects/{api.project_id}/extractions", {})["id"])
+    assert _rules(api)[0]["name"] == "Total de factura"

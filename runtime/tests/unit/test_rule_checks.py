@@ -9,6 +9,14 @@ def test_a_title_at_the_schema_limit_counts_as_cut() -> None:
     assert not rule_checks.is_truncated("Limite de intentos", 100)
 
 
+def test_a_title_cut_short_of_the_limit_counts_as_cut() -> None:
+    # B1: cut at the last whole word, it no longer reaches the cap.
+    assert rule_checks.is_truncated("El estado de un nodo de agente debe ser uno de los", 60)
+    assert rule_checks.is_truncated("Los eventos deben ser de los definidos en el", 60)
+    assert rule_checks.is_truncated("Limite de reintentos del envio de…", 60)
+    assert not rule_checks.is_truncated("El estado de un nodo debe ser conocido", 60)
+
+
 def test_language_by_frequent_words() -> None:
     assert rule_checks.language("La cuenta se bloquea tras 5 intentos fallidos") == "es"
     assert rule_checks.language("Candies must not be placed within the radius") == "en"

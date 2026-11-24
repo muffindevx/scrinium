@@ -142,8 +142,14 @@ class FakeChat:
             return self.reply
         if self.fail_statements:
             return "esto no es JSON"
-        refs = [item["properties"]["i"]["const"] for item in statements]
-        return json.dumps({"s": [{"i": ref, "s": f"Enunciado de {ref}."} for ref in refs]})
+        answers = []
+        for item in statements:
+            ref = item["properties"]["i"]["const"]
+            answer = {"i": ref, "s": f"Enunciado de {ref}."}
+            if "t" in item["properties"]:  # a title phase 1 cut: written again, whole
+                answer["t"] = f"Titulo completo de {ref}"
+            answers.append(answer)
+        return json.dumps({"s": answers})
 
 
 @dataclass

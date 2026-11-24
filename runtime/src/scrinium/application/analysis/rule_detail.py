@@ -38,10 +38,13 @@ logger = logging.getLogger("scrinium.extraction")
 # Phase 1 marks its versions with this: they are the ones waiting for a statement.
 MAP_EXTRACTOR_VERSION: Final = "rules-map-1"
 DETAIL_EXTRACTOR_VERSION: Final = "rules-detail-1"
-DETAIL_PROMPT_VERSION: Final = "2"
+DETAIL_PROMPT_VERSION: Final = "3"
 PENDING_PREFIX: Final = "Pendiente de redactar. Codigo:"
 DETAIL_BATCH: Final = 12
 STATEMENT_MAX_CHARS: Final = 160
+# Phase 1 ends a title the schema cut with this mark; phase 2 writes it again, whole (B1).
+CUT_MARK: Final = "…"
+TITLE_MAX_CHARS: Final = 60
 # What the model sees per rule: the cited lines, marked with "»", and a few around them.
 # With the cited lines alone, the statement described the code ("if held has size > 0")
 # instead of the rule.
@@ -67,13 +70,16 @@ la SoA esta aprobada, sus items no se pueden mover." (no "si lives es menor o ig
 llama a finish"). Si la regla vale siempre, di solo lo que exige. Usa los valores y \
 constantes del codigo cuando importen. No afirmes nada que el codigo no diga.
 3. En "s" respondes una vez por regla, en el mismo orden, con {"i": su referencia, "s": \
-enunciado}. Escribe siempre en espanol. Devuelve solo el JSON pedido, en una sola linea.\
+enunciado}. Escribe siempre en espanol. Devuelve solo el JSON pedido, en una sola linea.
+4. Si el titulo de una regla termina en "…", quedo cortado: anade "t" con un titulo completo de \
+3 a 8 palabras que diga la regla, como "Limite de vidas por partida".\
 """
 
 
 class _ModelStatement(BaseModel):
     i: str
     s: str = Field(json_schema_extra={"maxLength": STATEMENT_MAX_CHARS})
+    t: str | None = None
 
 
 class _ModelDetail(BaseModel):
@@ -93,6 +99,28 @@ class DetailItem:
     excerpt: str
     entity_id: uuid.UUID | None = None
     version_id: uuid.UUID | None = None
+
+    @property
+    def title_cut(self) -> bool:
+        return self.title.endswith(CUT_MARK)
+
+
+@dataclass(frozen=True)
+class Written:
+    """What phase 2 wrote, by reference: the statements, and the titles it wrote again."""
+
+    statements: dict[str, str]
+    titles: dict[str, str]
+
+
+def whole_words(text: str, limit: int) -> str:
+    """Cuts at the last whole word and marks the cut: the grammar cuts exactly at the cap,
+    mid word ("...si haya"), and a title cut at a word ("...uno de los") reads as whole."""
+    text = text.strip()
+    if len(text) < limit:
+        return text
+    cut = text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:.")
+    return (cut or text[:limit]) + CUT_MARK
 
 
 def pending_statement(code_line: str) -> str:
@@ -121,6 +149,22 @@ def output_tokens(items: list[DetailItem]) -> int:
     return OUTPUT_TOKENS_BASE + OUTPUT_TOKENS_PER_RULE * len(items)
 
 
+def _entry_schema(item: DetailItem) -> dict[str, Any]:
+    """One statement; and a whole title, only for a rule whose title was cut (B1)."""
+    properties: dict[str, Any] = {
+        "i": {"const": item.ref},
+        "s": {"type": "string", "maxLength": STATEMENT_MAX_CHARS},
+    }
+    if item.title_cut:
+        properties["t"] = {"type": "string", "minLength": 12, "maxLength": TITLE_MAX_CHARS}
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(properties),
+        "additionalProperties": False,
+    }
+
+
 def detail_schema(items: list[DetailItem]) -> dict[str, Any]:
     """Exactly one statement per rule, with its reference fixed by position."""
     schema: dict[str, Any] = {
@@ -128,18 +172,7 @@ def detail_schema(items: list[DetailItem]) -> dict[str, Any]:
         "properties": {
             "s": {
                 "type": "array",
-                "prefixItems": [
-                    {
-                        "type": "object",
-                        "properties": {
-                            "i": {"const": item.ref},
-                            "s": {"type": "string", "maxLength": STATEMENT_MAX_CHARS},
-                        },
-                        "required": ["i", "s"],
-                        "additionalProperties": False,
-                    }
-                    for item in items
-                ],
+                "prefixItems": [_entry_schema(item) for item in items],
                 "minItems": len(items),
                 "maxItems": len(items),
             }
@@ -162,20 +195,26 @@ def build_detail_messages(items: list[DetailItem], nonce: str) -> list[ChatMessa
     ]
 
 
-def interpret_details(raw: str, items: list[DetailItem]) -> dict[str, str]:
-    """Statement by reference. Raises ModelError if it is not the requested JSON."""
+def interpret_details(raw: str, items: list[DetailItem]) -> Written:
+    """Statements (and the titles written again) by reference. Raises ModelError if it is not
+    the requested JSON. A new title only replaces one that was cut."""
     try:
         answer = _ModelDetail.model_validate_json(raw)
     except ValidationError:
         raise InvalidOutputError from None
+    cut_titles = {item.ref for item in items if item.title_cut}
     known = {item.ref for item in items}
     statements: dict[str, str] = {}
+    titles: dict[str, str] = {}
     for entry in answer.s:
         ref, text = entry.i.strip(), entry.s.strip()
         if ref in known and ref not in statements and text:
             cut = text if len(text) < STATEMENT_MAX_CHARS else text[:STATEMENT_MAX_CHARS]
             statements[ref] = cut.rsplit(" ", 1)[0] if len(text) >= STATEMENT_MAX_CHARS else cut
-    return statements
+            title = whole_words(entry.t or "", TITLE_MAX_CHARS)
+            if ref in cut_titles and len(title) >= 12:
+                titles[ref] = title
+    return Written(statements, titles)
 
 
 def projects_with_pending_details(session: Session) -> list[uuid.UUID]:
@@ -255,7 +294,7 @@ def store_details(
     project: Project,
     run: AnalysisRun,
     items: list[DetailItem],
-    statements: dict[str, str],
+    written: Written,
     model_id: str | None = None,
 ) -> list[str]:
     """One new version per rule with its statement, and the same citations as the map's.
@@ -269,13 +308,17 @@ def store_details(
     )  # fmt: skip
     stored: list[str] = []
     for item in items:
-        statement = statements.get(item.ref)
+        statement = written.statements.get(item.ref)
         if not statement or item.entity_id is None or item.version_id is None:
             continue
         previous = session.get_one(BusinessRuleVersion, item.version_id)
         try:
             content = RuleContent.model_validate(
-                {"title": previous.title, "scope": previous.scope, **shaped(statement)}
+                {
+                    "title": written.titles.get(item.ref, previous.title),
+                    "scope": previous.scope,
+                    **shaped(statement),
+                }
             )
             version, created = add_rule_version(
                 session, project, item.entity_id, content, provenance
