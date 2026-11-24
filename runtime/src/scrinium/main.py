@@ -55,7 +55,7 @@ from scrinium.infrastructure.llm.switchable import SwitchableChat
 from scrinium.infrastructure.local_http import LocalHttpClient, ModelError
 from scrinium.infrastructure.secret_store import KeyringSecretStore, SecretStore
 from scrinium.infrastructure.sqlite.database import Database
-from scrinium.infrastructure.tools.manifest import EMBEDDING_MODEL, local_chat_model
+from scrinium.infrastructure.tools.manifest import CHAT_MODEL, EMBEDDING_MODEL
 from scrinium.infrastructure.vector_index.sqlite_vec import SqliteVecIndex, retire_legacy_vectors
 
 
@@ -87,18 +87,17 @@ def local_models(config: RuntimeConfig) -> tuple[EmbeddingProvider, LLMProvider]
             OllamaChat(config.ollama_url, config.llm_model),
         )
     url, key = config.llama_url, config.llama_api_key
-    chat_name = local_chat_model(config.local_chat_model).name
     if url is None:
         return (
             OpenAICompatibleEmbeddings(url, EMBEDDING_MODEL.name, key),
-            OpenAICompatibleChat(url, chat_name, key),
+            OpenAICompatibleChat(url, CHAT_MODEL.name, key),
         )
-    order = ChatFirst(LocalHttpClient(url, key), chat_name, EMBEDDING_MODEL.name)
+    order = ChatFirst(LocalHttpClient(url, key), CHAT_MODEL.name, EMBEDDING_MODEL.name)
     return (
         OpenAICompatibleEmbeddings(
             url, EMBEDDING_MODEL.name, key, before_request=order.before_embeddings
         ),
-        OpenAICompatibleChat(url, chat_name, key, before_request=order.before_chat),
+        OpenAICompatibleChat(url, CHAT_MODEL.name, key, before_request=order.before_chat),
     )
 
 
@@ -118,8 +117,7 @@ def model_releaser(config: RuntimeConfig) -> Callable[[], None]:
             ]
         elif config.llama_url:
             client = LocalHttpClient(config.llama_url, config.llama_api_key)
-            chat = local_chat_model(config.local_chat_model)
-            calls = [("/models/unload", {"model": m.name}) for m in (chat, EMBEDDING_MODEL)]
+            calls = [("/models/unload", {"model": m.name}) for m in (CHAT_MODEL, EMBEDDING_MODEL)]
         else:
             return
         for path, body in calls:

@@ -53,17 +53,9 @@ from scrinium.infrastructure.llm.load_order import ChatFirst
 from scrinium.infrastructure.llm.openai_compatible import OpenAICompatibleChat
 from scrinium.infrastructure.local_http import LocalHttpClient, ModelError
 from scrinium.infrastructure.sqlite.models import Project
-from scrinium.infrastructure.tools.manifest import (
-    CHAT_MODEL,
-    EMBEDDING_MODEL,
-    GEMMA_MODEL,
-    MAP_MODEL,
-    Model,
-)
+from scrinium.infrastructure.tools.manifest import CHAT_MODEL, EMBEDDING_MODEL, MAP_MODEL
 
 DB_NAME = "scrinium.sqlite3"
-# The local chat models that can be measured: the managed one and those under evaluation.
-_CHAT_MODELS = {model.name: model for model in (CHAT_MODEL, GEMMA_MODEL)}
 
 
 def _sample_key(candidate: Candidate) -> str:
@@ -288,7 +280,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     sample = sorted(everything, key=_sample_key)[: args.fragments]
     groups = extraction.batches([_fragment(c) for c in sample])
 
-    chat_model: Model = _CHAT_MODELS[args.chat_model]
     llama = start_llama_server(args.data_dir)
     if llama is None or llama.url is None:
         sys.exit("No arranco llama-server.")
@@ -299,7 +290,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         # embeddings. With --with-embeddings already loaded, it unloads them first (V4).
         local = LocalHttpClient(llama.url, llama.api_key)
         # The map (phase 1) with the small model if asked; the statements with the chat model.
-        map_name = MAP_MODEL.name if args.map_model else chat_model.name
+        map_name = MAP_MODEL.name if args.map_model else CHAT_MODEL.name
         order = ChatFirst(local, map_name, EMBEDDING_MODEL.name)
         # Temperature 0 and a fixed seed: the same input gives the same output, so two runs
         # can be compared (at 0.2 the output varied by 20 % from one run to the next).
@@ -377,9 +368,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if args.map_model:
             # Unload the map model: the chat model needs the GPU for the statements (V4).
             _unload(local, MAP_MODEL.name)
-            order = ChatFirst(local, chat_model.name, EMBEDDING_MODEL.name)
+            order = ChatFirst(local, CHAT_MODEL.name, EMBEDDING_MODEL.name)
             chat = OpenAICompatibleChat(
-                llama.url, chat_model.name, llama.api_key, before_request=order.before_chat,
+                llama.url, CHAT_MODEL.name, llama.api_key, before_request=order.before_chat,
                 temperature=0.0, seed=BENCH_SEED,
             )  # fmt: skip
         details = _phase_two(chat, rows)
@@ -425,7 +416,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "project": project.name,
         "machine": {"platform": platform.platform(), "model_threads": model_threads()},
         "settings": {
-            "chat_model": asdict(_CHAT_MODELS[args.chat_model]),
+            "chat_model": asdict(CHAT_MODEL),
             "context_tokens": CONTEXT_TOKENS,
             "prompt_version": extraction.PROMPT_VERSION,
             "candidates_version": CANDIDATES_VERSION,
@@ -461,10 +452,6 @@ def main() -> None:
     )
     parser.add_argument("--golden", type=Path, help="reglas de referencia (F1)")
     parser.add_argument("--sample", choices=["hash", "golden"], default="hash")
-    parser.add_argument(
-        "--chat-model", choices=sorted(_CHAT_MODELS), default=CHAT_MODEL.name,
-        help="modelo de chat que se mide",
-    )  # fmt: skip
     parser.add_argument(
         "--map-model", action="store_true", help="el mapa (fase 1) con el modelo pequeno"
     )

@@ -44,11 +44,6 @@ def default_llm_model() -> str:
     return os.environ.get("SCRINIUM_LLM_MODEL", "qwen3:4b-instruct")
 
 
-def default_local_chat_model() -> str | None:
-    """Which of llama-server's chat models writes (the manifest's names); None, the default."""
-    return os.environ.get("SCRINIUM_LOCAL_CHAT_MODEL") or None
-
-
 def default_embedding_model() -> str:
     return os.environ.get("SCRINIUM_EMBEDDING_MODEL", "qwen3-embedding:0.6b")
 
@@ -69,8 +64,6 @@ class RuntimeConfig:
     # Ollama's models; llama-server's are the ones in the manifest.
     embedding_model: str = "qwen3-embedding:0.6b"
     llm_model: str = "qwen3:4b-instruct"
-    # llama-server's chat model (SCRINIUM_LOCAL_CHAT_MODEL); None is the managed default.
-    local_chat_model: str | None = None
 
     @property
     def allowed_host(self) -> str:

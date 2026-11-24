@@ -11,7 +11,7 @@ from scrinium.infrastructure.tools.installer import (
     locate,
     locate_model,
 )
-from scrinium.infrastructure.tools.manifest import EMBEDDING_MODEL, LLAMA_SERVER, local_chat_model
+from scrinium.infrastructure.tools.manifest import CHAT_MODEL, EMBEDDING_MODEL, LLAMA_SERVER
 
 
 def _accelerator(os_name: str, executable: str | None) -> str | None:
@@ -52,9 +52,6 @@ def engine_info(config: RuntimeConfig) -> dict[str, Any]:
                 "size_bytes": model.size,
                 "installed": locate_model(model, models_dir) is not None,
             }
-            for role, model in (
-                ("chat", local_chat_model(config.local_chat_model)),
-                ("embeddings", EMBEDDING_MODEL),
-            )
+            for role, model in (("chat", CHAT_MODEL), ("embeddings", EMBEDDING_MODEL))
         ],
     }

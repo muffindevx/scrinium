@@ -526,7 +526,6 @@ Other variables:
 - `SCRINIUM_DOWNLOADS_DIR`: where `tools/` and `models/` live; overrides the folder chosen in Settings.
 - `SCRINIUM_MODEL_PROVIDER`: `llama` (default) or `ollama`.
 - `SCRINIUM_OLLAMA_URL`, `SCRINIUM_LLM_MODEL`, `SCRINIUM_EMBEDDING_MODEL`: for Ollama only. The URL must be loopback.
-- `SCRINIUM_LOCAL_CHAT_MODEL`: which of llama-server's chat models writes: `qwen3-4b-instruct-2507` (the default) or `gemma-4-e4b-it` (installed with `scrinium tools install gemma-4-e4b-it`; on reference-c it found 35 of 44 reference rules versus 30, at about 3.5 times the time).
 
 ### Watching what it does
 

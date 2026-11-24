@@ -139,13 +139,11 @@ def show_tools(data_dir: Path) -> int:
         for model in MODELS.values()
     ]
     for label, path in found:
-        name = label.split(" ")[0]
-        optional = name not in DEFAULT_INSTALL
+        optional = label.startswith(CHAT_MODEL.name)
         missing = missing or (path is None and not optional)
         shown = path if path is not None else "no instalado"
         if path is None and optional:
-            addon = LOCAL_ADDON if name == CHAT_MODEL.name else name
-            shown = f"no instalado (opcional: scrinium tools install {addon})"
+            shown = f"no instalado (opcional: scrinium tools install {LOCAL_ADDON})"
         print(f"{label}: {shown}")
     if missing:
         print("Instala lo que falta con: scrinium tools install")
