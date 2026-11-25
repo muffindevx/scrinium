@@ -1,3 +1,10 @@
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/scrinium-mark-dark.svg">
+    <img src="docs/brand/scrinium-mark.svg" width="64" alt="Scrinium">
+  </picture>
+</p>
+
 # Scrinium
 
 Local-first software change intelligence. It explains:

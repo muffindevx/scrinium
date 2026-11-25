@@ -1,5 +1,6 @@
 import { DialogHost } from "@/components/ui/confirm"
 import { Placeholder } from "@/components/ui/skeleton"
+import { ScriniumMark } from "@/components/brand"
 import { adoptLanguage, t } from "@/lib/i18n"
 import {
   Blocks,
@@ -7,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Cloud,
-  FileCode2,
   FolderGit2,
   GitCompare,
   Grid2x2,
@@ -459,10 +459,8 @@ function Shell({ data, setView }: { data: ReadyData; setView: (view: ViewState) 
       <header className="flex h-16 shrink-0 items-center justify-between gap-3 bg-sidebar px-5 max-sm:px-3">
         <div className="flex min-w-0 items-center gap-4">
           <span className="flex items-center gap-2.5">
-            <span className="grid size-7 place-items-center rounded-lg bg-foreground text-background">
-              <FileCode2 className="size-4" aria-hidden="true" />
-            </span>
-            <span className="font-heading text-[1.05rem] font-semibold tracking-tight lowercase max-sm:sr-only">
+            <ScriniumMark className="size-7" />
+            <span className="font-heading text-[1.1rem] font-semibold tracking-[-0.03em] lowercase max-sm:sr-only">
               {t("Scrinium")}
             </span>
             <span className="text-[0.62rem] font-semibold tracking-[0.14em] text-muted-foreground uppercase max-md:hidden">
@@ -633,11 +631,9 @@ export default function App() {
   }
   return (
     <main className="mx-auto grid max-w-xl gap-6 px-4 py-16">
-      <span className="flex items-center gap-2">
-        <span className="grid size-8 place-items-center rounded-lg bg-foreground text-background">
-          <FileCode2 className="size-4" aria-hidden="true" />
-        </span>
-        <span className="font-heading text-xl font-semibold tracking-tight lowercase">{t("Scrinium")}</span>
+      <span className="flex items-center gap-2.5">
+        <ScriniumMark className="size-9" />
+        <span className="font-heading text-2xl font-semibold tracking-[-0.03em] lowercase">{t("Scrinium")}</span>
       </span>
       {view.kind === "loading" && <Placeholder shape="text" rows={3} label={t("Cargando")} />}
       {view.kind === "signed_out" && (
