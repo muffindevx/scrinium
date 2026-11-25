@@ -23,3 +23,4 @@ git -c user.name="$(git -C "$repo" config user.name)" -c user.email="$(git -C "$
   commit -q -m "Publish the landing page from $(git -C "$repo" rev-parse --short HEAD)"
 git push -f "$(git -C "$repo" remote get-url "$remote")" pages:pages
 echo "Publicado en la rama pages de $remote: https://muffindevx.codeberg.page/scrinium/"
+echo "Si la pagina dice Not Found, falta el webhook git-pages del repositorio (ver site/README.md)."

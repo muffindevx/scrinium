@@ -34,7 +34,13 @@ The site lives under `/scrinium` on both hosts. `SITE` and `BASE` set where:
 **GitHub Pages.** `.github/workflows/site.yml` builds and publishes on every push to `main` that
 touches `site/`. Once, in the repository: Settings › Pages › Source: **GitHub Actions**.
 
-**Codeberg Pages.** Codeberg serves a project's `pages` branch. From the repository root:
+**Codeberg Pages.** Codeberg serves a project's `pages` branch once it is told to. Once, in the
+repository on Codeberg (it must be public): Settings › Webhooks › Add webhook › **git-pages**, keep the
+target `https://muffindevx.codeberg.page/scrinium/`, set **Branch filter** to `pages`, and add it.
+Each push to `pages` then publishes. If the page still says Not Found,
+`https://muffindevx.codeberg.page/scrinium/.git-pages/manifest.json` lists what went wrong.
+
+From the repository root:
 
 ```bash
 sh site/publish-codeberg.sh
