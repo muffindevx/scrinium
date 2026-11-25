@@ -1,0 +1,16 @@
+# Only what the image build needs: the UI and runtime sources and docker/.
+*
+!ui/
+!runtime/
+!docker/
+ui/node_modules/
+ui/dist/
+runtime/.venv/
+runtime/tests/
+runtime/benchmarks/
+runtime/src/scrinium/web_dist/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/

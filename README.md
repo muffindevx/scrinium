@@ -42,6 +42,178 @@ By default everything runs on your machine. The heaviest task is extracting the 
 - Base Apple M1 and M2 Macs have less memory bandwidth than a GTX 1060. They sit between minimum and recommended.
 - Measured with `make bench` (`runtime/benchmarks/bench_extraction.py`). To validate another tier, run it on that machine.
 
+## Run it with Docker
+
+The easiest way: you install only Docker, and one script, [`docker/scrinium.sh`](docker/scrinium.sh), does the rest. It works the same on your own computer and on a server you rent (a VPS).
+
+You need about 2 GB of free disk: the image (about 330 MB) and, the first time, the tools and the search model (about 0.7 GB).
+
+Tried on Linux. On macOS and on Windows (WSL) the steps are the same, but nobody has run them there yet.
+
+### On your own computer
+
+1. **Install Docker.**
+   - Windows or macOS: install [Docker Desktop](https://docs.docker.com/desktop/) and open it. On Windows, type every command below in a WSL (Ubuntu) terminal, with Docker Desktop's WSL integration turned on.
+   - Linux: install [Docker Engine](https://docs.docker.com/engine/install/), then let your account use it and log out and back in:
+
+     ```bash
+     sudo usermod -aG docker $USER
+     ```
+
+   To check it, type `docker run --rm hello-world`. You see `Hello from Docker!`.
+
+2. **Get Scrinium.** Type:
+
+   ```bash
+   git clone https://github.com/muffindevx/scrinium.git
+   ```
+
+   ```bash
+   cd scrinium
+   ```
+
+3. **Start it, giving it the folder of a project you want explained.** For example, if your project is in `~/code/shop`:
+
+   ```bash
+   sh docker/scrinium.sh start ~/code/shop
+   ```
+
+   The first time you see, one after the other:
+
+   - `Construyendo la imagen de Scrinium...`: it builds Scrinium, a few minutes;
+   - `Comprobando las herramientas y el modelo de busqueda...`: it downloads them, with a percentage;
+   - `Scrinium arrancado.` and a link that starts with `http://127.0.0.1:47615/auth/launch?token=`;
+   - the line `/repos/shop   (tu carpeta /home/you/code/shop)`.
+
+   The next times it takes seconds.
+
+4. **Open the link in your browser.** It works once and only for 2 minutes. If it expired, or you closed the tab, ask for a new one:
+
+   ```bash
+   sh docker/scrinium.sh link
+   ```
+
+5. **The first time, choose who writes the rules.** Home asks. Read [Which model writes the rules](#which-model-writes-the-rules) first: in the container, not every choice is available.
+
+6. **Add your project.** In Projects, create a project and add a source with the path the script printed in step 3, for example `/repos/shop`. That is where your folder is inside the container. Scrinium can read it, never change it.
+
+7. **When you finish:**
+
+   ```bash
+   sh docker/scrinium.sh stop
+   ```
+
+   Your projects and rules stay. To come back, run `sh docker/scrinium.sh start`: it remembers your folders. To add another folder, run `start` with it; the ones you had stay. Changing the folders restarts Scrinium, so it prints a new link.
+
+| To... | Type |
+|---|---|
+| start, or get the link again | `sh docker/scrinium.sh start` |
+| a new entry link | `sh docker/scrinium.sh link` |
+| stop | `sh docker/scrinium.sh stop` |
+| see what it is doing (Ctrl+C to leave; it keeps running) | `sh docker/scrinium.sh logs` |
+| the latest Scrinium (`git pull`, rebuild, restart) | `sh docker/scrinium.sh update` |
+| any other `scrinium` command, inside the container | `sh docker/scrinium.sh run doctor` |
+| another port, if 47615 is busy | `SCRINIUM_PORT=47620 sh docker/scrinium.sh start` |
+
+**What it creates.** The image `scrinium:local`, the container `scrinium`, the network `scrinium` and the volume `scrinium-data`, which holds the database, the tools and the models. Your folders are mounted read-only, never copied. Scrinium inside the container runs with your user id, not as root, with no Linux capabilities. To remove everything, data included:
+
+```bash
+docker rm -f scrinium && docker volume rm scrinium-data && docker network rm scrinium && docker image rm scrinium:local
+```
+
+**How the container keeps Scrinium local.** Scrinium only listens on `127.0.0.1` and only answers requests addressed to `127.0.0.1:<port>`. Inside the container, `socat` passes the published port to that address unchanged ([`docker/entrypoint.sh`](docker/entrypoint.sh)), and Docker publishes it only on your computer's `127.0.0.1`. Other machines on your network cannot reach it, and every Host, Origin, session and CSRF check applies as without Docker.
+
+### Which model writes the rules
+
+The image includes **no model**. The first `start` downloads into the volume what search needs: gitleaks, llama.cpp (its CPU build: the container sees no GPU) and the search model. Search by meaning then works.
+
+Writing the rules needs a chat model. Home asks the first time. In the container:
+
+- **A model server on the same machine** (Ollama, llama-server, vLLM): start Scrinium with its port, for Ollama:
+
+  ```bash
+  sh docker/scrinium.sh start --model-port 11434
+  ```
+
+  In Home choose **local server** with `http://127.0.0.1:11434` and the model's name. Inside the container that address leads to the same port on your computer, and only there. With Docker Desktop that is all. On Linux, the server must also listen on Docker's address, not only on `127.0.0.1`: for Ollama, `OLLAMA_HOST=172.17.0.1:11434` (the address of `docker0`, shown by `ip -4 addr show docker0`).
+- **Scrinium's own local model** (2.5 GB more), on the CPU, so slow: hours for a large project.
+
+  ```bash
+  sh docker/scrinium.sh run tools install local
+  ```
+
+  Then `sh docker/scrinium.sh stop` and `start`.
+- **Isolated mode**: no model writes; nothing leaves the machine.
+- **Your own provider** (DeepSeek, GLM, Claude…): **not available in the container today.** Scrinium keeps provider keys only in the operating system's keyring and refuses to keep them in plain text ([ADR-006](docs/decisions/ADR-006-secrets.md)); a container has no keyring, so the console says the keyring is unavailable and `sh docker/scrinium.sh run doctor` says `Sin almacen de secretos`. For a provider, install the package ([Getting started](#getting-started)).
+
+### On a VPS
+
+Scrinium is made to be used from the machine it runs on. On a VPS that machine is the server, so you reach it through an **SSH tunnel**: your computer's `127.0.0.1:47615` becomes the server's `127.0.0.1:47615`, encrypted by SSH, and nothing else on the internet can reach it.
+
+**Do not open Scrinium's port to the internet**, and do not add a firewall rule for it: the script publishes it only on the server's `127.0.0.1` on purpose.
+
+1. **Rent a Linux server** (Ubuntu or Debian) with at least 4 GB of memory and 5 GB of free disk. You get an address, for example `203.0.113.10`.
+
+2. **Log in with a normal account, not root.** If you only have root, create one (here `ana`) and log in with it:
+
+   ```bash
+   ssh root@203.0.113.10
+   ```
+
+   ```bash
+   adduser ana && usermod -aG sudo ana
+   ```
+
+   ```bash
+   exit
+   ```
+
+   ```bash
+   ssh ana@203.0.113.10
+   ```
+
+3. **Install Docker Engine** with the steps for your system ([Ubuntu](https://docs.docker.com/engine/install/ubuntu/), [Debian](https://docs.docker.com/engine/install/debian/)), then let your account use it:
+
+   ```bash
+   sudo usermod -aG docker ana
+   ```
+
+   Log out (`exit`) and in again (`ssh ana@203.0.113.10`). `docker run --rm hello-world` prints `Hello from Docker!`.
+
+4. **Put Scrinium and your project on the server:**
+
+   ```bash
+   git clone https://github.com/muffindevx/scrinium.git
+   ```
+
+   ```bash
+   git clone https://example.com/you/shop.git
+   ```
+
+5. **Start Scrinium:**
+
+   ```bash
+   sh scrinium/docker/scrinium.sh start ~/shop
+   ```
+
+   It prints the entry link and, because you are connected by SSH, the exact tunnel command for your computer, for example `ssh -N -L 47615:127.0.0.1:47615 ana@203.0.113.10`.
+
+6. **On your computer, open a new terminal and type that tunnel command.** It prints nothing and stays open: that is right. Leave it open while you use Scrinium.
+
+7. **Open the link in your computer's browser.** If it expired, on the server: `sh scrinium/docker/scrinium.sh link`.
+
+Closing the tunnel only cuts your access: Scrinium keeps running on the server, extracting rules if it was. To come back, open the tunnel again and ask for a link.
+
+The port must be the same on both ends, because Scrinium checks it. If 47615 is busy on your computer, start Scrinium on the server with another one, `SCRINIUM_PORT=47620 sh scrinium/docker/scrinium.sh start`, and use the tunnel command it prints.
+
+**Why not a domain with HTTPS behind a reverse proxy (nginx, Caddy, Traefik)?** Scrinium does not support it, and the proxy cannot fix that safely:
+
+- it accepts only the Host `127.0.0.1:<port>`, and every change must come with the Origin `http://127.0.0.1:<port>` ([`runtime/src/scrinium/api/middleware.py`](runtime/src/scrinium/api/middleware.py), tested in `runtime/tests/security/test_host_origin.py`). Behind `https://scrinium.example.com` the browser sends that domain, and Scrinium refuses every change;
+- making it work means the proxy rewriting Host and Origin, which switches off the check that stops other websites from acting in your session: the same weakness as development mode ([THREAT_MODEL.md](docs/security/THREAT_MODEL.md));
+- it ignores forwarded headers, and its entry link and session were designed for one person on one machine. The threat model lists "a tunnel or proxy you set up yourself" as what would expose it.
+
+The SSH tunnel needs none of that: to Scrinium, you are on its machine.
+
 ## Getting started
 
 ### Install the package
