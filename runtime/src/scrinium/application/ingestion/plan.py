@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 
+from scrinium.application.ingestion import docker_mounts
 from scrinium.application.ingestion.policy import (
     MAX_DEPTH,
     MAX_FILE_BYTES,
@@ -40,6 +41,8 @@ class SourceErrorCode(StrEnum):
     WRONG_OWNER = "wrong_owner"
     CONTAINS_SCRINIUM_DATA = "contains_scrinium_data"
     FOLDERS_UNSUPPORTED = "folders_unsupported"
+    # In Docker: a folder of the host that `docker/scrinium.sh start` was not given.
+    NOT_SHARED_WITH_DOCKER = "not_shared_with_docker"
 
 
 class SourceError(RuntimeError):
@@ -93,10 +96,16 @@ class Plan:
 
 def resolve_root(kind: SourceKind, raw_path: str, data_dir: Path) -> Path:
     """Validates the folder the person chose. It reads nothing inside it."""
+    shared = docker_mounts.mounts()
+    if shared is not None:
+        # In Docker the person knows the folder by its path on the host.
+        raw_path = docker_mounts.to_container(raw_path, shared)
     path = Path(raw_path)
     if not path.is_absolute():
         raise SourceError(SourceErrorCode.PATH_NOT_ABSOLUTE)
     if not path.exists():
+        if shared is not None and not docker_mounts.is_shared(raw_path, shared):
+            raise SourceError(SourceErrorCode.NOT_SHARED_WITH_DOCKER)
         raise SourceError(SourceErrorCode.PATH_NOT_FOUND)
     root = path.resolve()
     if not root.is_dir():

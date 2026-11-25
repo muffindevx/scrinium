@@ -101,6 +101,25 @@ function Panel({ className, children }: { className?: string; children: ReactNod
   )
 }
 
+/** A project read only from plain folders: what it does without Git, and how to get the rest. */
+function WithoutGit({ sources }: { sources: Source[] }) {
+  const folder = sources.find((source) => source.kind === "folder")
+  if (!folder || sources.some((source) => source.kind === "git_repository")) return null
+  return (
+    <Panel className="gap-2">
+      <h2 className="text-sm font-semibold">{t("«{0}» no es un repositorio Git", folder.display_name)}</h2>
+      <p className="text-sm text-muted-foreground">
+        {t("Scrinium lee sus archivos, escribe sus reglas y avisa cuando el código de una regla cambia. Sin Git no hay Cambios entre versiones, ni historia de cada regla, ni scrinium check en la integración continua o antes de cada commit.")}
+      </p>
+      <p className="text-sm text-muted-foreground">{t("Para tenerlos, conviértela en un repositorio con un primer commit:")}</p>
+      <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-xs">git init && git add -A && git commit -m "First commit"</pre>
+      <p className="text-sm text-muted-foreground">
+        {t("Después quita esta fuente en Integraciones y vuelve a añadir la carpeta: se leerá como repositorio.")}
+      </p>
+    </Panel>
+  )
+}
+
 function Dot({ className }: { className?: string }) {
   return <span className={cn("inline-block size-1.5 shrink-0 rounded-full", className)} aria-hidden="true" />
 }
@@ -348,6 +367,8 @@ export function HomeScreen({
           onSessionLost={onSessionLost}
         />
       )}
+
+      {sources !== null && <WithoutGit sources={sources} />}
 
       {pendingSetup && (
         <Panel className="gap-3 ring-primary/25">

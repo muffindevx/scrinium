@@ -184,9 +184,16 @@ print_link() {
     mounted=$(current_mounts)
     if [ -n "$mounted" ]; then
         say ""
-        say "Your folders, for Integrations > Add a source (Scrinium can read them, never change them):"
+        say "Your folders are projects in Scrinium and are being read now (it can read them, never"
+        say "change them). To add another one: sh docker/scrinium.sh start <folder>"
         printf '%s\n' "$mounted" | while IFS="$tab" read -r src dst; do
-            say "  $dst   (your folder $src)"
+            say "  $src"
+            if [ ! -e "$src/.git" ]; then
+                say "    Not a Git repository: Scrinium reads its files and writes its rules, but"
+                say "    Changes, rule history and scrinium check need Git. To get them:"
+                say "      cd $src && git init && git add -A && git commit -m \"First commit\""
+                say "    then remove the source in Integrations and add the folder again."
+            fi
         done
     fi
 }
@@ -248,6 +255,7 @@ start() {
         --publish "127.0.0.1:$port:$port" \
         --env "SCRINIUM_PORT=$port" \
         --env "SCRINIUM_MODEL_PORTS=$model_ports" \
+        --env "SCRINIUM_DOCKER_MOUNTS=$(printf '%s' "$mounts" | tr '\n' ',')" \
         --volume "$volume:/data" \
         --cap-drop ALL --security-opt no-new-privileges
     while IFS="$tab" read -r src dst; do

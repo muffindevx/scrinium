@@ -74,11 +74,11 @@ The easiest way. You install only Docker; [`docker/scrinium.sh`](docker/scrinium
    sh docker/scrinium.sh start ~/code/your-project
    ```
 
-   The first time it builds the image and downloads the search tools (a few minutes). It prints a one-time link and the path of your folder inside the container, for example `/repos/your-project`.
+   The first time it builds the image and downloads the search tools (a few minutes). Your folder becomes a project and Scrinium starts reading it right away. The script prints a one-time link.
 
-4. Open the link in your browser. The first time, choose the model that writes the rules (see [Choose the model](#choose-the-model)), then add your project with the path from step 3.
+4. Open the link in your browser. The first time, choose the model that writes the rules (see [Choose the model](#choose-the-model)).
 
-Your folders are mounted read-only. Projects and rules stay in the Docker volume `scrinium-data` when you stop Scrinium.
+A folder that is not a Git repository is read too, without Changes, rule history or `scrinium check`, which need Git. To add another project, run `start` again with its folder. Scrinium only sees the folders given to `start`, mounted read-only. Projects and rules stay in the Docker volume `scrinium-data` when you stop Scrinium.
 
 ### On a server (VPS)
 
@@ -124,7 +124,7 @@ With Docker:
 
 | Command | What it does |
 |---|---|
-| `sh docker/scrinium.sh start [folder...]` | Starts Scrinium, adds folders, prints the entry link |
+| `sh docker/scrinium.sh start [folder...]` | Starts Scrinium, adds each folder as a project and reads it, prints the entry link |
 | `sh docker/scrinium.sh link` | Prints a new entry link |
 | `sh docker/scrinium.sh stop` | Stops Scrinium; your data stays |
 | `sh docker/scrinium.sh logs` | Shows what Scrinium is doing |

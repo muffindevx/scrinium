@@ -5,6 +5,7 @@ import { ApiError } from "@/lib/api"
 const ERRORS: Record<string, string> = {
   path_not_absolute: t("Escribe una ruta absoluta, por ejemplo /home/tu-usuario/proyecto."),
   path_not_found: t("Esa carpeta no existe."),
+  not_shared_with_docker: t("Esa carpeta de tu equipo no está compartida con Docker. Arranca Scrinium con ella: sh docker/scrinium.sh start <carpeta>"),
   not_a_directory: t("Esa ruta no es una carpeta."),
   wrong_owner: t("Esa carpeta pertenece a otra cuenta."),
   contains_scrinium_data: t("Esa carpeta contiene los datos de Scrinium, o está dentro de ellos."),

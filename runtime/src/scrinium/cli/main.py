@@ -22,6 +22,7 @@ import uvicorn
 
 from scrinium import __version__
 from scrinium.application.analysis import extraction
+from scrinium.application.ingestion import docker_mounts
 from scrinium.application.privacy.erasure import retry_pending_purges
 from scrinium.cli.control import attach, link, stop
 from scrinium.cli.doctor import doctor
@@ -43,6 +44,7 @@ from scrinium.core.config import (
     default_port,
 )
 from scrinium.core.data_dir import UnsafeDataDirError, UnsafeDataDirReason, prepare_data_dir
+from scrinium.core.language import use_english
 from scrinium.core.log_hub import HUB
 from scrinium.core.logging import configure_logging
 from scrinium.core.session import LAUNCH_TOKEN_TTL_SECONDS, LocalSessionManager
@@ -296,6 +298,19 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
     # Jobs a closed Scrinium left halfway (phase 9.2): back to the queue, then run.
     app.state.jobs.recover()
     app.state.ingestion.submit_jobs()
+    # In Docker, the folders given to `docker/scrinium.sh start` are read right away.
+    shared = docker_mounts.mounts()
+    if shared:
+        for added in docker_mounts.register(
+            database, app.state.ingestion.submit, config.data_dir, shared
+        ):
+            verb = "added as the project" if added.new else "is in the project"
+            print(f"{added.host} {verb} '{added.project}': reading it now.", flush=True)
+            if not added.git:
+                print(
+                    "  Not a Git repository: Changes, rule history and scrinium check need Git.",
+                    flush=True,
+                )
     # Purges a failed deletion left to do (R3): before anything else reads the files.
     if retry_pending_purges(database, app.state.ingestion.indexer):
         print("Purges from an earlier deletion are still pending; they will be retried at startup.",
@@ -374,7 +389,8 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="scrinium", description="Scrinium, Local-first.")
+    use_english()
+    parser = argparse.ArgumentParser(prog="scrinium", description="Scrinium, local-first.")
     parser.add_argument("--version", action="version", version=f"scrinium {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
