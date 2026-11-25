@@ -16,6 +16,8 @@
   --code-ink: oklch(0.9 0.006 285);
   --code-muted: oklch(0.6 0.01 285);
   --radius: 14px;
+  /* Depth without lines: a soft lift instead of a border. */
+  --lift: 0 1px 2px oklch(0.3 0.02 315 / 0.05), 0 18px 40px -22px oklch(0.3 0.05 315 / 0.28);
   --sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --mono: "Geist Mono Variable", ui-monospace, "SFMono-Regular", monospace;
 }
@@ -60,11 +62,11 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.03em; line-height: 1.05; font-weight:
 .lede { color: var(--muted); font-size: 1.1rem; max-width: 34rem; margin: 0; }
 .btn {
   display: inline-flex; align-items: center; gap: 8px; padding: 12px 18px; border-radius: 10px;
-  font-weight: 600; font-size: 0.95rem; text-decoration: none; border: 1px solid var(--line); background: var(--surface);
+  font-weight: 600; font-size: 0.95rem; text-decoration: none; border: 0; background: var(--plum-soft); color: var(--plum-ink);
   transition: transform .15s ease, background .15s ease;
 }
 .btn:hover { transform: translateY(-1px); }
-.btn-primary { background: var(--plum); color: var(--surface); border-color: transparent; }
+.btn-primary { background: var(--plum); color: var(--surface); }
 @media (prefers-color-scheme: dark) { .btn-primary { color: oklch(0.2 0.02 315); } }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) {

@@ -7,7 +7,7 @@
 # UID and GID must be the account that owns the folders Scrinium reads: it refuses folders
 # that belong to another account, and it never runs as root.
 
-ARG NODE_IMAGE=node:22-bookworm-slim
+ARG NODE_IMAGE=node:26-bookworm-slim
 ARG PYTHON_IMAGE=python:3.12.16-slim-bookworm
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.7
 ARG PNPM_VERSION=12.14.0

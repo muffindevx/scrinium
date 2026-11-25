@@ -41,8 +41,15 @@ const steps = [
     </ol>
     <div class="stage-holder">
       <div class="stage" data-at="3" aria-hidden="true">
+        <div class="progress">
+          <span class="dots"><i></i><i></i><i></i><i></i></span>
+          <span class="label">
+            <b data-for="1">Lee</b><b data-for="2">Escribe</b><b data-for="3">Decides</b><b data-for="4">Vigila</b>
+          </span>
+          <span class="count">Paso <b data-for="1">1</b><b data-for="2">2</b><b data-for="3">3</b><b data-for="4">4</b> de 4</span>
+        </div>
         <div class="code">
-          <div class="row"><span class="ln">40</span><span class="mark"></span><span><i class="kw">if</i> (tier === <i class="str">"pro"</i> &amp;&amp; subtotal &gt;= <i class="num old">100</i><i class="num new">150</i>) {"{"}</span></div>
+          <div class="row"><span class="ln">40</span><span class="mark"></span><span><i class="kw">if</i> (tier === <i class="str">"pro"</i> &amp;&amp; subtotal &gt;= <i class="num flip"><i class="old">100</i><i class="new">150</i></i>) {"{"}</span></div>
           <div class="row focus"><span class="ln">41</span><span class="mark"></span><span>  <i class="kw">return</i> applyDiscount(subtotal, <i class="num">0.15</i>)</span></div>
           <div class="row"><span class="ln">42</span><span class="mark"></span><span>{"}"}</span></div>
           <div class="row"><span class="ln">43</span><span class="mark"></span><span><i class="kw">if</i> (order.items.length &gt; <i class="num">50</i>) {"{"}</span></div>
@@ -90,7 +97,7 @@ const steps = [
 </script>
 
 <style>
-  .story { padding: 112px 0 64px; border-top: 1px solid var(--line); }
+  .story { padding: 112px 0 64px; }
   h2 { font-size: clamp(2rem, 4.4vw, 3.2rem); margin-top: 14px; }
   .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 56px; margin-top: 24px; }
   .steps { list-style: none; margin: 0; padding: 0; }
@@ -102,7 +109,7 @@ const steps = [
   .stage-holder { position: relative; }
   .stage {
     position: sticky; top: calc(50vh - 210px); display: grid; gap: 12px; padding: 18px;
-    background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    background: var(--surface); border-radius: 18px;
     box-shadow: 0 24px 48px -28px oklch(0.3 0.05 315 / 0.3);
   }
   .code { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; padding: 12px 0; font-family: var(--mono); font-size: 0.8rem; line-height: 1.9; overflow: hidden; }
@@ -111,7 +118,6 @@ const steps = [
   .mark { width: 6px; height: 6px; border-radius: 99px; background: transparent; transition: background .3s ease; }
   i { font-style: normal; }
   .kw { color: oklch(0.8 0.09 315); } .str { color: oklch(0.82 0.09 150); } .num { color: oklch(0.85 0.1 75); }
-  .num.new { display: none; }
   .found { font-size: 0.85rem; color: var(--muted); transition: opacity .3s ease; }
   .rule { background: var(--plum-soft); color: var(--plum-ink); border-radius: 12px; padding: 14px 16px; display: grid; gap: 8px; transition: opacity .35s ease, transform .35s ease, background .3s ease; }
   .rule p { margin: 0; font-weight: 500; font-size: 1.05rem; line-height: 1.35; }
@@ -123,30 +129,70 @@ const steps = [
   .changed { background: var(--amber-soft); color: var(--ink); }
   .cite { font-family: var(--mono); font-size: 0.72rem; opacity: 0.85; }
   .review { display: flex; gap: 8px; font-size: 0.8rem; font-weight: 600; }
-  .review span { padding: 5px 12px; border-radius: 8px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); transition: background .3s ease, color .3s ease; }
+  .review span { padding: 5px 12px; border-radius: 8px; background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px oklch(0 0 0 / 0.08); transition: background .3s ease, color .3s ease; }
   .ci { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-family: var(--mono); font-size: 0.78rem; padding: 10px 12px; border-radius: 10px; background: var(--code-bg); color: var(--code-ink); transition: opacity .3s ease; }
   .ci span { color: oklch(0.8 0.12 30); }
 
-  /* 1 · reading: decisions are marked, nothing written yet */
-  .stage[data-at="1"] .mark { background: var(--amber); }
-  .stage[data-at="1"] .row:nth-child(2) .mark, .stage[data-at="1"] .row:nth-child(3) .mark, .stage[data-at="1"] .row:nth-child(5) .mark { background: transparent; }
-  .stage[data-at="1"] .rule { opacity: 0; transform: translateY(8px); }
+  /* Where the story is: four dots and the step's name. */
+  .progress { display: flex; align-items: center; gap: 10px; font-size: 0.75rem; color: var(--muted); }
+  .dots { display: flex; gap: 5px; }
+  .dots i { width: 7px; height: 7px; border-radius: 99px; background: var(--plum-soft); transition: background .4s ease, width .4s ease; }
+  .label { margin-right: auto; font-weight: 600; color: var(--ink); }
+  .progress [data-for] { display: none; }
+  .stage[data-at="1"] [data-for="1"], .stage[data-at="2"] [data-for="2"],
+  .stage[data-at="3"] [data-for="3"], .stage[data-at="4"] [data-for="4"] { display: inline; animation: rise .35s ease-out; }
+  .stage[data-at="1"] .dots i:nth-child(-n + 1), .stage[data-at="2"] .dots i:nth-child(-n + 2),
+  .stage[data-at="3"] .dots i:nth-child(-n + 3), .stage[data-at="4"] .dots i:nth-child(-n + 4) { background: var(--plum); }
+  .stage[data-at="1"] .dots i:nth-child(1), .stage[data-at="2"] .dots i:nth-child(2),
+  .stage[data-at="3"] .dots i:nth-child(3), .stage[data-at="4"] .dots i:nth-child(4) { width: 18px; }
+
+  /* The number that changes: a small window where 100 rolls up and 150 comes in. */
+  .flip { display: inline-grid; overflow: hidden; vertical-align: bottom; height: 1.9em; line-height: 1.9; }
+  .flip > i { grid-area: 1 / 1; transition: transform .5s cubic-bezier(.2,.8,.2,1); }
+  .flip .new { transform: translateY(100%); }
+
+  /* Line 41 is highlighted by a band that sweeps from the left. */
+  .row { position: relative; }
+  .row > * { position: relative; }
+  .focus::before {
+    content: ""; position: absolute; inset: 0; background: oklch(0.47 0.075 315 / 0.38);
+    transform: scaleX(0); transform-origin: left; transition: transform .6s cubic-bezier(.2,.8,.2,1);
+  }
+
+  /* 1 · reading: the decisions are found, each mark pulses once */
+  .stage[data-at="1"] .row:nth-child(1) .mark, .stage[data-at="1"] .row:nth-child(4) .mark {
+    background: var(--amber); animation: pulse 1.1s ease-out 1;
+  }
+  .stage[data-at="1"] .rule { opacity: 0; transform: translateY(10px); }
   .stage[data-at="1"] .review, .stage[data-at="1"] .ci { display: none; }
-  /* 2 · writing: the rule appears, tied to line 41 */
-  .stage[data-at="2"] .focus { background: oklch(0.47 0.075 315 / 0.35); }
-  .stage[data-at="2"] .proposed { display: inline-block; }
+  /* 2 · writing: the band sweeps line 41 and the rule rises under it */
+  .stage[data-at="2"] .focus::before { transform: scaleX(1); }
+  .stage[data-at="2"] .proposed { display: inline-block; animation: pop .35s ease-out; }
   .stage[data-at="2"] .review, .stage[data-at="2"] .ci, .stage[data-at="2"] .found { display: none; }
-  /* 3 · deciding: confirmed */
-  .stage[data-at="3"] .verified { display: inline-block; }
-  .stage[data-at="3"] .review .ok { background: var(--plum); color: var(--surface); border-color: transparent; }
+  /* 3 · deciding: "Correcta" is pressed and the badge pops */
+  .stage[data-at="3"] .verified { display: inline-block; animation: pop .4s cubic-bezier(.3,1.6,.5,1); }
+  .stage[data-at="3"] .review .ok { background: var(--plum); color: var(--surface); animation: press .35s ease-out; }
   .stage[data-at="3"] .ci, .stage[data-at="3"] .found { display: none; }
-  /* 4 · watching: the threshold moves, the rule and CI say so */
-  .stage[data-at="4"] .row:first-child { background: oklch(0.62 0.13 70 / 0.22); }
-  .stage[data-at="4"] .num.old { display: none; }
-  .stage[data-at="4"] .num.new { display: inline; }
-  .stage[data-at="4"] .changed { display: inline-block; }
+  /* 4 · watching: 100 rolls up to 150, the row flashes once, CI writes its verdict */
+  .stage[data-at="4"] .flip .old { transform: translateY(-100%); }
+  .stage[data-at="4"] .flip .new { transform: translateY(0); }
+  .stage[data-at="4"] .row:first-child { animation: flash 1.2s ease-out .25s 1 both; }
+  .stage[data-at="4"] .changed { display: inline-block; animation: pop .35s ease-out .3s both; }
   .stage[data-at="4"] .rule { background: var(--amber-soft); color: var(--ink); }
   .stage[data-at="4"] .review, .stage[data-at="4"] .found { display: none; }
+  .stage[data-at="4"] .ci span { animation: type .9s steps(36) .5s both; }
+
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 oklch(0.62 0.13 70 / 0.7); }
+    100% { box-shadow: 0 0 0 9px oklch(0.62 0.13 70 / 0); }
+  }
+  @keyframes pop { 0% { transform: scale(0.6); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes press { 0% { transform: scale(1); } 40% { transform: scale(0.92); } 100% { transform: scale(1); } }
+  @keyframes rise { 0% { transform: translateY(4px); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  @keyframes flash {
+    0% { background: transparent; } 25% { background: oklch(0.62 0.13 70 / 0.45); } 100% { background: oklch(0.62 0.13 70 / 0.18); }
+  }
+  @keyframes type { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
 
   @media (max-width: 880px) {
     .grid { grid-template-columns: 1fr; gap: 0; }

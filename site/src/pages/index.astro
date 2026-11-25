@@ -7,7 +7,7 @@ import Story from "../components/Story.astro"
 const repo = "https://github.com/muffindevx/scrinium"
 const mirror = "https://codeberg.org/muffindevx/scrinium"
 // The easiest way in: one script and Docker, on a laptop or a VPS.
-const install = `${repo}#run-it-with-docker`
+const install = `${repo}#install-with-docker`
 
 // Only what Scrinium does today, each a fact the reader can check in the repository.
 const promises = [
@@ -116,7 +116,7 @@ const promises = [
 </Base>
 
 <style>
-  .top { position: sticky; top: 0; z-index: 10; background: color-mix(in oklch, var(--bg) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .top { position: sticky; top: 0; z-index: 10; background: color-mix(in oklch, var(--bg) 86%, transparent); backdrop-filter: blur(10px); }
   .bar { display: flex; align-items: center; justify-content: space-between; height: 64px; }
   .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 650; font-size: 1.15rem; letter-spacing: -0.03em; }
   nav { display: flex; align-items: center; gap: 22px; font-size: 0.9rem; }
@@ -131,16 +131,19 @@ const promises = [
   .ticks { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; margin: 22px 0 0; font-size: 0.85rem; color: var(--muted); }
   .ticks li::before { content: "✓ "; color: var(--plum); }
 
-  .promises, .audience { padding: 112px 0; border-top: 1px solid var(--line); }
+  .promises, .audience { padding: 112px 0; }
+  /* A band of the lighter surface sets this section apart, without a rule. */
+  .promises { background: var(--surface); }
   h2 { font-size: clamp(2rem, 4.4vw, 3.2rem); margin-top: 14px; max-width: 18ch; }
-  .promise-grid { list-style: none; padding: 0; margin: 48px 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-  .promise-grid li { background: var(--surface); padding: 24px 22px; }
+  .promise-grid { list-style: none; padding: 0; margin: 48px 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 40px; }
+  .promise-grid li { display: grid; gap: 10px; align-content: start; }
+  .promise-grid li::before { content: ""; width: 28px; height: 4px; border-radius: 99px; background: var(--plum); }
   .promise-grid h3 { font-size: 1.05rem; letter-spacing: -0.01em; }
-  .promise-grid p { margin: 10px 0 0; color: var(--muted); font-size: 0.92rem; }
+  .promise-grid p { margin: 0; color: var(--muted); font-size: 0.92rem; }
 
   .audience-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 48px; }
-  .audience-grid article { border: 1px solid var(--line); border-radius: 18px; padding: 32px; background: var(--surface); display: grid; gap: 14px; align-content: start; }
-  .audience-grid article.dark { background: var(--code-bg); color: var(--code-ink); border-color: transparent; }
+  .audience-grid article { border-radius: 18px; padding: 32px; background: var(--surface); box-shadow: var(--lift); display: grid; gap: 14px; align-content: start; }
+  .audience-grid article.dark { background: var(--code-bg); color: var(--code-ink); }
   .audience-grid article.dark p { color: oklch(0.78 0.008 285); }
   .who { margin: 0; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
   .audience-grid h3 { font-size: 1.7rem; }
@@ -158,7 +161,7 @@ const promises = [
   .prompt { color: oklch(0.8 0.075 315); margin-right: 8px; }
   .small { font-size: 0.85rem; }
 
-  .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 28px 0 40px; border-top: 1px solid var(--line); font-size: 0.85rem; }
+  .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 28px 0 40px; font-size: 0.85rem; }
   .foot .brand { font-size: 1rem; }
   .tag { color: var(--muted); margin-right: auto; }
   .foot nav a { color: var(--muted); }
