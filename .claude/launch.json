@@ -122,6 +122,21 @@
       ],
       "port": 47621,
       "url": "http://127.0.0.1:47621"
+    },
+    {
+      "name": "scrinium-site",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--dir",
+        "site",
+        "dev",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "4321"
+      ],
+      "port": 4321,
+      "url": "http://127.0.0.1:4321"
     }
   ]
 }

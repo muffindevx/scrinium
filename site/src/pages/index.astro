@@ -1,0 +1,174 @@
+---
+import Base from "../layouts/Base.astro"
+import Logo from "../components/Logo.astro"
+import RuleCard from "../components/RuleCard.astro"
+import Story from "../components/Story.astro"
+
+const repo = "https://github.com/muffindevx/scrinium"
+const mirror = "https://codeberg.org/muffindevx/scrinium"
+const install = `${repo}#getting-started`
+
+// Only what Scrinium does today, each a fact the reader can check in the repository.
+const promises = [
+  { title: "Nada sale de tu equipo", text: "Escucha solo en 127.0.0.1, con un enlace de entrada de un solo uso. Un proveedor externo solo se usa si das permiso en cada proyecto." },
+  { title: "Cualquier modelo", text: "Local (llama.cpp, Ollama, vLLM) o tu propio proveedor. Sin modelo también funcionan la búsqueda por palabras, la cobertura, los procesos y los cambios." },
+  { title: "Nada sin cita", text: "Cada regla apunta a la línea que la aplica. Si su número no está en el código, la propuesta no entra en la bandeja." },
+  { title: "Tú decides", text: "El modelo propone; una persona confirma. Solo lo confirmado cuenta como regla verificada y se exporta al repositorio." },
+]
+---
+<Base
+  title="Scrinium · Las reglas de negocio de tu código, explicadas"
+  description="Scrinium lee tu repositorio en tu equipo, escribe cada decisión del código como una regla con la línea que la aplica, y avisa cuando el código cambia."
+>
+  <header class="top">
+    <div class="wrap bar">
+      <a class="brand" href="#inicio" aria-label="Scrinium, inicio"><Logo size={28} /><span>scrinium</span></a>
+      <nav aria-label="Secciones">
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#para-quien">Para quién</a>
+        <a class="btn btn-small" href={install}>Instalar</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="inicio">
+    <section class="hero wrap">
+      <div class="hero-text">
+        <p class="eyebrow">Menos suposiciones. Más contexto.</p>
+        <h1>Las reglas de negocio de tu código, <span class="accent">explicadas.</span></h1>
+        <p class="lede">
+          Quién aprueba un pedido. Cuándo vale un descuento. Qué pasa si un pago falla. Scrinium encuentra esas
+          decisiones en tu código y las explica con la línea exacta que las aplica.
+        </p>
+        <div class="actions">
+          <a class="btn btn-primary" href="#como-funciona">Ver cómo funciona <span aria-hidden="true">↓</span></a>
+          <a class="btn" href={install}>Instalar en tu equipo</a>
+        </div>
+        <ul class="ticks">
+          <li>Local y privado</li><li>Con cita a la línea</li><li>Sin cuenta ni nube</li>
+        </ul>
+      </div>
+      <RuleCard />
+    </section>
+
+    <Story />
+
+    <section class="promises" aria-labelledby="promises-title">
+      <div class="wrap">
+        <p class="eyebrow">Lo que puedes esperar</p>
+        <h2 id="promises-title">Hecho para fiarse de él.</h2>
+        <ul class="promise-grid">
+          {promises.map((promise) => (
+            <li>
+              <h3>{promise.title}</h3>
+              <p>{promise.text}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+
+    <section class="audience" id="para-quien" aria-labelledby="audience-title">
+      <div class="wrap">
+        <p class="eyebrow">Para quién</p>
+        <h2 id="audience-title">Una misma regla. Todo el equipo en la misma página.</h2>
+        <div class="audience-grid">
+          <article class="dark">
+            <p class="who">Para ingeniería</p>
+            <h3>Menos arqueología en cada cambio.</h3>
+            <p>Antes de tocar un archivo, sabes qué reglas decide y qué procesos atraviesa. Tus agentes de código también: <code>scrinium mcp</code> les da las reglas del repositorio, separando las verificadas de las propuestas.</p>
+            <ul><li>Cada regla vuelve a su línea</li><li><code>scrinium check</code> en la integración continua</li></ul>
+          </article>
+          <article>
+            <p class="who">Para producto y liderazgo técnico</p>
+            <h3>Decisiones que se pueden explicar.</h3>
+            <p>Lo que hace el producto, en frases que se leen sin abrir el código. Y cuando un cambio mueve un umbral, notas de versión con las reglas que cambiaron.</p>
+            <ul><li>Frases claras, no fragmentos de código</li><li>El detalle técnico, a un clic</li></ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="start wrap" aria-labelledby="start-title">
+      <div class="start-box">
+        <Logo size={44} class="start-mark" />
+        <div class="start-text">
+          <h2 id="start-title">Las reglas ya existen. Ahora también se entienden.</h2>
+          <p>Pruébalo en cinco minutos, sin modelo, sin GPU y sin red:</p>
+          <pre><code><span class="prompt">$</span> scrinium demo</code></pre>
+          <p class="small">Crea una tienda de ejemplo con tres reglas verificadas, cambia una en una rama y muestra a <code>scrinium check</code> detectándolo.</p>
+        </div>
+        <a class="btn btn-primary" href={install}>Cómo instalarlo <span aria-hidden="true">→</span></a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap foot">
+    <a class="brand" href="#inicio"><Logo size={24} /><span>scrinium</span></a>
+    <span class="tag">Las reglas de negocio de tu código, explicadas.</span>
+    <nav aria-label="Enlaces">
+      <a href={repo}>GitHub</a>
+      <a href={mirror}>Codeberg</a>
+      <a href="#inicio">Volver arriba ↑</a>
+    </nav>
+  </footer>
+</Base>
+
+<style>
+  .top { position: sticky; top: 0; z-index: 10; background: color-mix(in oklch, var(--bg) 86%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .bar { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; text-decoration: none; font-weight: 650; font-size: 1.15rem; letter-spacing: -0.03em; }
+  nav { display: flex; align-items: center; gap: 22px; font-size: 0.9rem; }
+  nav a:not(.btn) { text-decoration: none; color: var(--muted); }
+  nav a:not(.btn):hover { color: var(--ink); }
+  .btn-small { padding: 8px 14px; font-size: 0.85rem; }
+
+  .hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr); gap: 64px; align-items: center; padding: 96px 0 112px; }
+  h1 { font-size: clamp(2.6rem, 6vw, 4.4rem); letter-spacing: -0.045em; line-height: 0.98; margin: 22px 0 24px; }
+  .accent { color: var(--plum); }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
+  .ticks { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 0; margin: 22px 0 0; font-size: 0.85rem; color: var(--muted); }
+  .ticks li::before { content: "✓ "; color: var(--plum); }
+
+  .promises, .audience { padding: 112px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(2rem, 4.4vw, 3.2rem); margin-top: 14px; max-width: 18ch; }
+  .promise-grid { list-style: none; padding: 0; margin: 48px 0 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+  .promise-grid li { background: var(--surface); padding: 24px 22px; }
+  .promise-grid h3 { font-size: 1.05rem; letter-spacing: -0.01em; }
+  .promise-grid p { margin: 10px 0 0; color: var(--muted); font-size: 0.92rem; }
+
+  .audience-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 48px; }
+  .audience-grid article { border: 1px solid var(--line); border-radius: 18px; padding: 32px; background: var(--surface); display: grid; gap: 14px; align-content: start; }
+  .audience-grid article.dark { background: var(--code-bg); color: var(--code-ink); border-color: transparent; }
+  .audience-grid article.dark p { color: oklch(0.78 0.008 285); }
+  .who { margin: 0; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; color: var(--muted); }
+  .audience-grid h3 { font-size: 1.7rem; }
+  .audience-grid p { margin: 0; color: var(--muted); }
+  .audience-grid ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 0.85rem; }
+  .audience-grid li::before { content: "✓ "; color: var(--plum); }
+  code { font-size: 0.9em; }
+
+  .start { padding: 32px 0 112px; }
+  .start-box { display: grid; grid-template-columns: auto 1fr auto; gap: 28px; align-items: center; background: var(--code-bg); color: var(--code-ink); border-radius: 22px; padding: 44px; }
+  .start-box :global(.start-mark) { color: var(--code-ink); }
+  .start-box h2 { color: var(--code-ink); margin-top: 0; max-width: 20ch; font-size: clamp(1.7rem, 3.4vw, 2.4rem); }
+  .start-text p { color: oklch(0.78 0.008 285); margin: 14px 0 0; }
+  .start-text pre { margin: 12px 0 0; padding: 12px 16px; border-radius: 10px; background: oklch(0 0 0 / 0.3); font-size: 0.95rem; width: fit-content; }
+  .prompt { color: oklch(0.8 0.075 315); margin-right: 8px; }
+  .small { font-size: 0.85rem; }
+
+  .foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; padding: 28px 0 40px; border-top: 1px solid var(--line); font-size: 0.85rem; }
+  .foot .brand { font-size: 1rem; }
+  .tag { color: var(--muted); margin-right: auto; }
+  .foot nav a { color: var(--muted); }
+
+  @media (max-width: 880px) {
+    .hero { grid-template-columns: 1fr; padding: 48px 0 72px; gap: 40px; }
+    nav a:not(.btn) { display: none; }
+    .promise-grid { grid-template-columns: 1fr 1fr; }
+    .audience-grid { grid-template-columns: 1fr; }
+    .start-box { grid-template-columns: 1fr; padding: 28px; }
+    .promises, .audience { padding: 72px 0; }
+  }
+  @media (max-width: 520px) { .promise-grid { grid-template-columns: 1fr; } }
+</style>

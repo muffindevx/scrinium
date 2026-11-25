@@ -1,0 +1,163 @@
+---
+// "Cómo funciona" told with one rule: the stage on the right changes as each step scrolls by.
+// Without JavaScript every step is still read in order and the stage shows the verified rule.
+const steps = [
+  {
+    n: "01",
+    title: "Lee tu código, en tu equipo",
+    text: "Scrinium recorre el repositorio y encuentra dónde decide: condiciones, umbrales, tablas, validaciones. El código no sale de tu máquina.",
+  },
+  {
+    n: "02",
+    title: "Escribe la regla, con su cita",
+    text: "Un modelo, local o el tuyo, redacta cada decisión como una frase que entiende todo el equipo, y la ata a la línea exacta. Si el número de la frase no está en el código, la propuesta no entra.",
+  },
+  {
+    n: "03",
+    title: "Una persona decide",
+    text: "Las propuestas llegan a una bandeja, lo urgente primero: dinero, permisos y seguridad. Confirmas o descartas. Lo que confirmas queda como regla verificada.",
+  },
+  {
+    n: "04",
+    title: "Avisa cuando el código cambia",
+    text: "Si alguien sube el umbral de 100 a 150, la regla verificada se marca para revisar, y scrinium check lo dice en la integración continua antes de fusionar.",
+  },
+]
+---
+<section class="story" id="como-funciona" aria-labelledby="story-title">
+  <div class="wrap">
+    <p class="eyebrow">Cómo funciona</p>
+    <h2 id="story-title">Una regla, de principio a fin.</h2>
+  </div>
+  <div class="wrap grid">
+    <ol class="steps">
+      {steps.map((step, index) => (
+        <li class="step" data-step={index + 1}>
+          <span class="n">{step.n}</span>
+          <h3>{step.title}</h3>
+          <p>{step.text}</p>
+        </li>
+      ))}
+    </ol>
+    <div class="stage-holder">
+      <div class="stage" data-at="3" aria-hidden="true">
+        <div class="code">
+          <div class="row"><span class="ln">40</span><span class="mark"></span><span><i class="kw">if</i> (tier === <i class="str">"pro"</i> &amp;&amp; subtotal &gt;= <i class="num old">100</i><i class="num new">150</i>) {"{"}</span></div>
+          <div class="row focus"><span class="ln">41</span><span class="mark"></span><span>  <i class="kw">return</i> applyDiscount(subtotal, <i class="num">0.15</i>)</span></div>
+          <div class="row"><span class="ln">42</span><span class="mark"></span><span>{"}"}</span></div>
+          <div class="row"><span class="ln">43</span><span class="mark"></span><span><i class="kw">if</i> (order.items.length &gt; <i class="num">50</i>) {"{"}</span></div>
+          <div class="row"><span class="ln">44</span><span class="mark"></span><span>  <i class="kw">throw</i> <i class="kw">new</i> TooManyItems()</span></div>
+        </div>
+        <div class="found"><b>2 decisiones</b> encontradas en <code>discount.ts</code></div>
+        <div class="rule">
+          <div class="rule-top">
+            <span class="rule-label">Regla de negocio</span>
+            <span class="badge proposed">Propuesta</span>
+            <span class="badge verified">✓ Verificada</span>
+            <span class="badge changed">⚠ Su código cambió</span>
+          </div>
+          <p>Los clientes Pro tienen un 15 % de descuento en pedidos de <b>100 €</b> o más.</p>
+          <span class="cite">discount.ts · línea 41</span>
+          <div class="review">
+            <span class="ok">Correcta</span><span class="no">Descartar</span>
+          </div>
+        </div>
+        <div class="ci"><code>$ scrinium check</code><span>✗ 1 regla verificada cambió de valor: 100 → 150</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Which step is in the middle of the screen sets what the stage shows.
+  const stage = document.querySelector<HTMLElement>(".stage")
+  const steps = document.querySelectorAll<HTMLElement>(".step")
+  if (stage && "IntersectionObserver" in window) {
+    stage.dataset.at = "1"
+    const seen = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          stage.dataset.at = (entry.target as HTMLElement).dataset.step ?? "1"
+          steps.forEach((step) => step.classList.toggle("current", step === entry.target))
+        }
+      },
+      // A thin band low on the screen: on a phone the stage takes the top half.
+      { rootMargin: "-58% 0px -32% 0px" },
+    )
+    steps.forEach((step) => seen.observe(step))
+  }
+</script>
+
+<style>
+  .story { padding: 112px 0 64px; border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(2rem, 4.4vw, 3.2rem); margin-top: 14px; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 56px; margin-top: 24px; }
+  .steps { list-style: none; margin: 0; padding: 0; }
+  .step { min-height: 72vh; display: flex; flex-direction: column; justify-content: center; gap: 10px; opacity: 0.38; transition: opacity .3s ease; }
+  .step.current { opacity: 1; }
+  .n { font-family: var(--mono); font-size: 0.8rem; color: var(--plum); }
+  .step h3 { font-size: 1.6rem; }
+  .step p { margin: 0; color: var(--muted); font-size: 1.05rem; max-width: 30rem; }
+  .stage-holder { position: relative; }
+  .stage {
+    position: sticky; top: calc(50vh - 210px); display: grid; gap: 12px; padding: 18px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+    box-shadow: 0 24px 48px -28px oklch(0.3 0.05 315 / 0.3);
+  }
+  .code { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; padding: 12px 0; font-family: var(--mono); font-size: 0.8rem; line-height: 1.9; overflow: hidden; }
+  .row { display: grid; grid-template-columns: 3em 14px 1fr; align-items: center; white-space: pre; transition: background .3s ease; }
+  .ln { text-align: right; padding-right: 0.8em; color: var(--code-muted); }
+  .mark { width: 6px; height: 6px; border-radius: 99px; background: transparent; transition: background .3s ease; }
+  i { font-style: normal; }
+  .kw { color: oklch(0.8 0.09 315); } .str { color: oklch(0.82 0.09 150); } .num { color: oklch(0.85 0.1 75); }
+  .num.new { display: none; }
+  .found { font-size: 0.85rem; color: var(--muted); transition: opacity .3s ease; }
+  .rule { background: var(--plum-soft); color: var(--plum-ink); border-radius: 12px; padding: 14px 16px; display: grid; gap: 8px; transition: opacity .35s ease, transform .35s ease, background .3s ease; }
+  .rule p { margin: 0; font-weight: 500; font-size: 1.05rem; line-height: 1.35; }
+  .rule-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rule-label { font-size: 0.66rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; opacity: 0.8; margin-right: auto; }
+  .badge { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; display: none; }
+  .proposed { background: var(--surface); color: var(--muted); }
+  .verified { background: var(--plum); color: var(--surface); }
+  .changed { background: var(--amber-soft); color: var(--ink); }
+  .cite { font-family: var(--mono); font-size: 0.72rem; opacity: 0.85; }
+  .review { display: flex; gap: 8px; font-size: 0.8rem; font-weight: 600; }
+  .review span { padding: 5px 12px; border-radius: 8px; background: var(--surface); color: var(--ink); border: 1px solid var(--line); transition: background .3s ease, color .3s ease; }
+  .ci { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-family: var(--mono); font-size: 0.78rem; padding: 10px 12px; border-radius: 10px; background: var(--code-bg); color: var(--code-ink); transition: opacity .3s ease; }
+  .ci span { color: oklch(0.8 0.12 30); }
+
+  /* 1 · reading: decisions are marked, nothing written yet */
+  .stage[data-at="1"] .mark { background: var(--amber); }
+  .stage[data-at="1"] .row:nth-child(2) .mark, .stage[data-at="1"] .row:nth-child(3) .mark, .stage[data-at="1"] .row:nth-child(5) .mark { background: transparent; }
+  .stage[data-at="1"] .rule { opacity: 0; transform: translateY(8px); }
+  .stage[data-at="1"] .review, .stage[data-at="1"] .ci { display: none; }
+  /* 2 · writing: the rule appears, tied to line 41 */
+  .stage[data-at="2"] .focus { background: oklch(0.47 0.075 315 / 0.35); }
+  .stage[data-at="2"] .proposed { display: inline-block; }
+  .stage[data-at="2"] .review, .stage[data-at="2"] .ci, .stage[data-at="2"] .found { display: none; }
+  /* 3 · deciding: confirmed */
+  .stage[data-at="3"] .verified { display: inline-block; }
+  .stage[data-at="3"] .review .ok { background: var(--plum); color: var(--surface); border-color: transparent; }
+  .stage[data-at="3"] .ci, .stage[data-at="3"] .found { display: none; }
+  /* 4 · watching: the threshold moves, the rule and CI say so */
+  .stage[data-at="4"] .row:first-child { background: oklch(0.62 0.13 70 / 0.22); }
+  .stage[data-at="4"] .num.old { display: none; }
+  .stage[data-at="4"] .num.new { display: inline; }
+  .stage[data-at="4"] .changed { display: inline-block; }
+  .stage[data-at="4"] .rule { background: var(--amber-soft); color: var(--ink); }
+  .stage[data-at="4"] .review, .stage[data-at="4"] .found { display: none; }
+
+  @media (max-width: 880px) {
+    .grid { grid-template-columns: 1fr; gap: 0; }
+    /* Below the 64 px header; the text of each step scrolls up into the half under it. */
+    .stage-holder { order: -1; position: sticky; top: 72px; z-index: 2; }
+    .stage { position: static; padding: 12px; gap: 8px; }
+    .row:nth-child(n + 4) { display: none; }
+    .found { display: none; }
+    .code { font-size: 0.68rem; padding: 8px 0; }
+    .rule p { font-size: 0.95rem; }
+    .ci { font-size: 0.68rem; }
+    .step { min-height: 75vh; justify-content: flex-end; padding-bottom: 12vh; opacity: 1; }
+  }
+</style>

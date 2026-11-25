@@ -1,0 +1,52 @@
+---
+// The hero's example: three lines of code, the decision in them, and the rule written from it,
+// with the citation that leads back. The same example walks through the whole page.
+---
+<figure class="card" aria-label="Ejemplo: una línea de código y la regla que Scrinium escribe a partir de ella">
+  <header class="file">
+    <span class="file-name">discount.ts</span>
+    <span class="file-path">src/checkout</span>
+  </header>
+  <pre class="code" aria-hidden="true"><span class="ln">40</span><span class="kw">if</span> (customer.tier === <span class="str">"pro"</span> &amp;&amp; subtotal &gt;= <span class="num">100</span>) {"{"}
+<span class="ln hl">41</span><span class="hl-line">  <span class="kw">return</span> applyDiscount(subtotal, <span class="num">0.15</span>)</span>
+<span class="ln">42</span>{"}"}</pre>
+  <div class="arrow" aria-hidden="true">
+    <span></span><small>Scrinium lo lee y lo escribe en una frase</small><span></span>
+  </div>
+  <section class="rule">
+    <p class="rule-label">Regla de negocio</p>
+    <p class="rule-text">Los clientes <b>Pro</b> tienen un <b>15 %</b> de descuento en pedidos de <b>100 €</b> o más.</p>
+    <p class="cite"><span class="dot"></span><code>discount.ts · línea 41</code></p>
+  </section>
+  <figcaption>Cada regla cita la línea que la aplica. Sin cita, no hay regla.</figcaption>
+</figure>
+
+<style>
+  .card {
+    margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 18px;
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.04), 0 24px 48px -24px oklch(0.3 0.05 315 / 0.25);
+    display: grid; gap: 14px;
+  }
+  .file { display: flex; align-items: baseline; gap: 10px; font-size: 0.85rem; }
+  .file-name { font-weight: 600; }
+  .file-path { color: var(--muted); font-family: var(--mono); font-size: 0.75rem; }
+  .code {
+    margin: 0; background: var(--code-bg); color: var(--code-ink); border-radius: 10px; padding: 14px 0;
+    font-size: 0.82rem; line-height: 1.9; overflow-x: auto;
+  }
+  .ln { display: inline-block; width: 3.2em; padding-right: 1em; text-align: right; color: var(--code-muted); }
+  .ln.hl { color: var(--plum); }
+  .hl-line { background: oklch(0.47 0.075 315 / 0.35); padding: 2px 6px; border-radius: 4px; }
+  .kw { color: oklch(0.8 0.09 315); }
+  .str { color: oklch(0.82 0.09 150); }
+  .num { color: oklch(0.85 0.1 75); }
+  .arrow { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 0.75rem; }
+  .arrow span { flex: 1; height: 1px; background: var(--line); }
+  .rule { background: var(--plum-soft); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; }
+  .rule-label { margin: 0; font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600; color: var(--plum-ink); opacity: 0.8; }
+  .rule-text { margin: 0; font-size: 1.15rem; line-height: 1.35; font-weight: 500; color: var(--plum-ink); letter-spacing: -0.01em; }
+  .rule-text b { font-weight: 650; }
+  .cite { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 0.75rem; color: var(--plum-ink); }
+  .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--plum); }
+  figcaption { font-size: 0.8rem; color: var(--muted); }
+</style>
