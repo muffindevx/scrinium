@@ -1,7 +1,8 @@
 # Scrinium documentation
 
 Documentation for developers who want to understand how Scrinium works and change it. Setup and
-commands are in the root [README](../README.md).
+commands are in the root [README](../README.md); development commands in
+[DEVELOPMENT.md](../DEVELOPMENT.md).
 
 ## Reading order
 

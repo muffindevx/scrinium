@@ -34,42 +34,42 @@ fail() { printf '%s\n' "$*" >&2; exit 1; }
 
 usage() {
     cat <<'EOF'
-Uso: sh docker/scrinium.sh <orden>
+Usage: sh docker/scrinium.sh <command>
 
-  start [carpeta...] [--model-port N]   arranca Scrinium y muestra el enlace de entrada
-  link                                  un enlace de entrada nuevo
-  stop                                  detiene Scrinium (tus datos se quedan)
-  logs                                  lo que Scrinium escribe, en vivo (Ctrl+C para salir)
-  update                                la ultima version: descarga, reconstruye y reinicia
-  run <orden de scrinium>               p. ej. run doctor, run tools install local
+  start [folder...] [--model-port N]    start Scrinium and print the entry link
+  link                                  a new entry link
+  stop                                  stop Scrinium (your data stays)
+  logs                                  what Scrinium prints, live (Ctrl+C to leave)
+  update                                the latest version: pull, rebuild and restart
+  run <scrinium command>                e.g. run doctor, run tools install local
 EOF
 }
 
 need_docker() {
     if ! command -v docker >/dev/null 2>&1; then
-        fail "No encuentro Docker. Instalalo y vuelve a ejecutar este script:
-  - Windows o macOS: Docker Desktop, https://docs.docker.com/desktop/
+        fail "Docker was not found. Install it and run this script again:
+  - Windows or macOS: Docker Desktop, https://docs.docker.com/desktop/
   - Linux: Docker Engine, https://docs.docker.com/engine/install/
-    (en un servidor Ubuntu o Debian basta con seguir la pagina de tu distribucion)"
+    (on an Ubuntu or Debian server, follow the page for your distribution)"
     fi
     if ! problem=$(docker info 2>&1 >/dev/null); then
         case "$problem" in
             *"permission denied"*)
-                fail "Docker esta instalado, pero tu cuenta no puede usarlo. En Linux, ejecuta:
+                fail "Docker is installed, but your account cannot use it. On Linux, run:
   sudo usermod -aG docker $(id -un)
-y despues cierra la sesion y vuelve a entrar (o reinicia)." ;;
+then log out and back in (or restart)." ;;
             *)
-                fail "Docker esta instalado pero no esta en marcha. Abre Docker Desktop (en Linux:
-  sudo systemctl start docker) y repite." ;;
+                fail "Docker is installed but not running. Open Docker Desktop (on Linux:
+  sudo systemctl start docker) and try again." ;;
         esac
     fi
     if [ "$uid" = 0 ]; then
-        fail "No ejecutes Scrinium como root: usa tu cuenta normal. En un servidor, crea una:
-  adduser tunombre && usermod -aG docker tunombre
-y entra con ella (ssh tunombre@tu-servidor)."
+        fail "Do not run Scrinium as root: use your normal account. On a server, create one:
+  adduser yourname && usermod -aG docker yourname
+and log in with it (ssh yourname@your-server)."
     fi
     case "$port" in
-        ''|*[!0-9]*) fail "SCRINIUM_PORT debe ser un numero." ;;
+        ''|*[!0-9]*) fail "SCRINIUM_PORT must be a number." ;;
     esac
 }
 
@@ -82,9 +82,9 @@ exists() {
 }
 
 build_image() {
-    say "Construyendo la imagen de Scrinium. La primera vez tarda unos minutos..."
+    say "Building the Scrinium image. The first time takes a few minutes..."
     docker build "$@" --build-arg "UID=$uid" --build-arg "GID=$gid" -t "$image" "$repo" \
-        || fail "No se pudo construir la imagen. Lo de arriba dice por que."
+        || fail "The image could not be built. The output above says why."
 }
 
 ensure_image() {
@@ -102,12 +102,12 @@ tty_flags() {
 # Downloads gitleaks, llama.cpp (CPU build) and the search model into the data volume, about
 # 0.7 GB the first time. It only fetches what is missing.
 install_tools() {
-    say "Comprobando las herramientas y el modelo de busqueda (unos 0,7 GB la primera vez)..."
+    say "Checking the tools and the search model (about 0.7 GB the first time)..."
     # shellcheck disable=SC2046
     if ! docker run --rm $(tty_flags) --network "$network" -v "$volume:/data" "$image" \
         scrinium tools install --cpu; then
-        say "No se pudo descargar todo. Scrinium arranca igual, sin busqueda por significado."
-        say "Repite 'sh docker/scrinium.sh start' para reintentarlo."
+        say "Not everything could be downloaded. Scrinium starts anyway, without search by meaning."
+        say "Run 'sh docker/scrinium.sh start' again to retry."
     fi
 }
 
@@ -130,13 +130,13 @@ owner_of() {
 }
 
 add_folder() {
-    [ -d "$1" ] || fail "No existe la carpeta: $1"
+    [ -d "$1" ] || fail "Folder not found: $1"
     folder=$(CDPATH='' cd -- "$1" && pwd -P)
     case "$folder" in
-        *,*|*"$nl"*|*"$tab"*) fail "Scrinium no puede montar una carpeta con comas o tabuladores en el nombre: $folder" ;;
+        *,*|*"$nl"*|*"$tab"*) fail "Scrinium cannot mount a folder with commas or tabs in its name: $folder" ;;
     esac
     if [ "$(owner_of "$folder")" != "$uid" ]; then
-        fail "La carpeta $folder es de otra cuenta. Scrinium solo lee carpetas tuyas."
+        fail "The folder $folder belongs to another account. Scrinium only reads your own folders."
     fi
     if printf '%s\n' "$mounts" | cut -f1 | grep -Fqx -- "$folder"; then
         return 0
@@ -157,12 +157,12 @@ print_link() {
     until answer=$(docker exec "$name" scrinium link 2>&1); do
         if ! running; then
             docker logs --tail 30 "$name" >&2 || true
-            fail "Scrinium se detuvo al arrancar. Lo de arriba dice por que."
+            fail "Scrinium stopped while starting. The output above says why."
         fi
         waited=$((waited + 1))
         if [ "$waited" -ge 120 ]; then
             say "$answer" >&2
-            fail "Scrinium no responde tras 2 minutos. Mira: sh docker/scrinium.sh logs"
+            fail "Scrinium did not answer after 2 minutes. See: sh docker/scrinium.sh logs"
         fi
         sleep 1
     done
@@ -172,21 +172,21 @@ print_link() {
     if [ -n "${SSH_CONNECTION:-}" ]; then
         # shellcheck disable=SC2086
         set -- $SSH_CONNECTION
-        say "Estas en un servidor por SSH. El enlace solo funciona desde este servidor, asi que"
-        say "abre un tunel desde TU ordenador, en otra terminal, y dejala abierta:"
+        say "You are on a server over SSH. The link only works from this server, so open a"
+        say "tunnel from YOUR computer, in another terminal, and leave it open:"
         say ""
         say "  ssh -N -L $port:127.0.0.1:$port $(id -un)@$3"
         say ""
-        say "Despues abre el enlace de arriba en el navegador de tu ordenador."
+        say "Then open the link above in your computer's browser."
     else
-        say "Abre el enlace de arriba en el navegador de este ordenador."
+        say "Open the link above in this computer's browser."
     fi
     mounted=$(current_mounts)
     if [ -n "$mounted" ]; then
         say ""
-        say "Tus carpetas, para Integraciones > Anadir una fuente (Scrinium solo puede leerlas, no cambiarlas):"
+        say "Your folders, for Integrations > Add a source (Scrinium can read them, never change them):"
         printf '%s\n' "$mounted" | while IFS="$tab" read -r src dst; do
-            say "  $dst   (tu carpeta $src)"
+            say "  $dst   (your folder $src)"
         done
     fi
 }
@@ -197,8 +197,8 @@ start() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --model-port)
-                [ $# -ge 2 ] || fail "--model-port necesita un numero de puerto, p. ej. --model-port 11434"
-                case "$2" in ''|*[!0-9]*) fail "--model-port: '$2' no es un puerto." ;; esac
+                [ $# -ge 2 ] || fail "--model-port needs a port number, e.g. --model-port 11434"
+                case "$2" in ''|*[!0-9]*) fail "--model-port: '$2' is not a port." ;; esac
                 case ",$model_ports," in
                     *",$2,"*) ;;
                     *) model_ports="${model_ports:+$model_ports,}$2" ;;
@@ -225,18 +225,18 @@ start() {
 
     if exists && [ "$have" = "$wanted" ]; then
         if running; then
-            say "Scrinium ya esta en marcha."
+            say "Scrinium is already running."
         else
             install_tools
             docker start "$name" >/dev/null
-            say "Scrinium arrancado de nuevo."
+            say "Scrinium started again."
         fi
         print_link
         return
     fi
 
     if exists; then
-        say "Aplicando los cambios (carpetas, puerto o version): Scrinium se reinicia."
+        say "Applying the changes (folders, port or version): Scrinium restarts."
         docker rm -f "$name" >/dev/null
     fi
     install_tools
@@ -257,26 +257,26 @@ start() {
 $mounts
 EOF
     docker run "$@" "$image" >/dev/null \
-        || fail "Docker no pudo arrancar el contenedor. Si dice que el puerto $port esta en uso,
-elige otro: SCRINIUM_PORT=47620 sh docker/scrinium.sh start"
-    say "Scrinium arrancado."
+        || fail "Docker could not start the container. If it says port $port is in use,
+pick another: SCRINIUM_PORT=47620 sh docker/scrinium.sh start"
+    say "Scrinium started."
     print_link
 }
 
 stop() {
     if running; then
         docker stop --time 30 "$name" >/dev/null
-        say "Scrinium detenido. Tus datos siguen en el volumen $volume."
+        say "Scrinium stopped. Your data stays in the volume $volume."
     else
-        say "Scrinium no esta en marcha."
+        say "Scrinium is not running."
     fi
 }
 
 update() {
     if git -C "$repo" rev-parse --git-dir >/dev/null 2>&1; then
-        say "Descargando la ultima version del codigo..."
+        say "Downloading the latest version of the code..."
         git -C "$repo" pull --ff-only \
-            || fail "git pull no pudo actualizar (¿hay cambios tuyos en esta carpeta?)."
+            || fail "git pull could not update (do you have local changes in this folder?)."
     fi
     build_image --pull
     if exists; then
@@ -284,10 +284,10 @@ update() {
         if [ "$was_running" = yes ]; then
             start
         else
-            say "Imagen nueva lista. Arranca Scrinium con: sh docker/scrinium.sh start"
+            say "New image ready. Start Scrinium with: sh docker/scrinium.sh start"
         fi
     else
-        say "Imagen nueva lista. Arranca Scrinium con: sh docker/scrinium.sh start"
+        say "New image ready. Start Scrinium with: sh docker/scrinium.sh start"
     fi
 }
 
@@ -298,16 +298,16 @@ case "$command" in
     stop) need_docker; stop ;;
     link)
         need_docker
-        running || fail "Scrinium no esta en marcha. Arrancalo con: sh docker/scrinium.sh start"
+        running || fail "Scrinium is not running. Start it with: sh docker/scrinium.sh start"
         print_link ;;
     logs)
         need_docker
-        exists || fail "Scrinium aun no se ha arrancado nunca: sh docker/scrinium.sh start"
+        exists || fail "Scrinium has never been started: sh docker/scrinium.sh start"
         docker logs --tail 100 --follow "$name" ;;
     update) need_docker; update ;;
     run)
         need_docker
-        running || fail "Scrinium no esta en marcha. Arrancalo con: sh docker/scrinium.sh start"
+        running || fail "Scrinium is not running. Start it with: sh docker/scrinium.sh start"
         # shellcheck disable=SC2046
         docker exec $(tty_flags) "$name" scrinium "$@" ;;
     -h|--help|help) usage ;;

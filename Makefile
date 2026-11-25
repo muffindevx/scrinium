@@ -106,5 +106,5 @@ sbom:
 
 # Secrets in Scrinium's code. Fails without gitleaks installed: not scanning is not passing.
 secrets:
-	@command -v gitleaks >/dev/null || { echo "gitleaks no esta instalado: no se ha escaneado nada. Ver docs/security/SUPPLY_CHAIN.md"; exit 1; }
+	@command -v gitleaks >/dev/null || { echo "gitleaks is not installed: nothing was scanned. See docs/security/SUPPLY_CHAIN.md"; exit 1; }
 	gitleaks dir --config .gitleaks.toml --redact --no-banner .

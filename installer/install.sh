@@ -20,7 +20,7 @@ for arg in "$@"; do
     case "$arg" in
         --no-window) window=no ;;
         --yes) assume_yes=yes ;;
-        *) echo "Opcion desconocida: $arg" >&2; exit 2 ;;
+        *) echo "Unknown option: $arg" >&2; exit 2 ;;
     esac
 done
 
@@ -30,13 +30,13 @@ fail() {
 }
 
 if [ "$(id -u)" = "0" ]; then
-    fail "No instales Scrinium como root: usa tu cuenta normal, sin sudo."
+    fail "Do not install Scrinium as root: use your normal account, without sudo."
 fi
 
 set -- "$here"/scrinium-*-py3-none-any.whl
 wheel=$1
-[ -f "$wheel" ] || fail "No encuentro el paquete de Scrinium (scrinium-*.whl) junto a este script."
-[ -f "$here/constraints.txt" ] || fail "Falta constraints.txt junto a este script."
+[ -f "$wheel" ] || fail "The Scrinium package (scrinium-*.whl) was not found next to this script."
+[ -f "$here/constraints.txt" ] || fail "constraints.txt is missing next to this script."
 
 sha256_of() {
     if command -v sha256sum >/dev/null 2>&1; then
@@ -47,22 +47,22 @@ sha256_of() {
 }
 
 install_uv() {
-    echo "Scrinium necesita uv (de Astral) para instalarse. Se instalara uv ${UV_VERSION} en tu"
-    echo "cuenta, en ~/.local/bin, desde: ${UV_INSTALLER_URL}"
+    echo "Scrinium needs uv (by Astral) to install. uv ${UV_VERSION} will be installed in your"
+    echo "account, in ~/.local/bin, from: ${UV_INSTALLER_URL}"
     if [ "$assume_yes" != yes ]; then
-        printf "Continuar? [s/N] "
+        printf "Continue? [y/N] "
         read -r answer || answer=""
         case "$answer" in
-            s|S|si|SI|Si) ;;
-            *) fail "Cancelado. Instala uv por tu cuenta (https://docs.astral.sh/uv/) y repite." ;;
+            y|Y|yes|YES|Yes) ;;
+            *) fail "Cancelled. Install uv yourself (https://docs.astral.sh/uv/) and try again." ;;
         esac
     fi
-    command -v curl >/dev/null 2>&1 || fail "Hace falta curl para descargar uv."
+    command -v curl >/dev/null 2>&1 || fail "curl is needed to download uv."
     scratch=$(mktemp -d)
     trap 'rm -rf "$scratch"' EXIT
     curl --proto '=https' --tlsv1.2 -fsSL "$UV_INSTALLER_URL" -o "$scratch/uv-installer.sh"
     if [ "$(sha256_of "$scratch/uv-installer.sh")" != "$UV_INSTALLER_SHA256" ]; then
-        fail "El instalador de uv descargado no coincide con el esperado: no se ejecuta."
+        fail "The downloaded uv installer does not match the expected one: it is not run."
     fi
     # The uv installer in turn checks the SHA256 of the binary it downloads.
     sh "$scratch/uv-installer.sh" --quiet
@@ -75,7 +75,7 @@ fi
 if [ -z "$uv_bin" ]; then
     install_uv
     uv_bin="$HOME/.local/bin/uv"
-    [ -x "$uv_bin" ] || fail "uv no quedo instalado en $uv_bin."
+    [ -x "$uv_bin" ] || fail "uv was not installed in $uv_bin."
 fi
 
 target="$wheel"
@@ -85,22 +85,22 @@ if [ "$(uname -s)" = "Linux" ] && [ "$window" = auto ]; then
     fi
 fi
 
-echo "Instalando Scrinium..."
+echo "Installing Scrinium..."
 "$uv_bin" tool install --reinstall --quiet --python 3.12 "$target" -c "$here/constraints.txt"
 scrinium="$("$uv_bin" tool dir --bin)/scrinium"
-[ -x "$scrinium" ] || fail "Scrinium no quedo instalado en $scrinium."
+[ -x "$scrinium" ] || fail "Scrinium was not installed in $scrinium."
 
-echo "Descargando herramientas y el modelo de busqueda (unos 0,7 GB la primera vez)..."
-"$scrinium" tools install || fail "No se pudo descargar todo. Repite este script para continuar."
+echo "Downloading the tools and the search model (about 0.7 GB the first time)..."
+"$scrinium" tools install || fail "Not everything could be downloaded. Run this script again to continue."
 
 echo
 "$scrinium" doctor || true
 echo
 case ":$PATH:" in
     *":$("$uv_bin" tool dir --bin):"*)
-        echo "Abre Scrinium con: scrinium start" ;;
+        echo "Open Scrinium with: scrinium start" ;;
     *)
         "$uv_bin" tool update-shell >/dev/null 2>&1 || true
-        echo "Abre una terminal nueva y arranca Scrinium con: scrinium start"
-        echo "(o ahora mismo: $scrinium start)" ;;
+        echo "Open a new terminal and start Scrinium with: scrinium start"
+        echo "(or right now: $scrinium start)" ;;
 esac

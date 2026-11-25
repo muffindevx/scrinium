@@ -22,7 +22,7 @@ socat "TCP-LISTEN:${port},bind=${address},reuseaddr,fork" "TCP:127.0.0.1:${port}
 
 for model_port in $(printf '%s' "${SCRINIUM_MODEL_PORTS:-}" | tr ',' ' '); do
     case "$model_port" in
-        ''|*[!0-9]*) echo "SCRINIUM_MODEL_PORTS: '$model_port' no es un puerto." >&2; exit 2 ;;
+        ''|*[!0-9]*) echo "SCRINIUM_MODEL_PORTS: '$model_port' is not a port." >&2; exit 2 ;;
     esac
     socat "TCP-LISTEN:${model_port},bind=127.0.0.1,reuseaddr,fork" \
         "TCP:host.docker.internal:${model_port}" &
