@@ -23,7 +23,7 @@ def test_failure_to_open_the_browser_is_reported(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _open_with_result(monkeypatch, False)
-    assert "No se pudo abrir el navegador" in capsys.readouterr().out
+    assert "The browser could not be opened" in capsys.readouterr().out
 
 
 def test_successful_open_prints_nothing(

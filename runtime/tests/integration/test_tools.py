@@ -185,7 +185,7 @@ def test_status_command_lists_what_is_missing(tmp_path: Path) -> None:
         env={**os.environ, "SCRINIUM_DATA_DIR": str(tmp_path / "data")},
     )
     assert result.returncode == 0
-    assert "gitleaks 8.30.1: no instalado" in result.stdout
+    assert "gitleaks 8.30.1: not installed" in result.stdout
     assert "scrinium tools install" in result.stdout
 
 

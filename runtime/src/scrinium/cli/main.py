@@ -69,22 +69,22 @@ from scrinium.infrastructure.tools.manifest import (
 from scrinium.main import create_app, open_runtime
 
 _UNSAFE_DATA_DIR_MESSAGES = {
-    UnsafeDataDirReason.NOT_ABSOLUTE: "SCRINIUM_DATA_DIR debe ser una ruta absoluta: {path}",
-    UnsafeDataDirReason.NOT_A_DIRECTORY: "El directorio de datos no es una carpeta: {path}",
+    UnsafeDataDirReason.NOT_ABSOLUTE: "SCRINIUM_DATA_DIR must be an absolute path: {path}",
+    UnsafeDataDirReason.NOT_A_DIRECTORY: "The data directory is not a folder: {path}",
     UnsafeDataDirReason.WRONG_OWNER: (
-        "El directorio de datos {path}, o algo dentro de el, pertenece a otra cuenta. "
-        "Scrinium no lo usara."
+        "The data directory {path}, or something inside it, belongs to another account. "
+        "Scrinium will not use it."
     ),
     UnsafeDataDirReason.PERMISSIONS_IGNORED: (
-        "El disco de {path} ignora los permisos de archivo (NTFS o exFAT, por ejemplo): "
-        "otras cuentas podrian leer tus datos. Elige con SCRINIUM_DATA_DIR una carpeta en un "
-        "disco ext4 o APFS."
+        "The disk of {path} ignores file permissions (NTFS or exFAT, for example): "
+        "other accounts could read your data. Choose a folder on an ext4 or APFS disk with "
+        "SCRINIUM_DATA_DIR."
     ),
 }
 _WINDOWS_PERMISSIONS_IGNORED = (
-    "Scrinium no pudo dejar {path} solo para tu cuenta: el disco no guarda permisos (FAT, exFAT "
-    "o una unidad de red, por ejemplo). Elige con SCRINIUM_DATA_DIR una carpeta en un disco NTFS "
-    "de este equipo."
+    "Scrinium could not make {path} private to your account: the disk keeps no permissions (FAT, "
+    "exFAT or a network drive, for example). Choose a folder on an NTFS disk of this machine "
+    "with SCRINIUM_DATA_DIR."
 )
 
 
@@ -137,7 +137,7 @@ def wait_until_started(server: uvicorn.Server) -> bool:
 def open_when_ready(server: uvicorn.Server, launch_url: str) -> None:
     # The link is briefly visible in the process list: see ADR-003.
     if wait_until_started(server) and not webbrowser.open(launch_url):
-        print("No se pudo abrir el navegador. Usa el enlace de arriba.", flush=True)
+        print("The browser could not be opened. Use the link above.", flush=True)
 
 
 def serve_with_window(server: uvicorn.Server, sock: socket.socket, launch_url: str) -> None:
@@ -148,10 +148,10 @@ def serve_with_window(server: uvicorn.Server, sock: socket.socket, launch_url: s
         if wait_until_started(server):
             run_window(launch_url)
     except Exception:
-        logging.getLogger(__name__).exception("no se pudo abrir la ventana")
+        logging.getLogger(__name__).exception("the window could not be opened")
         print(
-            "No se pudo abrir la ventana de Scrinium. Usa el enlace de arriba en el navegador; "
-            "para detener Scrinium, pulsa Ctrl+C.",
+            "The Scrinium window could not be opened. Use the link above in the browser; "
+            "to stop Scrinium, press Ctrl+C.",
             flush=True,
         )
         thread.join()
@@ -164,12 +164,12 @@ def serve_with_window(server: uvicorn.Server, sock: socket.socket, launch_url: s
 
 
 _MODELS_MISSING = (
-    "Faltan llama.cpp o el modelo de busqueda: sin ellos, Scrinium no puede buscar por "
-    "significado. Descargalos con: scrinium tools install"
+    "llama.cpp or the search model is missing: without them, Scrinium cannot search by "
+    "meaning. Download them with: scrinium tools install"
 )
 _LLAMA_FAILED = (
-    "llama-server no arranco: Scrinium sigue sin modelos locales. Para ver por que, arranca con "
-    "--verbose; si falla la GPU, prueba: scrinium tools install --cpu"
+    "llama-server did not start: Scrinium goes on without local models. To see why, start with "
+    "--verbose; if the GPU fails, try: scrinium tools install --cpu"
 )
 
 
@@ -208,7 +208,7 @@ def start_llama_server(data_dir: Path) -> LlamaServer | None:
         for entry in served:
             downloads.verify(data_dir, entry.path, full=False)
     except ToolError as error:
-        print(f"{error} Scrinium sigue sin modelos locales.", file=sys.stderr, flush=True)
+        print(f"{error} Scrinium goes on without local models.", file=sys.stderr, flush=True)
         return None
     server = LlamaServer(executable, served, data_dir / LLAMA_DIRNAME)
     if not server.start():
@@ -222,20 +222,20 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
 
     geteuid = getattr(os, "geteuid", None)
     if geteuid is not None and geteuid() == 0:
-        print("Scrinium no se ejecuta como root. Usa tu cuenta normal.", file=sys.stderr)
+        print("Scrinium does not run as root. Use your normal account.", file=sys.stderr)
         return 1
 
     try:
         provider = default_model_provider()
     except ValueError:
-        print("SCRINIUM_MODEL_PROVIDER debe ser llama u ollama.", file=sys.stderr)
+        print("SCRINIUM_MODEL_PROVIDER must be llama or ollama.", file=sys.stderr)
         return 1
     try:
         ollama_url = check_loopback_url(default_ollama_url())
     except ValueError:
         print(
-            "SCRINIUM_OLLAMA_URL debe ser http en este equipo (127.0.0.1 o localhost). "
-            "Un servidor remoto seria una salida de datos y no esta permitido.",
+            "SCRINIUM_OLLAMA_URL must be http on this machine (127.0.0.1 or localhost). "
+            "A remote server would be a data egress and is not allowed.",
             file=sys.stderr,
         )
         return 1
@@ -245,11 +245,11 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
     except OSError:
         if scrinium_listens_on(port):
             message = (
-                "Scrinium ya esta abierto: busca su ventana o la terminal donde lo arrancaste. "
-                "Para abrir otro a la vez, usa otro puerto con --port."
+                "Scrinium is already open: look for its window or the terminal that started it. "
+                "To open another one at the same time, use another port with --port."
             )
         else:
-            message = f"Otro programa usa el puerto {port}. Elige otro con --port."
+            message = f"Another program uses port {port}. Choose another with --port."
         print(message, file=sys.stderr)
         return 1
 
@@ -271,14 +271,14 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
     except IncompatibleDatabaseError:
         sock.close()
         print(
-            "La base de datos de Scrinium es de una version mas nueva. Actualiza Scrinium.",
+            "Scrinium's database is from a newer version. Update Scrinium.",
             file=sys.stderr,
         )
         return 1
     if not config.web_dist.is_dir():
         print(
-            "Esta copia de Scrinium no incluye la interfaz: solo responde la API. Instala el "
-            "paquete publicado o, desde el codigo fuente, compilala con `make build`.",
+            "This copy of Scrinium does not include the interface: only the API answers. "
+            "Install the published package or, from the source code, build it with `make build`.",
             file=sys.stderr,
             flush=True,
         )
@@ -298,7 +298,7 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
     app.state.ingestion.submit_jobs()
     # Purges a failed deletion left to do (R3): before anything else reads the files.
     if retry_pending_purges(database, app.state.ingestion.indexer):
-        print("Quedan purgas pendientes de un borrado anterior; se reintentaran al arrancar.",
+        print("Purges from an earlier deletion are still pending; they will be retried at startup.",
               file=sys.stderr, flush=True)  # fmt: skip
     # Rule extractions left halfway at shutdown: they resume by themselves.
     if app.state.analyses.llm.status() is ModelStatus.READY:
@@ -329,19 +329,18 @@ def start(port: int, interface: Interface, verbose: bool = False) -> int:
     if interface == Interface.BROWSER:
         threading.Thread(target=open_when_ready, args=(server, launch_url), daemon=True).start()
 
-    print(f"Scrinium {__version__} en {config.allowed_origin} (solo este equipo)", flush=True)
+    print(f"Scrinium {__version__} at {config.allowed_origin} (this machine only)", flush=True)
     if interface == Interface.WINDOW:
-        print("Scrinium esta en su ventana. Cierrala para detenerlo.", flush=True)
+        print("Scrinium is in its window. Close it to stop it.", flush=True)
     else:
         print(
-            "Scrinium sigue en marcha mientras esta terminal este abierta. Para detenerlo, "
-            "pulsa Ctrl+C.",
+            "Scrinium keeps running while this terminal is open. To stop it, press Ctrl+C.",
             flush=True,
         )
     minutes = int(LAUNCH_TOKEN_TTL_SECONDS // 60)
     print(
-        f"Si la interfaz no se abre, usa este enlace de un solo uso (caduca en {minutes} "
-        f"minutos):\n{launch_url}",
+        f"If the interface does not open, use this one-time link (it expires in {minutes} "
+        f"minutes):\n{launch_url}",
         flush=True,
     )
     instances.register(
@@ -379,11 +378,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"scrinium {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
-    start_parser = commands.add_parser("start", help="Inicia Scrinium y abre la interfaz local.")
+    start_parser = commands.add_parser(
+        "start", help="Starts Scrinium and opens the local interface."
+    )
     try:
         port = default_port()
     except ValueError:
-        parser.error("SCRINIUM_PORT debe ser un numero")
+        parser.error("SCRINIUM_PORT must be a number")
     start_parser.add_argument("--port", type=int, default=port)
     shown = start_parser.add_mutually_exclusive_group()
     shown.add_argument(
@@ -391,106 +392,109 @@ def main(argv: Sequence[str] | None = None) -> int:
         dest="interface",
         action="store_const",
         const=Interface.BROWSER,
-        help="Abrir el navegador en vez de la ventana de Scrinium.",
+        help="Open the browser instead of the Scrinium window.",
     )
     shown.add_argument(
         "--no-browser",
         dest="interface",
         action="store_const",
         const=Interface.NONE,
-        help="No abrir ninguna interfaz; solo el enlace en la terminal.",
+        help="Open no interface; only the link in the terminal.",
     )
     start_parser.set_defaults(interface=Interface.WINDOW)
     start_parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Mostrar cada peticion y los detalles."
+        "-v", "--verbose", action="store_true", help="Show every request and the details."
     )
 
     tools_parser = commands.add_parser(
-        "tools", help="Lo que Scrinium descarga: gitleaks, llama.cpp y el modelo de busqueda."
+        "tools", help="What Scrinium downloads: gitleaks, llama.cpp and the search model."
     )
     tools_commands = tools_parser.add_subparsers(dest="tools_command", required=True)
     install_parser = tools_commands.add_parser(
-        "install", help="Descarga lo que falte, con version y SHA256 fijos."
+        "install", help="Downloads what is missing, with pinned versions and SHA256."
     )
     install_parser.add_argument(
         "names",
         nargs="*",
         choices=sorted([*TOOLS, *MODELS, *ADDONS]),
-        metavar="nombre",
+        metavar="name",
         help=(
-            "Sin nombres: gitleaks, llama.cpp y el modelo de búsqueda. "
-            f"«{LOCAL_ADDON}» añade el modelo de chat local (2,5 GB)."
+            "Without names: gitleaks, llama.cpp and the search model. "
+            f"'{LOCAL_ADDON}' adds the local chat model (2.5 GB)."
         ),
     )
     install_parser.add_argument(
-        "--cpu", action="store_true", help="llama.cpp solo con CPU, aunque haya Vulkan."
+        "--cpu", action="store_true", help="CPU-only llama.cpp, even if Vulkan is available."
     )
     install_parser.add_argument(
         "--dir",
         type=Path,
-        metavar="carpeta",
-        help="Instala en esta carpeta (y mueve alli lo ya descargado). Ver: scrinium tools move.",
+        metavar="folder",
+        help=(
+            "Installs into this folder (and moves what is already downloaded there). "
+            "See: scrinium tools move."
+        ),
     )
-    tools_commands.add_parser("status", help="Muestra que esta instalado y donde.")
+    tools_commands.add_parser("status", help="Shows what is installed and where.")
     move_parser = tools_commands.add_parser(
         "move",
         help=(
-            "Mueve las descargas (llama.cpp y modelos) a otra carpeta, por ejemplo un disco "
-            "mas grande. Tus datos se quedan en la carpeta de datos."
+            "Moves the downloads (llama.cpp and models) to another folder, for example a bigger "
+            "disk. Your data stays in the data directory."
         ),
     )
-    move_parser.add_argument("dir", type=Path, metavar="carpeta")
+    move_parser.add_argument("dir", type=Path, metavar="folder")
 
-    commands.add_parser("doctor", help="Comprueba el equipo y dice como arreglar lo que falte.")
+    commands.add_parser("doctor", help="Checks the machine and says how to fix what is missing.")
     coverage_parser = commands.add_parser(
-        "coverage", help="Dónde decide el código y qué decisiones cubre una regla verificada."
+        "coverage", help="Where the code decides and which decisions a verified rule covers."
     )
-    coverage_parser.add_argument("--root", type=Path, default=Path(), help="El repositorio.")
-    coverage_parser.add_argument(
-        "--path", default="", help="Una carpeta o archivo del repositorio."
-    )
-    coverage_parser.add_argument("--json", action="store_true", help="Salida en JSON.")
+    coverage_parser.add_argument("--root", type=Path, default=Path(), help="The repository.")
+    coverage_parser.add_argument("--path", default="", help="A folder or file of the repository.")
+    coverage_parser.add_argument("--json", action="store_true", help="JSON output.")
     mcp_parser = commands.add_parser(
-        "mcp", help="Servidor MCP (stdio) con las reglas de este repositorio para agentes."
+        "mcp", help="MCP server (stdio) with this repository's rules, for agents."
     )
     mcp_parser.add_argument(
-        "--project", help="El proyecto de Scrinium (por defecto, el de --root)."
+        "--project", help="The Scrinium project (by default, the one of --root)."
     )
     mcp_parser.add_argument(
-        "--root", type=Path, default=Path(), help="El repositorio (por defecto, esta carpeta)."
+        "--root", type=Path, default=Path(), help="The repository (by default, this folder)."
     )
     demo_parser = commands.add_parser(
         "demo",
-        help="Demo de 5 minutos: reglas verificadas, un cambio que rompe una y el aviso del check.",
+        help="5-minute demo: verified rules, a change that breaks one, and the check's warning.",
     )
     demo_parser.add_argument(
         "--dir", type=Path, default=Path("scrinium-demo"),
-        help="Carpeta nueva para el ejemplo (por defecto, ./scrinium-demo).",
+        help="New folder for the example (by default, ./scrinium-demo).",
     )  # fmt: skip
-    commands.add_parser("stop", help="Detiene todos los Scrinium en marcha y su llama-server.")
+    commands.add_parser("stop", help="Stops every running Scrinium and its llama-server.")
     attach_parser = commands.add_parser(
-        "attach", help="Muestra en vivo todo lo que hace el Scrinium en marcha (modo dios)."
+        "attach", help="Shows live everything the running Scrinium does."
     )
-    attach_parser.add_argument("--port", type=int, help="El de ese puerto, si hay varios.")
+    attach_parser.add_argument(
+        "--port", type=int, help="The one on that port, if there are several."
+    )
     attach_parser.add_argument(
         "--content",
         action="store_true",
-        help="Tambien preguntas, prompts y respuestas del modelo. Los secretos se ocultan.",
+        help="Also questions, prompts and model answers. Secrets are hidden.",
     )
     link_parser = commands.add_parser(
-        "link", help="Pide al Scrinium en marcha un enlace de entrada nuevo, sin reiniciarlo."
+        "link", help="Asks the running Scrinium for a new entry link, without restarting it."
     )
-    link_parser.add_argument("--port", type=int, help="El de ese puerto, si hay varios.")
-    link_parser.add_argument("--open", action="store_true", help="Abrirlo tambien en el navegador.")
+    link_parser.add_argument("--port", type=int, help="The one on that port, if there are several.")
+    link_parser.add_argument("--open", action="store_true", help="Also open it in the browser.")
     clean_parser = commands.add_parser(
-        "clean", help="Borra restos y versiones viejas. No toca proyectos ni reglas."
+        "clean", help="Deletes leftovers and old versions. Never touches projects or rules."
     )
-    clean_parser.add_argument("--yes", action="store_true", help="No pedir confirmacion.")
+    clean_parser.add_argument("--yes", action="store_true", help="Do not ask for confirmation.")
     uninstall_parser = commands.add_parser(
-        "uninstall", help="Borra todo Scrinium de este equipo: datos, modelos y el programa."
+        "uninstall", help="Removes all of Scrinium from this machine: data, models and the program."
     )
     uninstall_parser.add_argument(
-        "--yes", action="store_true", help=f"No pedir que se escriba {UNINSTALL_CONFIRMATION}."
+        "--yes", action="store_true", help=f"Do not ask to type {UNINSTALL_CONFIRMATION}."
     )
 
     add_rule_commands(commands)
@@ -533,14 +537,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return clean(data_dir, args.yes)
         return uninstall(data_dir, args.yes)
     if not 0 <= args.port <= 65535:
-        parser.error("--port debe estar entre 0 y 65535")
+        parser.error("--port must be between 0 and 65535")
     return start(args.port, args.interface, args.verbose)
 
 
 def _is_root() -> bool:
     geteuid = getattr(os, "geteuid", None)
     if geteuid is not None and geteuid() == 0:
-        print("Scrinium no se ejecuta como root. Usa tu cuenta normal.", file=sys.stderr)
+        print("Scrinium does not run as root. Use your normal account.", file=sys.stderr)
         return True
     return False
 

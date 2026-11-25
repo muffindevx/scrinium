@@ -61,15 +61,15 @@ def test_attach_shows_activity_live_and_stop_ends_everything(tmp_path: Path) -> 
 
         stopped = _cli(data_dir, "stop")
         assert stopped.returncode == 0, stopped.stderr
-        assert "Detenido" in stopped.stdout
+        assert "Stopped" in stopped.stdout
         assert instance.process.wait(timeout=30) == 0
         rest, _ = attach.communicate(timeout=30)
-        assert "Scrinium se detuvo." in rest
+        assert "Scrinium stopped." in rest
     finally:
         attach.kill()
         instance.process.kill()
     assert list((data_dir / "run").iterdir()) == []
-    assert "No hay ningun Scrinium en marcha" in _cli(data_dir, "stop").stdout
+    assert "No Scrinium is running" in _cli(data_dir, "stop").stdout
     nothing = _cli(data_dir, "attach")
     assert nothing.returncode == 1 and "scrinium start" in nothing.stderr
 
@@ -178,7 +178,7 @@ def test_clean_removes_only_leftovers(tmp_path: Path) -> None:
     kept = {"current_tool", "current_model", "database"}
     for name, path in paths.items():
         assert path.exists() == (name in kept), name
-    assert "No hay nada que limpiar" in _cli(data_dir, "clean", "--yes").stdout
+    assert "Nothing to clean" in _cli(data_dir, "clean", "--yes").stdout
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX permissions of the test directory")
@@ -189,15 +189,15 @@ def test_uninstall_needs_the_word_and_leaves_foreign_files(tmp_path: Path) -> No
     foreign.write_text("no es de Scrinium")
 
     refused = _cli(data_dir, "uninstall", stdin="borrar\n")
-    assert refused.returncode == 1 and "no se ha borrado nada" in refused.stdout
+    assert refused.returncode == 1 and "nothing was deleted" in refused.stdout
     assert all(path.exists() for path in paths.values())
 
-    done = _cli(data_dir, "uninstall", stdin="BORRAR\n")
+    done = _cli(data_dir, "uninstall", stdin="DELETE\n")
     assert done.returncode == 0, done.stderr
     assert not any(path.exists() for path in paths.values())
     assert foreign.exists() and "mis-notas.txt" in done.stdout
     # From the source code there is nothing to uninstall with uv.
-    assert "codigo fuente" in done.stdout
+    assert "source code" in done.stdout
 
     foreign.unlink()
     _fake_install(data_dir)

@@ -50,7 +50,7 @@ def test_the_demo_command_runs_without_a_model(tmp_path: Path) -> None:
              "HOME": str(tmp_path)},
     )  # fmt: skip
     assert result.returncode == 0, result.stderr
-    assert "Cambia la regla" in result.stdout and "codigo 1" in result.stdout
+    assert "Cambia la regla" in result.stdout and "code 1" in result.stdout
     # It never touched the data directory.
     assert not (tmp_path / "data").exists()
 

@@ -182,7 +182,7 @@ def test_clean_and_uninstall_find_the_moved_downloads(data_dir: Path, tmp_path: 
     away = tmp_path / "fuera"
     downloads.move(data_dir, away)
     reasons = dict(maintenance.leftovers(data_dir))
-    assert reasons[data_dir / "models"] == "copia anterior de las descargas, ya movidas"
+    assert reasons[data_dir / "models"] == "earlier copy of the downloads, already moved"
     owned = maintenance._owned(data_dir)
     assert away.resolve() / "models" in owned and away.resolve() / "tools" in owned
     assert data_dir / downloads.STATE_FILE in owned

@@ -25,7 +25,7 @@ from scrinium.infrastructure.tools import downloads
 from scrinium.infrastructure.tools.installer import MODELS_DIRNAME, TOOLS_DIRNAME
 from scrinium.infrastructure.tools.manifest import MODELS, TOOLS
 
-UNINSTALL_CONFIRMATION: Final = "BORRAR"
+UNINSTALL_CONFIRMATION: Final = "DELETE"
 _PARTIAL_DOWNLOAD: Final = ".descarga-"
 _DATABASE: Final = "scrinium.sqlite3"
 _OWNED_DIRS: Final = (
@@ -68,44 +68,47 @@ def leftovers(data_dir: Path) -> list[tuple[Path, str]]:
     for tool_dir in sorted(tools_dir.iterdir()) if tools_dir.is_dir() else []:
         tool = TOOLS.get(tool_dir.name)
         if tool is None:
-            found.append((tool_dir, "herramienta que ya no se usa"))
+            found.append((tool_dir, "tool no longer used"))
             continue
         for version_dir in sorted(tool_dir.iterdir()):
             if version_dir.name.startswith(_PARTIAL_DOWNLOAD):
-                found.append((version_dir, "descarga a medias"))
+                found.append((version_dir, "half-finished download"))
             elif not version_dir.name.startswith(f"{tool.version}-"):
-                found.append((version_dir, f"version antigua de {tool.name}"))
+                found.append((version_dir, f"old version of {tool.name}"))
     models_dir = downloads.models_dir(data_dir)
     for model_dir in sorted(models_dir.iterdir()) if models_dir.is_dir() else []:
         model = MODELS.get(model_dir.name)
         if model is None:
-            found.append((model_dir, "modelo que ya no se usa"))
+            found.append((model_dir, "model no longer used"))
             continue
         for revision_dir in sorted(model_dir.iterdir()):
             if revision_dir.name != model.revision:
-                found.append((revision_dir, f"version antigua de {model.name}"))
+                found.append((revision_dir, f"old version of {model.name}"))
                 continue
             for item in sorted(revision_dir.iterdir()):
                 if item.name.startswith(_PARTIAL_DOWNLOAD):
-                    found.append((item, "descarga a medias"))
+                    found.append((item, "half-finished download"))
                 elif item.name != model.file:
-                    found.append((item, "archivo que no es el modelo"))
+                    found.append((item, "file that is not the model"))
     running = instances.running(data_dir)
     old = downloads.pending_cleanup(data_dir)
     if old is not None and not running:
         found += [
-            (old / name, "copia anterior de las descargas, ya movidas")
+            (old / name, "earlier copy of the downloads, already moved")
             for name in (TOOLS_DIRNAME, MODELS_DIRNAME)
             if (old / name).exists()
         ]
     for instance in instances.recorded(data_dir):
         if instance not in running:
             found.append(
-                (data_dir / instances.RUN_DIRNAME / f"{instance.port}.json", "proceso ya detenido")
+                (
+                    data_dir / instances.RUN_DIRNAME / f"{instance.port}.json",
+                    "process already stopped",
+                )
             )
     llama_dir = data_dir / LLAMA_DIRNAME
     if llama_dir.is_dir() and not running:
-        found.append((llama_dir, "configuracion temporal de llama-server"))
+        found.append((llama_dir, "temporary llama-server configuration"))
     return found
 
 
@@ -113,7 +116,7 @@ def _confirmed(question: str, assume_yes: bool, ask: Ask) -> bool:
     if assume_yes:
         return True
     try:
-        return ask(question).strip().lower() in {"s", "si", "sí"}
+        return ask(question).strip().lower() in {"y", "yes"}
     except EOFError:
         return False
 
@@ -122,7 +125,7 @@ def clean(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
     downloads.forget_missing(data_dir)
     found = leftovers(data_dir)
     if not found:
-        print("No hay nada que limpiar.")
+        print("Nothing to clean.")
         return 0
     total = 0
     for path, reason in found:
@@ -130,16 +133,16 @@ def clean(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
         total += size
         shown = path.relative_to(data_dir) if path.is_relative_to(data_dir) else path
         print(f"  {shown}  ({_human(size)}): {reason}")
-    print(f"Se liberan {_human(total)}. Tus proyectos, reglas y preguntas no se tocan.")
-    if not _confirmed("¿Borrar? [s/N] ", assume_yes, ask):
-        print("Cancelado: no se ha borrado nada.")
+    print(f"Frees {_human(total)}. Your projects, rules and questions are not touched.")
+    if not _confirmed("Delete? [y/N] ", assume_yes, ask):
+        print("Cancelled: nothing was deleted.")
         return 1
     for path, _ in found:
         _remove(path)
     downloads.forget_missing(data_dir)
     if downloads.pending_cleanup(data_dir) is not None and not instances.running(data_dir):
         downloads.finish_cleanup(data_dir)
-    print("Limpio.")
+    print("Clean.")
     return 0
 
 
@@ -198,7 +201,7 @@ def _installed_with_uv(uv: str) -> bool:
 def _uninstall_program() -> str:
     uv = _uv()
     if uv is None or not _installed_with_uv(uv):
-        return "El programa se ejecuta desde el codigo fuente, no desde uv: no se desinstala."
+        return "The program runs from the source code, not from uv: it is not uninstalled."
     if sys.platform == "win32":
         # Windows cannot delete the running executable: uv does it as soon as this process ends.
         subprocess.Popen(  # noqa: S603  system cmd with fixed arguments
@@ -209,34 +212,34 @@ def _uninstall_program() -> str:
             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
             close_fds=True,
         )  # fmt: skip
-        return "El programa se desinstala en unos segundos, al cerrarse este comando."
+        return "The program is uninstalled a few seconds after this command ends."
     result = subprocess.run(  # noqa: S603  system uv, no shell
         [uv, "tool", "uninstall", "scrinium"], capture_output=True, text=True, check=False
     )
     if result.returncode != 0:
-        return "uv no pudo desinstalar el programa. Hazlo con: uv tool uninstall scrinium"
-    return "Programa desinstalado."
+        return "uv could not uninstall the program. Do it with: uv tool uninstall scrinium"
+    return "Program uninstalled."
 
 
 def uninstall(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
     owned = _owned(data_dir)
     secrets = _secret_refs(data_dir)
     size = sum(_size(item) for item in owned)
-    print("Se borrara todo Scrinium de este equipo:")
-    print(f"  - Datos, herramientas y modelos en {data_dir} ({_human(size)})")
+    print("All of Scrinium will be removed from this machine:")
+    print(f"  - Data, tools and models in {data_dir} ({_human(size)})")
     elsewhere = sorted({item.parent for item in owned if not item.is_relative_to(data_dir)})
     for root in elsewhere:
-        print(f"  - Herramientas y modelos movidos a {root} (solo sus carpetas tools y models)")
-    print(f"  - Credenciales de conectores en el llavero: {len(secrets)}")
-    print("  - El programa scrinium")
-    print("uv se queda: puede usarlo otro programa. Las exportaciones que descargaste no se tocan.")
+        print(f"  - Tools and models moved to {root} (only its tools and models folders)")
+    print(f"  - Connector credentials in the keyring: {len(secrets)}")
+    print("  - The scrinium program")
+    print("uv stays: other programs may use it. Exports you downloaded are not touched.")
     if not assume_yes:
         try:
-            answer = ask(f"Escribe {UNINSTALL_CONFIRMATION} para continuar: ")
+            answer = ask(f"Type {UNINSTALL_CONFIRMATION} to continue: ")
         except EOFError:
             answer = ""
         if answer.strip() != UNINSTALL_CONFIRMATION:
-            print("Cancelado: no se ha borrado nada.")
+            print("Cancelled: nothing was deleted.")
             return 1
     stop(data_dir)
     store = KeyringSecretStore.from_system()
@@ -250,7 +253,7 @@ def uninstall(data_dir: Path, assume_yes: bool, ask: Ask = input) -> int:
         data_dir.rmdir()
     elif remaining:
         names = ", ".join(item.name for item in remaining)
-        print(f"Se dejaron en {data_dir} archivos que no son de Scrinium: {names}")
-    print("Datos borrados.")
+        print(f"Files in {data_dir} that are not Scrinium's were left: {names}")
+    print("Data deleted.")
     print(_uninstall_program())
     return 0

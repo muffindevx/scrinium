@@ -78,7 +78,7 @@ def install_tools(
         return 1
     tools_dir = downloads.tools_dir(data_dir)
     models_dir = downloads.models_dir(data_dir)
-    print(f"Carpeta de descargas: {downloads.downloads_dir(data_dir)}", flush=True)
+    print(f"Downloads folder: {downloads.downloads_dir(data_dir)}", flush=True)
     try:
         os_name, arch = current_platform()
     except ToolError as error:
@@ -108,7 +108,7 @@ def install_tools(
             print(f"\n  {error}", file=sys.stderr, flush=True)
             failed = True
             continue
-        print(f"\r  instalado en {path}", flush=True)
+        print(f"\r  installed in {path}", flush=True)
     return 1 if failed else 0
 
 
@@ -119,11 +119,11 @@ def show_tools(data_dir: Path) -> int:
     origin = (
         f" (variable {downloads.DOWNLOADS_ENV})"
         if downloads.from_env()
-        else " (carpeta de datos)"
+        else " (data directory)"
         if downloads.is_private(data_dir)
         else ""
     )
-    print(f"Carpeta de descargas: {where}{origin}")
+    print(f"Downloads folder: {where}{origin}")
     try:
         os_name, arch = current_platform()
     except ToolError as error:
@@ -141,12 +141,12 @@ def show_tools(data_dir: Path) -> int:
     for label, path in found:
         optional = label.startswith(CHAT_MODEL.name)
         missing = missing or (path is None and not optional)
-        shown = path if path is not None else "no instalado"
+        shown = path if path is not None else "not installed"
         if path is None and optional:
-            shown = f"no instalado (opcional: scrinium tools install {LOCAL_ADDON})"
+            shown = f"not installed (optional: scrinium tools install {LOCAL_ADDON})"
         print(f"{label}: {shown}")
     if missing:
-        print("Instala lo que falta con: scrinium tools install")
+        print("Install what is missing with: scrinium tools install")
     return 0
 
 
@@ -156,16 +156,16 @@ def move_tools(data_dir: Path, target: Path) -> int:
     target = target.expanduser()
     if not target.is_absolute():
         target = Path.cwd() / target
-    progress = _progress("copiando y comprobando")
-    print(f"Moviendo las descargas a {target}", flush=True)
+    progress = _progress("copying and checking")
+    print(f"Moving the downloads to {target}", flush=True)
     try:
         downloads.move(data_dir, target, progress)
     except ToolError as error:
         print(f"\n{error}", file=sys.stderr)
         return 1
-    print(f"\r  listo: las descargas están en {downloads.downloads_dir(data_dir)}", flush=True)
+    print(f"\r  done: the downloads are in {downloads.downloads_dir(data_dir)}", flush=True)
     if instances.running(data_dir):
-        print("Scrinium está en marcha: la copia anterior se borra cuando lo reinicies.")
+        print("Scrinium is running: the old copy is deleted when you restart it.")
     elif (old := downloads.finish_cleanup(data_dir)) is not None:
-        print(f"Copia anterior borrada de {old}.")
+        print(f"Old copy deleted from {old}.")
     return 0

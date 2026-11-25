@@ -142,7 +142,7 @@ def test_port_in_use_fails_without_issuing_a_token(tmp_path: Path) -> None:
             env={**os.environ, "SCRINIUM_DATA_DIR": str(tmp_path)},
         )
     assert result.returncode == 1
-    assert "Otro programa usa el puerto" in result.stderr
+    assert "Another program uses port" in result.stderr
     assert "token=" not in result.stdout + result.stderr
 
 
@@ -168,7 +168,7 @@ def test_a_second_start_says_scrinium_is_already_open(tmp_path: Path) -> None:
         first.process.terminate()
         first.process.communicate(timeout=10)
     assert second.returncode == 1
-    assert "Scrinium ya esta abierto" in second.stderr
+    assert "Scrinium is already open" in second.stderr
     assert "token=" not in second.stdout + second.stderr
 
 
@@ -198,7 +198,7 @@ def _start_with_env(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
 def test_relative_data_dir_is_refused_before_issuing_a_token() -> None:
     result = _start_with_env({"SCRINIUM_DATA_DIR": "datos-relativos"})
     assert result.returncode == 1
-    assert "ruta absoluta" in result.stderr
+    assert "absolute path" in result.stderr
     assert "token=" not in result.stdout + result.stderr
 
 
@@ -212,7 +212,7 @@ def test_data_dir_on_a_disk_without_permissions_is_refused(tmp_path: Path) -> No
         {"SCRINIUM_DATA_DIR": str(data), "PYTHONPATH": str(sitecustomize.parent)}
     )
     assert result.returncode == 1
-    assert "ignora los permisos" in result.stderr
+    assert "ignores file permissions" in result.stderr
     assert "token=" not in result.stdout + result.stderr
     assert list(data.iterdir()) == []
 

@@ -96,7 +96,7 @@ def _rule(repo: Path, example: _Example) -> RuleFile:
     line = next(n for n, row in enumerate(text.splitlines(), 1) if example.marker in row)
     decision = anchor_for(parse_decisions(example.path, text), line, line)
     if decision is None:
-        raise RuntimeError(f"sin decision en {example.path}:{line}")
+        raise RuntimeError(f"no decision in {example.path}:{line}")
     anchor = FileAnchor(
         example.path, decision.symbol, decision.kind, decision.start_line, decision.end_line,
         decision.shape, decision.value, decision.sketch,
@@ -134,48 +134,48 @@ def demo(folder: Path) -> int:
     repo = folder.resolve()
     if repo.exists() and any(repo.iterdir()):
         print(
-            f"{repo} ya existe y no esta vacia. Borrala o elige otra carpeta: "
-            "scrinium demo --dir OTRA",
+            f"{repo} already exists and is not empty. Delete it or choose another folder: "
+            "scrinium demo --dir OTHER",
             file=sys.stderr,
         )
         return 2
-    _step(1, f"Clono la tienda de ejemplo en {repo}")
+    _step(1, f"Cloning the example shop into {repo}")
     rules = prepare(repo)
-    print("   Un repositorio Git con pedidos, descuentos, envios y stock.")
+    print("   A Git repository with orders, discounts, shipping and stock.")
 
-    _step(2, f"Las reglas que el equipo ya reviso, en {RULES_DIR}/:")
+    _step(2, f"The rules the team already reviewed, in {RULES_DIR}/:")
     for rule in rules:
         anchor = rule.anchors[0]
         print(f"   - {rule.title}  ({anchor.path}:{anchor.start_line})")
 
-    _step(3, f"En la rama {BRANCH}, alguien cambia el envio gratis de 40 a 60 EUR:")
+    _step(3, f"On the branch {BRANCH}, someone moves free shipping from 40 to 60 EUR:")
     print('   tienda/envios.py: ENVIO_GRATIS_DESDE = Decimal("60")')
 
-    _step(4, f"scrinium check --base main  (en la rama {BRANCH})")
+    _step(4, f"scrinium check --base main  (on the branch {BRANCH})")
     result = check(Repository.at(repo), "main")
     print()
     print(to_markdown(result))
     code = 2 if result.errors else 1 if result.failed else 0
     verdict = {
-        0: "El check pasa.",
-        1: "El check falla (codigo 1): un PR asi no se fusiona sin que alguien revise la regla.",
-        2: "El check no pudo comprobar (codigo 2).",
+        0: "The check passes.",
+        1: "The check fails (code 1): a PR like this is not merged until someone reviews the rule.",
+        2: "The check could not run (code 2).",
     }[code]
     print(verdict)
 
-    _step(5, "Lo que dicen los documentos frente al codigo (en main):")
+    _step(5, "What the documents say against the code (on main):")
     conflicts = _doc_conflicts(repo, rules)
     for conflict in conflicts:
         print(f"   - {conflict.document}:{conflict.line}: «{conflict.sentence}»")
-        print(f"     dice {', '.join(conflict.says)}; la regla «{conflict.title}» decide con "
+        print(f"     says {', '.join(conflict.says)}; the rule «{conflict.title}» decides with "
               f"{', '.join(conflict.code)} ({conflict.place})")  # fmt: skip
     if not conflicts:
-        print("   Ningun documento contradice al codigo.")
+        print("   No document contradicts the code.")
     print(
-        "\nPara seguir:\n"
-        f"  - Ver las reglas en la consola: scrinium start, y anade {repo} como fuente.\n"
-        f"  - Proteger tu repositorio: scrinium hooks install, o scrinium check en tu CI.\n"
-        "  - Nada de esto uso un modelo, la GPU ni la red."
+        "\nNext:\n"
+        f"  - See the rules in the console: scrinium start, and add {repo} as a source.\n"
+        f"  - Protect your repository: scrinium hooks install, or scrinium check in your CI.\n"
+        "  - None of this used a model, the GPU or the network."
     )
     return 0 if code == 1 else code
 

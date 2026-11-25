@@ -57,27 +57,25 @@ def stop(data_dir: Path) -> int:
         for instance in recorded:
             instances.unregister(data_dir, instance.port)
         if orphans:
-            print(
-                f"No habia ningun Scrinium en marcha. Se detuvieron {orphans} llama-server sueltos."
-            )
+            print(f"No Scrinium was running. Stopped {orphans} stray llama-server processes.")
         else:
-            print("No hay ningun Scrinium en marcha.")
+            print("No Scrinium is running.")
         return 0
     failed = False
     for instance in alive:
-        print(f"Deteniendo Scrinium en el puerto {instance.port}…", flush=True)
+        print(f"Stopping Scrinium on port {instance.port}…", flush=True)
         asked = _ask_to_stop(instance)
         if not (asked and instances.wait_exit(instance.pid, _STOP_TIMEOUT_SECONDS)):
             # It did not answer or finish in time: force it, only if the PID is still its own.
             if instances.is_process_of(instance.pid, "scrinium"):
                 instances.force_stop(instance.pid)
             if instances.pid_alive(instance.pid):
-                print(f"  No se pudo detener el proceso {instance.pid}.", file=sys.stderr)
+                print(f"  Process {instance.pid} could not be stopped.", file=sys.stderr)
                 failed = True
                 continue
         _stop_llama(instance.llama_pid)
         instances.unregister(data_dir, instance.port)
-        print("  Detenido.")
+        print("  Stopped.")
     for instance in recorded:
         if instance not in alive:
             _stop_llama(instance.llama_pid)
@@ -95,23 +93,23 @@ def _choose(data_dir: Path, port: int | None) -> Instance | None:
 def attach(data_dir: Path, port: int | None, content: bool) -> int:
     instance = _choose(data_dir, port)
     if instance is None:
-        where = f" en el puerto {port}" if port is not None else ""
+        where = f" on port {port}" if port is not None else ""
         print(
-            f"No hay ningun Scrinium en marcha{where}. Arrancalo con: scrinium start",
+            f"No Scrinium is running{where}. Start it with: scrinium start",
             file=sys.stderr,
         )
         return 1
     if content:
         print(
-            "Aviso: --content muestra las preguntas, los prompts y el codigo que va al modelo. "
-            "Lo que salga aqui puede quedar en el historial de la terminal o en capturas.",
+            "Warning: --content shows the questions, prompts and code sent to the model. "
+            "What appears here may stay in the terminal history or in screenshots.",
             file=sys.stderr,
             flush=True,
         )
     path = "/control/logs?content=true" if content else "/control/logs"
     print(
-        f"Enganchado a Scrinium {instance.version} en el puerto {instance.port}. "
-        "Ctrl+C suelta la consola; Scrinium sigue en marcha.",
+        f"Attached to Scrinium {instance.version} on port {instance.port}. "
+        "Ctrl+C detaches; Scrinium keeps running.",
         flush=True,
     )
     try:
@@ -123,12 +121,12 @@ def attach(data_dir: Path, port: int | None, content: bool) -> int:
                 if line:
                     print(line, flush=True)
     except KeyboardInterrupt:
-        print("\nConsola suelta. Scrinium sigue en marcha.")
+        print("\nDetached. Scrinium keeps running.")
         return 0
     except (urllib.error.URLError, OSError):
-        print("Se perdio la conexion con Scrinium.", file=sys.stderr)
+        print("The connection to Scrinium was lost.", file=sys.stderr)
         return 1
-    print("Scrinium se detuvo.")
+    print("Scrinium stopped.")
     return 0
 
 
@@ -147,26 +145,26 @@ def request_launch_link(instance: Instance) -> str | None:
 def link(data_dir: Path, port: int | None, open_browser: bool) -> int:
     instance = _choose(data_dir, port)
     if instance is None:
-        where = f" en el puerto {port}" if port is not None else ""
+        where = f" on port {port}" if port is not None else ""
         print(
-            f"No hay ningun Scrinium en marcha{where}. Arrancalo con: scrinium start",
+            f"No Scrinium is running{where}. Start it with: scrinium start",
             file=sys.stderr,
         )
         return 1
     url = request_launch_link(instance)
     if url is None:
         print(
-            f"Scrinium en el puerto {instance.port} no respondio. Si sigue colgado: scrinium stop",
+            f"Scrinium on port {instance.port} did not answer. If it is still stuck: scrinium stop",
             file=sys.stderr,
         )
         return 1
     minutes = int(LAUNCH_TOKEN_TTL_SECONDS // 60)
     print(
-        f"Enlace de entrada de un solo uso (caduca en {minutes} minutos). Al usarlo, se cierra "
-        f"la sesion abierta en otra pestana o ventana:\n{url}",
+        f"One-time entry link (it expires in {minutes} minutes). Using it closes "
+        f"the session open in another tab or window:\n{url}",
         flush=True,
     )
     # The link is briefly visible in the process list: see ADR-003.
     if open_browser and not webbrowser.open(url):
-        print("No se pudo abrir el navegador. Usa el enlace de arriba.", file=sys.stderr)
+        print("The browser could not be opened. Use the link above.", file=sys.stderr)
     return 0

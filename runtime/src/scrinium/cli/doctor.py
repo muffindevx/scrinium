@@ -46,13 +46,13 @@ _MIN_MEMORY_GB: Final = 8
 # Without the local chat model (ADR-013): embeddings, Scrinium and the system.
 _MIN_MEMORY_GB_NO_CHAT: Final = 4
 _RUN_TIMEOUT_SECONDS: Final = 20
-_INSTALL_FIX: Final = "Instalalo con: scrinium tools install"
+_INSTALL_FIX: Final = "Install it with: scrinium tools install"
 
 
 class Level(StrEnum):
     OK = "ok"
-    WARN = "aviso"
-    FAIL = "falla"
+    WARN = "warn"
+    FAIL = "fail"
 
 
 @dataclass(frozen=True)
@@ -70,46 +70,43 @@ def _data_dir(data_dir: Path) -> Check:
 
         return Check(Level.FAIL, unsafe_data_dir_message(error.reason).format(path=data_dir))
     if permissions == DataDirPermissions.NOT_CHECKED:
-        return Check(Level.WARN, f"Directorio de datos sin comprobar sus permisos: {data_dir}")
-    return Check(Level.OK, f"Directorio de datos privado: {data_dir}")
+        return Check(Level.WARN, f"Data directory, permissions not checked: {data_dir}")
+    return Check(Level.OK, f"Private data directory: {data_dir}")
 
 
 def _disk_encryption(data_dir: Path) -> Check:
     state = check_disk_encryption(data_dir)
     if state == DiskEncryption.ENCRYPTED:
-        return Check(Level.OK, "Disco cifrado")
+        return Check(Level.OK, "Encrypted disk")
     return Check(
         Level.WARN,
-        "No se detecto cifrado de disco: si pierdes el equipo, tus datos se podrian leer.",
-        "Activa BitLocker, FileVault o LUKS, segun tu sistema.",
+        "No disk encryption detected: if you lose the machine, your data could be read.",
+        "Turn on BitLocker, FileVault or LUKS, depending on your system.",
     )
 
 
 def _keyring() -> Check:
     name = KeyringSecretStore.from_system().backend_name
     if name is not None:
-        return Check(Level.OK, f"Almacen de secretos del sistema: {name}")
-    fix = "En Linux, instala GNOME Keyring o KWallet y abre sesion en el escritorio."
-    return Check(
-        Level.WARN, "Sin almacen de secretos: Scrinium no podra guardar claves de acceso.", fix
-    )
+        return Check(Level.OK, f"System secret store: {name}")
+    fix = "On Linux, install GNOME Keyring or KWallet and log in to the desktop."
+    return Check(Level.WARN, "No secret store: Scrinium will not be able to keep access keys.", fix)
 
 
 def _memory(local_chat: bool) -> Check:
     total = total_memory_bytes()
     if total is None:
-        return Check(Level.WARN, "No se pudo saber cuanta memoria tiene el equipo.")
+        return Check(Level.WARN, "Could not tell how much memory the machine has.")
     gigabytes = round(total / _GB)
     needed = _MIN_MEMORY_GB if local_chat else _MIN_MEMORY_GB_NO_CHAT
     if gigabytes < needed:
         return Check(
             Level.WARN,
-            f"Memoria: {gigabytes} GB. Con menos de {needed} GB, las respuestas "
-            "seran lentas o el equipo ira justo.",
-            "Cierra otros programas pesados (navegadores, maquinas virtuales) mientras usas "
-            "Scrinium.",
+            f"Memory: {gigabytes} GB. With less than {needed} GB, answers "
+            "will be slow or the machine will be tight.",
+            "Close other heavy programs (browsers, virtual machines) while you use Scrinium.",
         )
-    return Check(Level.OK, f"Memoria: {gigabytes} GB")
+    return Check(Level.OK, f"Memory: {gigabytes} GB")
 
 
 def _disk_space(data_dir: Path) -> Check:
@@ -123,12 +120,11 @@ def _disk_space(data_dir: Path) -> Check:
     if free < missing + _GB:
         return Check(
             Level.FAIL,
-            f"Espacio libre para las descargas: {free // _GB} GB. Los modelos que faltan "
-            f"necesitan {missing // _GB + 1} GB.",
-            "Libera espacio o mueve las descargas a un disco más grande: "
-            "scrinium tools move <carpeta>",
+            f"Free space for the downloads: {free // _GB} GB. The missing models "
+            f"need {missing // _GB + 1} GB.",
+            "Free some space or move the downloads to a bigger disk: scrinium tools move <folder>",
         )
-    return Check(Level.OK, f"Descargas en {root}: {free // _GB} GB libres")
+    return Check(Level.OK, f"Downloads in {root}: {free // _GB} GB free")
 
 
 def _verified(data_dir: Path, path: Path, label: str) -> Check:
@@ -146,7 +142,9 @@ def _tools(data_dir: Path, os_name: str, arch: str) -> list[Check]:
         tools_dir = downloads.tools_dir(data_dir)
         path = locate(tool, tools_dir, os_name, arch)
         if path is None:
-            checks.append(Check(Level.FAIL, f"Falta {tool.name} {tool.version}.", _INSTALL_FIX))
+            checks.append(
+                Check(Level.FAIL, f"{tool.name} {tool.version} is missing.", _INSTALL_FIX)
+            )
         else:
             tree = tools_dir / Path(*path.relative_to(tools_dir).parts[:2])
             checks.append(_verified(data_dir, tree, f"{tool.name} {tool.version}"))
@@ -157,14 +155,14 @@ def _tools(data_dir: Path, os_name: str, arch: str) -> list[Check]:
                 checks.append(
                     Check(
                         Level.OK,
-                        f"Modelo de chat local {model.name}: no instalado (opcional, "
+                        f"Local chat model {model.name}: not installed (optional, "
                         f"scrinium tools install {LOCAL_ADDON})",
                     )
                 )
                 continue
-            checks.append(Check(Level.FAIL, f"Falta el modelo {model.name}.", _INSTALL_FIX))
+            checks.append(Check(Level.FAIL, f"The model {model.name} is missing.", _INSTALL_FIX))
         else:
-            checks.append(_verified(data_dir, model_file, f"Modelo {model.name}"))
+            checks.append(_verified(data_dir, model_file, f"Model {model.name}"))
     return checks
 
 
@@ -192,20 +190,20 @@ def _llama_runs(data_dir: Path, os_name: str, arch: str) -> Check | None:
     if result is None or result.returncode != 0:
         return Check(
             Level.FAIL,
-            "llama-server no se puede ejecutar en este equipo.",
-            "Prueba la version solo CPU: scrinium tools install --cpu",
+            "llama-server cannot run on this machine.",
+            "Try the CPU-only version: scrinium tools install --cpu",
         )
     gpu = "Metal" if os_name == "macos" else "Vulkan" if "vulkan" in str(executable) else "CPU"
-    return Check(Level.OK, f"llama-server se ejecuta ({gpu})")
+    return Check(Level.OK, f"llama-server runs ({gpu})")
 
 
 def _gpu(os_name: str) -> Check:
     if os_name == "macos" or has_vulkan():
-        return Check(Level.OK, "GPU disponible para los modelos")
+        return Check(Level.OK, "GPU available for the models")
     return Check(
         Level.WARN,
-        "Sin Vulkan: los modelos usaran solo la CPU y responderan mas despacio.",
-        "Instala el controlador de tu tarjeta grafica con soporte Vulkan.",
+        "No Vulkan: the models will use only the CPU and answer more slowly.",
+        "Install your graphics card driver with Vulkan support.",
     )
 
 
@@ -215,10 +213,11 @@ def _ollama() -> Check:
     except (ModelError, ValueError):
         return Check(
             Level.FAIL,
-            f"SCRINIUM_MODEL_PROVIDER=ollama, pero Ollama no responde en {default_ollama_url()}.",
-            "Arranca Ollama o quita SCRINIUM_MODEL_PROVIDER para usar llama.cpp.",
+            f"SCRINIUM_MODEL_PROVIDER=ollama, but Ollama does not answer at "
+            f"{default_ollama_url()}.",
+            "Start Ollama or unset SCRINIUM_MODEL_PROVIDER to use llama.cpp.",
         )
-    return Check(Level.OK, f"Ollama responde en {default_ollama_url()}")
+    return Check(Level.OK, f"Ollama answers at {default_ollama_url()}")
 
 
 def _ai_setup(data_dir: Path) -> Check:
@@ -229,43 +228,43 @@ def _ai_setup(data_dir: Path) -> Check:
     from scrinium.infrastructure.sqlite.database import DATABASE_FILENAME, Database
 
     if managed_isolated():
-        return Check(Level.OK, "Modo aislado, impuesto por SCRINIUM_PROFILE: nada sale del equipo")
+        return Check(Level.OK, "Isolated mode, set by SCRINIUM_PROFILE: nothing leaves the machine")
     if not (data_dir / DATABASE_FILENAME).is_file():
-        return Check(Level.OK, "Primera ejecucion: la consola pregunta donde escribe el modelo")
+        return Check(Level.OK, "First run: the console asks where the model writes")
     try:
         database = Database.open(data_dir)
         with database.session() as session:
             setup = read_setup(session)
     except Exception:
-        return Check(Level.WARN, "No se pudo leer la eleccion del modelo en la base de datos.")
+        return Check(Level.WARN, "Could not read the model choice from the database.")
     if setup.choice is None:
-        return Check(Level.OK, "Aun sin elegir donde escribe el modelo: lo pregunta la consola")
+        return Check(Level.OK, "Where the model writes is not chosen yet: the console asks")
     if setup.choice is SetupChoice.ISOLATED:
-        return Check(Level.OK, "Modo aislado: no se puede registrar ni usar ningun proveedor")
+        return Check(Level.OK, "Isolated mode: no provider can be registered or used")
     if setup.choice is SetupChoice.PROVIDER:
-        return Check(Level.OK, "Modelo: tu proveedor, con el consentimiento de cada proyecto")
+        return Check(Level.OK, "Model: your provider, with each project's consent")
     server = setup.local_server
     if server is None:
-        return Check(Level.WARN, "Servidor local elegido, pero sin direccion.")
+        return Check(Level.WARN, "Local server chosen, but with no address.")
     status = local_server_chat(server.url, server.model).status()
     if status.value != "ready":
         return Check(
             Level.WARN,
-            f"El servidor local {server.url} no responde con el modelo {server.model}.",
-            "Arrancalo, o cambia la eleccion en Ajustes > Modelo.",
+            f"The local server {server.url} does not answer with the model {server.model}.",
+            "Start it, or change the choice in Settings > Model.",
         )
-    return Check(Level.OK, f"Servidor local {server.url} con {server.model}")
+    return Check(Level.OK, f"Local server {server.url} with {server.model}")
 
 
 def _window() -> Check:
     if window_available():
-        return Check(Level.OK, "Ventana propia de Scrinium")
+        return Check(Level.OK, "Scrinium's own window")
     if sys.platform.startswith("linux") and (
         os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
     ):
-        fix = "Reinstala Scrinium con el extra window (el instalador lo hace si hay escritorio)."
-        return Check(Level.WARN, "Sin ventana propia: Scrinium abrira el navegador.", fix)
-    return Check(Level.OK, "Sin escritorio: Scrinium usara el navegador")
+        fix = "Reinstall Scrinium with the window extra (the installer adds it on a desktop)."
+        return Check(Level.WARN, "No own window: Scrinium will open the browser.", fix)
+    return Check(Level.OK, "No desktop: Scrinium will use the browser")
 
 
 def run_checks(data_dir: Path) -> list[Check]:
@@ -288,7 +287,7 @@ def run_checks(data_dir: Path) -> list[Check]:
     try:
         provider = default_model_provider()
     except ValueError:
-        steps.append(lambda: Check(Level.FAIL, "SCRINIUM_MODEL_PROVIDER debe ser llama u ollama."))
+        steps.append(lambda: Check(Level.FAIL, "SCRINIUM_MODEL_PROVIDER must be llama or ollama."))
     else:
         if provider == ModelProvider.OLLAMA:
             steps.append(_ollama)
@@ -313,5 +312,5 @@ def doctor(data_dir: Path) -> int:
         if check.fix and check.level != Level.OK:
             print(f"        {check.fix}", flush=True)
     failed = any(check.level == Level.FAIL for check in checks)
-    print("Hay que arreglar lo marcado como falla." if failed else "Listo para usar Scrinium.")
+    print("Fix what is marked as fail." if failed else "Ready to use Scrinium.")
     return 1 if failed else 0

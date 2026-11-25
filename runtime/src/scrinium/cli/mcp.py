@@ -272,8 +272,8 @@ def main(project: str | None, root: Path) -> int:
         database = None
     except IncompatibleDatabaseError:
         print(
-            "scrinium mcp: la base de datos es de otra version de Scrinium. Abre Scrinium una vez "
-            "con `scrinium start` para actualizarla.",
+            "scrinium mcp: the database is from another version of Scrinium. Open Scrinium once "
+            "with `scrinium start` to update it.",
             file=sys.stderr,
         )
         return 2

@@ -28,89 +28,89 @@ _EXPLAIN_TIMEOUT_SECONDS: Final = 120
 def add_commands(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
     check_parser = commands.add_parser(
         "check",
-        help="Falla si el cambio toca una regla verificada (sin modelo ni red).",
+        help="Fails if the change touches a verified rule (no model, no network).",
         description=(
-            "Cruza los archivos cambiados con las reglas verificadas de .scrinium/rules/. "
-            "Sale con 1 si una regla verificada cambia de valor sin que el cambio actualice su "
-            "archivo; con 2 si no se pudo comprobar."
+            "Matches the changed files against the verified rules in .scrinium/rules/. "
+            "Exits with 1 if a verified rule changes value and the change does not update its "
+            "file; with 2 if it could not check."
         ),
     )
     check_parser.add_argument(
-        "--base", help="Rama o commit contra el que comparar (por defecto origin/HEAD o main)."
+        "--base", help="Branch or commit to compare against (by default origin/HEAD or main)."
     )
     check_parser.add_argument(
         "--include-local",
         action="store_true",
-        help="Comparar también los cambios sin commit de la carpeta de trabajo.",
+        help="Also compare the uncommitted changes of the working folder.",
     )
     check_parser.add_argument(
         "--staged",
         action="store_true",
-        help="Comparar lo preparado para el commit (el índice), como hace el hook de pre-commit.",
+        help="Compare what is staged for the commit (the index), as the pre-commit hook does.",
     )
     check_parser.add_argument(
-        "--format", choices=sorted(FORMATS), default="markdown", help="Formato de la salida."
+        "--format", choices=sorted(FORMATS), default="markdown", help="Output format."
     )
-    check_parser.add_argument("--output", type=Path, help="Escribir la salida en este archivo.")
+    check_parser.add_argument("--output", type=Path, help="Write the output to this file.")
     check_parser.add_argument(
-        "--root", type=Path, default=Path("."), help="Carpeta de la fuente (por defecto, esta)."
+        "--root", type=Path, default=Path("."), help="The source's folder (by default, this one)."
     )
     check_parser.add_argument(
         "--strict",
         action="store_true",
-        help="Fallar también con reglas para revisar o retiradas, no solo con las que cambian.",
+        help="Also fail on rules to review or retired, not only on those that change.",
     )
     check_parser.add_argument(
         "--require-ticket",
         action="store_true",
         help=(
-            "Fallar si una regla cambia y ningún commit que toca su archivo ni el nombre de la "
-            "rama nombran un ticket (gobierno y cumplimiento)."
+            "Fail if a rule changes and neither a commit touching its file nor the branch name "
+            "names a ticket (governance and compliance)."
         ),
     )
     check_parser.add_argument(
         "--explain",
         action="store_true",
         help=(
-            "Pedir al Scrinium en marcha una frase por regla que cambia (tarea «Explicación "
-            "del check»). Solo un comentario: no cambia el resultado."
+            "Ask the running Scrinium for one sentence per changed rule (the 'check explanation' "
+            "task). Only a comment: it does not change the result."
         ),
     )
 
     hooks_parser = commands.add_parser(
-        "hooks", help="Instala o quita scrinium check como hook de pre-commit de Git."
+        "hooks", help="Installs or removes scrinium check as a Git pre-commit hook."
     )
     hooks_commands = hooks_parser.add_subparsers(dest="hooks_command", required=True)
-    for name, text in (("install", "Lo instala."), ("uninstall", "Lo quita.")):
+    for name, text in (("install", "Installs it."), ("uninstall", "Removes it.")):
         sub = hooks_commands.add_parser(name, help=text)
-        sub.add_argument("--root", type=Path, default=Path("."), help="Carpeta de la fuente.")
+        sub.add_argument("--root", type=Path, default=Path("."), help="The source's folder.")
 
     mirrors_parser = commands.add_parser(
         "mirrors",
-        help="Compara las reglas espejo de scrinium.product.yaml (sin modelo ni red).",
+        help="Compares the mirror rules of scrinium.product.yaml (no model, no network).",
         description=(
-            "Lee scrinium.product.yaml y, para cada par de reglas espejo, compara los valores "
-            "con que decide cada una en el código actual. Sale con 1 si alguno diverge."
+            "Reads scrinium.product.yaml and, for each pair of mirror rules, compares the values "
+            "each one decides with in the current code. Exits with 1 if any pair diverges."
         ),
     )
     mirrors_parser.add_argument(
-        "--root", type=Path, default=Path("."), help="Carpeta del manifiesto (por defecto, esta)."
+        "--root", type=Path, default=Path("."), help="The manifest's folder (by default, this one)."
     )
 
     rules_parser = commands.add_parser(
-        "rules", help="Las reglas verificadas como archivos del repositorio (.scrinium/rules/)."
+        "rules", help="Verified rules as files in the repository (.scrinium/rules/)."
     )
     rules_commands = rules_parser.add_subparsers(dest="rules_command", required=True)
     for name, text in (
-        ("export", "Escribe las reglas revisadas de una fuente en su .scrinium/rules/."),
-        ("import", "Reconstruye las reglas revisadas desde .scrinium/rules/ (un clon limpio)."),
+        ("export", "Writes the reviewed rules of a source into its .scrinium/rules/."),
+        ("import", "Rebuilds the reviewed rules from .scrinium/rules/ (a clean clone)."),
     ):
         sub = rules_commands.add_parser(name, help=text)
-        sub.add_argument("--project", help="Nombre o id del proyecto (si hay varios).")
-        sub.add_argument("--source", help="Nombre o id de la fuente (si hay varias).")
+        sub.add_argument("--project", help="Name or id of the project (if there are several).")
+        sub.add_argument("--source", help="Name or id of the source (if there are several).")
         sub.add_argument(
             "--dir", dest="folder", type=Path,
-            help="Otra carpeta de reglas (por defecto, .scrinium/rules/ de la fuente).",
+            help="Another rules folder (by default, the source's .scrinium/rules/).",
         )  # fmt: skip
 
 
@@ -146,7 +146,7 @@ def _explain(repository: Repository, result: CheckResult) -> None:
         return
     instance = _choose(default_data_dir(), None)
     if instance is None:
-        print("--explain: no hay ningún Scrinium en marcha; sin explicación.", file=sys.stderr)
+        print("--explain: no Scrinium is running; no explanation.", file=sys.stderr)
         return
     since = repository.merge_base(result.base)
     before_reader = Reader(repository, since)
@@ -186,7 +186,7 @@ def _explain(repository: Repository, result: CheckResult) -> None:
         with _opener().open(request, timeout=_EXPLAIN_TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read())
     except (urllib.error.URLError, OSError, ValueError):
-        print("--explain: Scrinium no respondió; sin explicación.", file=sys.stderr)
+        print("--explain: Scrinium did not answer; no explanation.", file=sys.stderr)
         return
     for item in payload.get("explanations", []):
         for finding in wanted:
@@ -242,17 +242,17 @@ def run_mirrors(args: argparse.Namespace) -> int:
         print(f"scrinium mirrors: {error}", file=sys.stderr)
         return 2
     if manifest is None:
-        print(f"No hay {MANIFEST} en {args.root.resolve()}.", file=sys.stderr)
+        print(f"No {MANIFEST} in {args.root.resolve()}.", file=sys.stderr)
         return 2
     report = compare_mirrors(manifest)
     for problem in report.errors:
         print(f"Error: {problem}", file=sys.stderr)
     if report.divergent:
-        print(f"{manifest.product}: {len(report.divergent)} de {report.pairs} pares divergen.")
+        print(f"{manifest.product}: {len(report.divergent)} of {report.pairs} pairs diverge.")
         for first, second in report.divergent:
             print(f"- {describe(first, second)}")
     else:
-        print(f"{manifest.product}: {report.pairs} pares de reglas espejo, ninguno diverge.")
+        print(f"{manifest.product}: {report.pairs} pairs of mirror rules, none diverges.")
     return 2 if report.errors else 1 if report.divergent else 0
 
 
@@ -270,16 +270,16 @@ def run_hooks(args: argparse.Namespace) -> int:
         if args.hooks_command == "install":
             done = install(repository, _command())
             messages = {
-                "created": "Hook de pre-commit creado: scrinium check corre antes de cada commit.",
-                "added": "scrinium check añadido al principio del hook de pre-commit existente.",
-                "present": "scrinium check ya estaba en el hook de pre-commit.",
+                "created": "Pre-commit hook created: scrinium check runs before each commit.",
+                "added": "scrinium check added at the start of the existing pre-commit hook.",
+                "present": "scrinium check was already in the pre-commit hook.",
             }
         else:
             done = uninstall(repository)
             messages = {
-                "deleted": "Hook de pre-commit borrado (solo tenía scrinium check).",
-                "removed": "scrinium check quitado del hook de pre-commit; el resto sigue igual.",
-                "absent": "scrinium check no estaba en el hook de pre-commit.",
+                "deleted": "Pre-commit hook deleted (it only had scrinium check).",
+                "removed": "scrinium check removed from the pre-commit hook; the rest stays.",
+                "absent": "scrinium check was not in the pre-commit hook.",
             }
     except (GitError, HookError, OSError) as error:
         print(f"scrinium hooks: {error}", file=sys.stderr)
@@ -303,12 +303,12 @@ def run_rules(args: argparse.Namespace) -> int:
 
     data_dir = default_data_dir()
     if not (data_dir / DATABASE_FILENAME).is_file():
-        print(f"No hay datos de Scrinium en {data_dir}.", file=sys.stderr)
+        print(f"No Scrinium data in {data_dir}.", file=sys.stderr)
         return 1
     database = Database.open(data_dir)
     with database.session() as session:
         projects = {str(p.id): p.name for p in session.scalars(select(Project))}
-        project_id = _pick(projects, args.project, "un proyecto con --project")
+        project_id = _pick(projects, args.project, "a project with --project")
         if project_id is None:
             return 1
         sources = {
@@ -319,7 +319,7 @@ def run_rules(args: argparse.Namespace) -> int:
         }
         source_id = _pick(
             {key: s.display_name for key, s in sources.items()}, args.source,
-            "una fuente con --source",
+            "a source with --source",
         )  # fmt: skip
         if source_id is None:
             return 1
@@ -335,27 +335,27 @@ def run_rules(args: argparse.Namespace) -> int:
             project = session.get_one(Project, uuid.UUID(project_id))
             done = import_rules(session, project, source, files)
             print(
-                f"{len(files)} reglas leídas de {folder}: {len(done.created)} creadas, "
-                f"{len(done.updated)} actualizadas, {len(done.unchanged)} sin cambios"
-                + (f", {len(done.skipped)} omitidas" if done.skipped else "")
+                f"{len(files)} rules read from {folder}: {len(done.created)} created, "
+                f"{len(done.updated)} updated, {len(done.unchanged)} unchanged"
+                + (f", {len(done.skipped)} skipped" if done.skipped else "")
                 + "."
             )
             if done.unanchored:
                 print(
-                    f"{len(done.unanchored)} reglas tienen anclas que ya no están en el código: "
-                    "revísalas en la consola.",
+                    f"{len(done.unanchored)} rules have anchors no longer in the code: "
+                    "review them in the console.",
                     file=sys.stderr,
                 )
             return 0
         rules = reviewed_rules(session, uuid.UUID(project_id), source.id)
     if args.folder is None and not root.is_dir():
-        print(f"La carpeta de la fuente no existe en este equipo: {root}", file=sys.stderr)
+        print(f"The source's folder does not exist on this machine: {root}", file=sys.stderr)
         return 1
     written, unchanged, removed = write_all(folder, rules)
     tombstones = sum(1 for rule in rules if rule.is_tombstone)
     print(
-        f"{len(rules) - tombstones} reglas verificadas y {tombstones} rechazadas en {folder}: "
-        f"{written} escritas, {unchanged} sin cambios, {removed} quitadas."
+        f"{len(rules) - tombstones} verified and {tombstones} rejected rules in {folder}: "
+        f"{written} written, {unchanged} unchanged, {removed} removed."
     )
     return 0
 
@@ -365,8 +365,8 @@ def _pick(names: dict[str, str], wanted: str | None, what: str) -> str | None:
     found = [key for key, name in names.items() if wanted is None or wanted in {key, name}]
     if len(found) == 1:
         return found[0]
-    listed = ", ".join(sorted(names.values())) or "ninguno"
-    print(f"Elige {what}: {listed}", file=sys.stderr)
+    listed = ", ".join(sorted(names.values())) or "none"
+    print(f"Choose {what}: {listed}", file=sys.stderr)
     return None
 
 

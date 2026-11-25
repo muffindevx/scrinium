@@ -74,7 +74,7 @@ def run_coverage(root: Path, path: str, as_json: bool) -> int:
         print(json.dumps(found, ensure_ascii=False, indent=2))
         return 0
     width = max([len(row["path"]) for row in found["children"]] + [10])
-    print(f"{'Ruta':<{width}}  Decisiones  Verificadas  Sin regla")
+    print(f"{'Path':<{width}}   Decisions     Verified    No rule")
     for row in [*found["children"], {"path": "Total", **found["total"]}]:
         share = f"{row['verified'] * 100 // row['decisions']} %" if row["decisions"] else "—"
         print(f"{row['path']:<{width}}  {row['decisions']:>10}  {row['verified']:>6} {share:>4}"

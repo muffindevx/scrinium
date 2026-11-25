@@ -47,13 +47,13 @@ def _install_fakes(data_dir: Path, llama_exit: int = 0) -> None:
 def test_an_empty_install_says_what_to_run(tmp_path: Path) -> None:
     result = _doctor(tmp_path / "data")
     assert result.returncode == 1
-    assert "[ok] Directorio de datos privado" in result.stdout
-    assert "[falla] Falta llama-server" in result.stdout
-    assert "[falla] Falta el modelo qwen3-embedding-0.6b." in result.stdout
+    assert "[ok] Private data directory" in result.stdout
+    assert "[fail] llama-server" in result.stdout
+    assert "[fail] The model qwen3-embedding-0.6b is missing." in result.stdout
     # ADR-013: the local chat model is an add-on, never a failure.
-    assert "[falla] Falta el modelo qwen3-4b-instruct-2507." not in result.stdout
+    assert "[fail] The model qwen3-4b-instruct-2507 is missing." not in result.stdout
     assert "scrinium tools install local" in result.stdout
-    assert "Primera ejecucion: la consola pregunta" in result.stdout
+    assert "First run: the console asks" in result.stdout
     assert "scrinium tools install" in result.stdout
     assert "Traceback" not in result.stderr
 
@@ -63,9 +63,9 @@ def test_a_complete_install_is_ready(tmp_path: Path) -> None:
     _install_fakes(tmp_path / "data")
     result = _doctor(tmp_path / "data")
     assert result.returncode == 0, result.stdout
-    assert "[falla]" not in result.stdout
-    assert "llama-server se ejecuta" in result.stdout
-    assert result.stdout.rstrip().endswith("Listo para usar Scrinium.")
+    assert "[fail]" not in result.stdout
+    assert "llama-server runs" in result.stdout
+    assert result.stdout.rstrip().endswith("Ready to use Scrinium.")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fake shell executables")
@@ -73,7 +73,7 @@ def test_a_llama_server_that_cannot_run_suggests_the_cpu_build(tmp_path: Path) -
     _install_fakes(tmp_path / "data", llama_exit=127)
     result = _doctor(tmp_path / "data")
     assert result.returncode == 1
-    assert "[falla] llama-server no se puede ejecutar" in result.stdout
+    assert "[fail] llama-server cannot run" in result.stdout
     assert "scrinium tools install --cpu" in result.stdout
 
 
@@ -87,12 +87,12 @@ def test_ollama_that_does_not_answer_is_a_failure(tmp_path: Path) -> None:
         SCRINIUM_OLLAMA_URL=f"http://127.0.0.1:{port}",
     )
     assert result.returncode == 1
-    assert "Ollama no responde" in result.stdout
-    assert "llama-server se ejecuta" not in result.stdout
+    assert "Ollama does not answer" in result.stdout
+    assert "llama-server runs" not in result.stdout
 
 
 def test_an_unsafe_data_dir_stops_the_checks(tmp_path: Path) -> None:
     result = _doctor(Path("relativa"))
     assert result.returncode == 1
-    assert "ruta absoluta" in result.stdout
+    assert "absolute path" in result.stdout
     assert "Memoria" not in result.stdout
