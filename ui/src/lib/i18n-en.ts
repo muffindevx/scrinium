@@ -345,7 +345,7 @@ export const EN: Record<string, string> = {
   "Esa carpeta no es un repositorio Git.": "That folder is not a Git repository.",
   "Esa carpeta no existe.": "That folder does not exist.",
   "«{0}» no es un repositorio Git": "«{0}» is not a Git repository",
-  "Scrinium lee sus archivos, escribe sus reglas y avisa cuando el código de una regla cambia. Sin Git no hay Cambios entre versiones, ni historia de cada regla, ni scrinium check en la integración continua o antes de cada commit.": "Scrinium reads its files, writes its rules and warns you when a rule's code changes. Without Git there are no Changes between versions, no history for each rule, and no scrinium check in CI or before each commit.",
+  "Scrinium lee sus archivos, escribe sus reglas y avisa cuando el código de una regla cambia. Sin Git no hay cambios entre versiones, ni historia de cada regla, ni scrinium check en la integración continua o antes de cada commit.": "Scrinium reads its files, writes its rules and warns you when a rule's code changes. Without Git there are no changes between versions, no history for each rule, and no scrinium check in CI or before each commit.",
   "Para tenerlos, conviértela en un repositorio con un primer commit:": "To get them, make it a repository with a first commit:",
   "Después quita esta fuente en Integraciones y vuelve a añadir la carpeta: se leerá como repositorio.": "Then remove this source in Integrations and add the folder again: it will be read as a repository.",
   "Esa carpeta de tu equipo no está compartida con Docker. Arranca Scrinium con ella: sh docker/scrinium.sh start <carpeta>": "That folder of your computer is not shared with Docker. Start Scrinium with it: sh docker/scrinium.sh start <folder>",
