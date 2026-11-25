@@ -109,6 +109,7 @@ export const ERROR_LABELS: Record<string, string> = {
   invalid_budget: t("El presupuesto debe ser un número entero de tokens."),
   invalid_consent: t("Elige un proveedor, un modelo y al menos una tarea."),
   retention_not_acknowledged: t("Confirma que has leído qué guarda el proveedor."),
+  model_needed: t("Para extraer reglas necesitas un modelo"),
   model_not_permitted: t("Ese modelo no está permitido para esta tarea en este proyecto. Elígelo de nuevo para dar permiso."),
   invalid_model_choice: t("Ese modelo no es válido."),
   invalid_model: t("Escribe el nombre exacto del modelo, sin espacios."),

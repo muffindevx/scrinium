@@ -184,13 +184,17 @@ print_link() {
     mounted=$(current_mounts)
     if [ -n "$mounted" ]; then
         say ""
-        say "Your folders are projects in Scrinium and are being read now (it can read them, never"
-        say "change them). To add another one: sh docker/scrinium.sh start <folder>"
+        say "Your folders are projects in Scrinium (it can read them, never change them)."
+        say "To add another one: sh docker/scrinium.sh start <folder>"
+        say "To extract rules you need a model you provide. With Ollama on Linux:"
+        say "  OLLAMA_HOST=172.17.0.1:11434 ollama serve      # then: ollama pull <coding-model>"
+        say "  sh docker/scrinium.sh start --model-port 11434"
+        say "and choose it in Settings > Models. More in \"Choose the model\" in README.md."
         printf '%s\n' "$mounted" | while IFS="$tab" read -r src dst; do
             say "  $src"
             if [ ! -e "$src/.git" ]; then
-                say "    Not a Git repository: Scrinium reads its files and writes its rules, but"
-                say "    Changes, rule history and scrinium check need Git. To get them:"
+                say "    Not a Git repository: Changes, rule history and scrinium check need Git."
+                say "    (Git does not write rules: the model you set up does.) To get them:"
                 say "      cd $src && git init && git add -A && git commit -m \"First commit\""
                 say "    then remove the source in Integrations and add the folder again."
             fi

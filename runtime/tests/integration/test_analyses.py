@@ -178,11 +178,11 @@ def _rule_versions(session: Any) -> list[Any]:
     return list(session.scalars(select(BusinessRuleVersion)))
 
 
-def test_extraction_fails_cleanly_without_the_model(api: Api) -> None:
+def test_extraction_asks_for_a_model_when_none_responds(api: Api) -> None:
     api.runtime.chat.state = ModelStatus.UNAVAILABLE
     api.runtime.llm._status_cache = None
-    detail = api.read(api.post(f"/api/v1/projects/{api.project_id}/extractions", {})["id"])
-    assert detail["status"] == "failed" and detail["error_summary"] == "llm_unavailable"
+    refused = api.post(f"/api/v1/projects/{api.project_id}/extractions", {}, expected=422)
+    assert refused["error"] == "model_needed"
 
 
 def test_extraction_survives_a_broken_model_reply(api: Api) -> None:

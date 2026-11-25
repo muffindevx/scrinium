@@ -50,7 +50,7 @@ from scrinium.domain.enums import (
     ReleaseStatus,
     Severity,
 )
-from scrinium.infrastructure.local_http import ModelError
+from scrinium.infrastructure.local_http import ModelError, ModelStatus
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import (
     AnalysisRun,
@@ -289,9 +289,12 @@ def build_analyses_router(
         with database.session() as session:
             try:
                 project = _project(session, project_id)
-                consent_for_task(session, project, AiTask.RULE_MAP, body.model)
+                consent = consent_for_task(session, project, AiTask.RULE_MAP, body.model)
             except ProviderError as error:
                 raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, error.code) from None
+        # Rules are written by a model the person provides: without one, say so before starting.
+        if consent is None and llm.status() is not ModelStatus.READY:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "model_needed")
         return _start(
             project_id, request, AnalysisType.KNOWLEDGE_EXTRACTION,
             f"Extraer reglas{f' de {prefix}' if prefix else ''}", prefix or "",

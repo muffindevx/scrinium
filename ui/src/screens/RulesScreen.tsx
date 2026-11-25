@@ -41,6 +41,7 @@ import {
   startExtraction,
   type ExtractionEstimate,
   getExtractionEstimate,
+  getSecurityStatus,
 } from "@/lib/api"
 import { ASSESSMENT_LABELS, CATEGORY_LABELS, CRITICALITY_LABELS, errorMessage } from "@/lib/labels"
 import { ImpactList, RuleDrawer } from "@/components/rule-impact"
@@ -49,6 +50,7 @@ import { RuleHistory } from "@/screens/RuleHistory"
 import { RuleTickets } from "@/screens/RuleTickets"
 import { useBackTarget, useErrors } from "@/screens/hooks"
 import { ModelPicker } from "@/screens/ModelPicker"
+import { ModelNeeded } from "@/screens/ModelNeeded"
 import { AnalysisDetail, ErrorText, Loading, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
 const ORIGIN_LABELS: Record<RuleVersion["origin"], string> = {
@@ -185,6 +187,14 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
   const [pausing, setPausing] = useState(false)
   const [running, setRunning] = useState(false)
   const { error, setError, fail } = useErrors(onSessionLost)
+  // Whether the local model that writes rules responds: without it, how to set one up.
+  const [localReady, setLocalReady] = useState(true)
+  const [modelNeeded, setModelNeeded] = useState(false)
+  useEffect(() => {
+    getSecurityStatus()
+      .then((loaded) => setLocalReady(loaded.providers.llm === "ready"))
+      .catch(() => undefined)
+  }, [])
   const loadStatus = useCallback(() => {
     getExtractionStatus(project.id)
       .then((loaded) => {
@@ -230,6 +240,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
         // One is already running (e.g. the one that resumes at startup): that one is shown, and
         // Pause stops it.
         if (failure instanceof ApiError && failure.code === "extraction_running") loadStatus()
+        else if (failure instanceof ApiError && failure.code === "model_needed") setModelNeeded(true)
         else fail(failure)
       })
   }
@@ -273,6 +284,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
       {analysisId && (
         <AnalysisDetail key={analysisId} analysisId={analysisId} onSessionLost={onSessionLost} onFinished={finished} />
       )}
+      {!running && (modelNeeded || (!localReady && !shown)) && <ModelNeeded />}
       {!running && (
         <form
           className="grid gap-3"

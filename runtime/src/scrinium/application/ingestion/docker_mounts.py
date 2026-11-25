@@ -117,7 +117,9 @@ def register(
     logged, so Scrinium still starts."""
     from scrinium.application.ingestion import sources  # sources -> plan -> this module
 
-    added = []
+    added, runs = [], []
+    # Every folder is written down first and synced after: a sync that starts while the next
+    # project is being written would hold the database ("database is locked").
     for mount in shared:
         try:
             with database.session() as session:
@@ -139,6 +141,8 @@ def register(
         except Exception:
             logger.exception("could not add the shared folder %s", mount.container)
             continue
-        submit(run_id)
+        runs.append(run_id)
         added.append(Added(mount.host, name, existing is None, _is_git(mount.container)))
+    for run_id in runs:
+        submit(run_id)
     return added

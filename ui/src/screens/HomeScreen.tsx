@@ -109,7 +109,7 @@ function WithoutGit({ sources }: { sources: Source[] }) {
     <Panel className="gap-2">
       <h2 className="text-sm font-semibold">{t("«{0}» no es un repositorio Git", folder.display_name)}</h2>
       <p className="text-sm text-muted-foreground">
-        {t("Scrinium lee sus archivos, escribe sus reglas y avisa cuando el código de una regla cambia. Sin Git no hay cambios entre versiones, ni historia de cada regla, ni scrinium check en la integración continua o antes de cada commit.")}
+        {t("Scrinium lee sus archivos, pero sin Git no ve sus versiones: no hay cambios entre versiones, ni historia de cada regla, ni scrinium check en la integración continua o antes de cada commit. Git no escribe reglas: eso lo hace el modelo que configures.")}
       </p>
       <p className="text-sm text-muted-foreground">{t("Para tenerlos, conviértela en un repositorio con un primer commit:")}</p>
       <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-xs">git init && git add -A && git commit -m "First commit"</pre>
