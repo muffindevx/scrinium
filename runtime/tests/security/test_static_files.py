@@ -35,6 +35,9 @@ def test_ui_is_served_with_security_headers(client: TestClient) -> None:
     assert response.status_code == 200
     assert "Scrinium" in response.text
     assert "default-src 'self'" in response.headers["content-security-policy"]
+    # After an update the browser asks for the page again instead of showing the old console.
+    assert response.headers["cache-control"] == "no-cache"
+    assert client.get("/reglas").headers["cache-control"] == "no-cache"
 
 
 @pytest.mark.parametrize(

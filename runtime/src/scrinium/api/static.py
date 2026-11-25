@@ -39,8 +39,13 @@ def is_ui_route(path: str) -> bool:
 class InterfaceFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
         try:
-            return await super().get_response(path, scope)
+            response = await super().get_response(path, scope)
         except HTTPException as error:
             if error.status_code != 404 or not is_ui_route(path):
                 raise
-            return await super().get_response("index.html", scope)
+            response = await super().get_response("index.html", scope)
+        # The page names the bundles of this version: asked again on every load, so an update
+        # shows at once. The bundles themselves carry a hash in their name and can be kept.
+        if response.media_type == "text/html":
+            response.headers["Cache-Control"] = "no-cache"
+        return response
