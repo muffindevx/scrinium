@@ -19,6 +19,8 @@ import re
 from pathlib import Path
 from typing import Final
 
+from scrinium.core.language import pick
+
 Scalar = str | None
 Fields = dict[str, tuple[int, Scalar]]
 Value = Scalar | list[Fields] | Fields
@@ -60,16 +62,20 @@ def _scalar(raw: str | None, where: Path | str, number: int) -> Scalar:
         try:
             loaded = json.loads(raw)
         except json.JSONDecodeError:
-            raise FileFormatError(where, number, "cadena entre comillas mal cerrada") from None
+            raise FileFormatError(
+                where, number, pick("cadena entre comillas mal cerrada", "unclosed quoted string")
+            ) from None
         if not isinstance(loaded, str):
-            raise FileFormatError(where, number, "se esperaba una cadena")
+            raise FileFormatError(
+                where, number, pick("se esperaba una cadena", "a string was expected")
+            )
         return loaded
     if raw.startswith("'") and raw.endswith("'") and len(raw) >= 2:
         return raw[1:-1].replace("''", "'")
     if LINES.fullmatch(raw):
         return raw
     if raw.startswith(("[", "{", "&", "*", "!", "|", ">")) and raw != "[]":
-        raise FileFormatError(where, number, "valor no admitido")
+        raise FileFormatError(where, number, pick("valor no admitido", "unsupported value"))
     return raw
 
 
@@ -85,10 +91,12 @@ def parse(lines: list[str], where: Path | str, first_number: int = 1) -> Entries
         if not line.startswith(" "):
             match = _KEY.match(stripped)
             if match is None:
-                raise FileFormatError(where, number, "se esperaba «clave: valor»")
+                raise FileFormatError(
+                    where, number, pick("se esperaba «clave: valor»", "«key: value» was expected")
+                )
             key, raw = match[1], match[2]
             if key in entries:
-                raise FileFormatError(where, number, f"«{key}» repetida")
+                raise FileFormatError(where, number, pick(f"«{key}» repetida", f"«{key}» repeated"))
             if raw in (None, ""):
                 block = key
                 entries[key] = (number, None)
@@ -98,12 +106,18 @@ def parse(lines: list[str], where: Path | str, first_number: int = 1) -> Entries
                 entries[key] = (number, value)
             continue
         if block is None:
-            raise FileFormatError(where, number, "sangría inesperada")
+            raise FileFormatError(
+                where, number, pick("sangría inesperada", "unexpected indentation")
+            )
         at, current = entries[block]
         item = stripped
         if item.startswith("- "):
             if isinstance(current, dict):
-                raise FileFormatError(where, number, f"«{block}» mezcla lista y mapa")
+                raise FileFormatError(
+                    where,
+                    number,
+                    pick(f"«{block}» mezcla lista y mapa", f"«{block}» mixes a list and a map"),
+                )
             items = current if isinstance(current, list) else []
             items.append({})
             entries[block] = (at, items)
@@ -114,17 +128,21 @@ def parse(lines: list[str], where: Path | str, first_number: int = 1) -> Entries
             entries[block] = (at, current)
         match = _KEY.match(item)
         if match is None:
-            raise FileFormatError(where, number, "se esperaba «clave: valor»")
+            raise FileFormatError(
+                where, number, pick("se esperaba «clave: valor»", "«key: value» was expected")
+            )
         target = current[-1] if isinstance(current, list) else current
         if not isinstance(target, dict):
-            raise FileFormatError(where, number, f"«{block}» mal formada")
+            raise FileFormatError(
+                where, number, pick(f"«{block}» mal formada", f"«{block}» is malformed")
+            )
         target[match[1]] = (number, _scalar(match[2], where, number))
     return entries
 
 
 def text_of(value: Value, where: Path | str, number: int, key: str) -> str:
     if not isinstance(value, str) or value == "":
-        raise FileFormatError(where, number, f"falta «{key}»")
+        raise FileFormatError(where, number, pick(f"falta «{key}»", f"«{key}» is missing"))
     return value
 
 
@@ -138,7 +156,9 @@ def items(entries: Entries, key: str, where: Path | str) -> list[Fields]:
     if value is None:
         return []
     if not isinstance(value, list):
-        raise FileFormatError(where, at, f"«{key}» debe ser una lista")
+        raise FileFormatError(
+            where, at, pick(f"«{key}» debe ser una lista", f"«{key}» must be a list")
+        )
     return value
 
 
@@ -147,5 +167,7 @@ def mapping(entries: Entries, key: str, where: Path | str) -> Fields:
     if value is None:
         return {}
     if not isinstance(value, dict):
-        raise FileFormatError(where, at, f"«{key}» debe ser un mapa")
+        raise FileFormatError(
+            where, at, pick(f"«{key}» debe ser un mapa", f"«{key}» must be a map")
+        )
     return value

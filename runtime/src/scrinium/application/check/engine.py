@@ -98,21 +98,21 @@ class Finding:
         where = f"{self.anchor.path}:{self.anchor.start_line}"
         if self.level == CHANGED:
             return (
-                f"Cambia una regla verificada: «{self.title}». La decisión de {where} sigue "
-                "ahí con otros valores. Si el cambio es intencionado, revisa la regla en "
-                "Scrinium y exporta su archivo en este mismo cambio."
+                f'A verified rule changes: "{self.title}". The decision at {where} is still '
+                "there with other values. If the change is intended, review the rule in "
+                "Scrinium and export its file in this same change."
             )
         if self.level == UPDATED:
-            return f"La regla «{self.title}» cambia y su archivo se actualiza en este cambio."
+            return f'The rule "{self.title}" changes and its file is updated in this change.'
         if self.level == REVIEW:
             return (
-                f"Revisar la regla verificada «{self.title}»: la decisión de {where} se editó "
-                "o ya no se encuentra, aunque su función sigue."
+                f'Review the verified rule "{self.title}": the decision at {where} was edited '
+                "or can no longer be found, though its function remains."
             )
         if self.level == REMOVED:
-            return f"La regla verificada «{self.title}» se retira: su código ({where}) ya no está."
-        moved = self.now[0] if self.now else "otro archivo"
-        return f"La regla «{self.title}» se movió de {self.anchor.path} a {moved}, sin cambios."
+            return f'The verified rule "{self.title}" is retired: its code ({where}) is gone.'
+        moved = self.now[0] if self.now else "another file"
+        return f'The rule "{self.title}" moved from {self.anchor.path} to {moved}, unchanged.'
 
 
 @dataclass

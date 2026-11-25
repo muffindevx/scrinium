@@ -185,19 +185,19 @@ def _anchor(fields: Fields, where: Path | str) -> FileAnchor:
     lines = optional(fields, "lines")
     match = LINES.fullmatch(lines or "")
     if match is None:
-        raise RuleFileError(where, at("lines"), "«lines» debe ser [inicio, fin], como [10, 12]")
+        raise RuleFileError(where, at("lines"), "«lines» must be [start, end], like [10, 12]")
     start, end = int(match[1]), int(match[2])
     if not 1 <= start <= end:
-        raise RuleFileError(where, at("lines"), "«lines» fuera de rango")
+        raise RuleFileError(where, at("lines"), "«lines» out of range")
     values: dict[str, str] = {}
     for key in ("shape", "value"):
         text = text_of(optional(fields, key), where, at(key), key)
         if not _FINGERPRINT.match(text):
-            raise RuleFileError(where, at(key), f"«{key}» debe ser una huella hexadecimal")
+            raise RuleFileError(where, at(key), f"«{key}» must be a hexadecimal fingerprint")
         values[key] = text
     sketch = optional(fields, "sketch") or ""
     if sketch and not _FINGERPRINT.match(sketch):
-        raise RuleFileError(where, at("sketch"), "«sketch» debe ser hexadecimal")
+        raise RuleFileError(where, at("sketch"), "«sketch» must be hexadecimal")
     return FileAnchor(
         path=text_of(optional(fields, "path"), where, at("path"), "path"),
         symbol=optional(fields, "symbol"),
@@ -235,27 +235,27 @@ def _parse_body(lines: list[str]) -> tuple[str, tuple[str, ...], tuple[str, ...]
 def parse(text: str, where: Path | str = "<regla>") -> RuleFile:
     lines = text.replace("\r\n", "\n").split("\n")
     if not lines or lines[0].strip() != "---":
-        raise RuleFileError(where, 1, "el archivo debe empezar con ---")
+        raise RuleFileError(where, 1, "the file must start with ---")
     try:
         close = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
     except StopIteration:
-        raise RuleFileError(where, 1, "falta el --- que cierra la cabecera") from None
+        raise RuleFileError(where, 1, "the --- closing the header is missing") from None
     entries: Entries = parse_entries(lines[1:close], where, first_number=2)
 
     version_at = entries.get("scrinium", (1, None))[0]
     if optional(entries, "scrinium") != str(FORMAT_VERSION):
         raise RuleFileError(
-            where, version_at, f"versión de formato no admitida: {optional(entries, 'scrinium')}"
+            where, version_at, f"unsupported format version: {optional(entries, 'scrinium')}"
         )
     id_at = entries.get("id", (1, None))[0]
     rule_id = text_of(optional(entries, "id"), where, id_at, "id")
     try:
         uuid.UUID(rule_id)
     except ValueError:
-        raise RuleFileError(where, id_at, "«id» debe ser un UUID") from None
+        raise RuleFileError(where, id_at, "«id» must be a UUID") from None
     status = optional(entries, "status") or VERIFIED
     if status not in {VERIFIED, REJECTED}:
-        raise RuleFileError(where, entries["status"][0], f"estado desconocido: {status}")
+        raise RuleFileError(where, entries["status"][0], f"unknown status: {status}")
     anchors = tuple(_anchor(fields, where) for fields in items(entries, "anchors", where))
     provenance = mapping(entries, "provenance", where)
     if status == REJECTED:
@@ -297,7 +297,7 @@ def load(directory: Path) -> list[RuleFile]:
     for path in rule_paths(directory):
         rule = parse(path.read_text(encoding="utf-8"), path)
         if path.name != rule.file_name:
-            raise RuleFileError(path, 1, f"el archivo debe llamarse {rule.file_name}")
+            raise RuleFileError(path, 1, f"the file must be named {rule.file_name}")
         rules.append(rule)
     return rules
 

@@ -31,8 +31,8 @@ from scrinium.application.knowledge.doc_conflicts import (
 from scrinium.infrastructure.decisions import anchor_for, parse_decisions
 
 DEFAULT_DIR: Final = "scrinium-demo"
-BRANCH: Final = "campana-verano"
-_REVIEWER: Final = "Ana Ejemplo"
+BRANCH: Final = "summer-campaign"
+_REVIEWER: Final = "Ana Example"
 _VERIFIED_AT: Final = "2026-03-03T10:00:00Z"
 _RULES_COMMIT_DATE: Final = "2026-03-03T11:00:00+01:00"
 _CHANGE_DATE: Final = "2026-06-01T09:00:00+02:00"
@@ -55,38 +55,38 @@ class _Example:
 _RULES: Final = (
     _Example(
         "01950000-0000-7000-8000-000000000001",
-        "Envío gratis desde 40 EUR en la península",
-        "Los pedidos a la península de 40 EUR o más no pagan envío.",
-        "tienda/envios.py", "if subtotal >= ENVIO_GRATIS_DESDE",
-        ("el destino no son las islas", "el subtotal es de 40 EUR o más"),
-        ("el envío cuesta 0 EUR",),
-        "Campaña de primavera de 2026.",
+        "Free shipping from 40 EUR on the mainland",
+        "Mainland orders of 40 EUR or more pay no shipping.",
+        "shop/shipping.py", "if subtotal >= FREE_SHIPPING_FROM",
+        ("the destination is not the islands", "the subtotal is 40 EUR or more"),
+        ("shipping costs 0 EUR",),
+        "Spring 2026 campaign.",
     ),
     _Example(
         "01950000-0000-7000-8000-000000000002",
-        "Como mucho 10 unidades de un producto por pedido",
-        "Un pedido no reserva más de 10 unidades de un mismo producto.",
-        "tienda/stock.py", "if pedidas > MAXIMO_POR_PEDIDO",
-        ("se piden más de 10 unidades de un producto",),
-        ("el pedido se rechaza",),
-        "Evita que un solo cliente agote el stock.",
+        "At most 10 units of a product per order",
+        "An order never reserves more than 10 units of the same product.",
+        "shop/stock.py", "if requested > MAXIMUM_PER_ORDER",
+        ("more than 10 units of a product are requested",),
+        ("the order is refused",),
+        "Keeps a single customer from emptying the stock.",
     ),
     _Example(
         "01950000-0000-7000-8000-000000000004",
-        "Los descuentos nunca pasan del 25 % del subtotal",
-        "Los descuentos sumados de un pedido nunca pasan del 25 % de su subtotal.",
-        "tienda/descuentos.py", "min(porcentaje, DESCUENTO_MAXIMO)",
-        ("hay descuentos de cliente y de cupón",), ("se aplica como mucho un 25 %",),
-        "Margen mínimo de la tienda.",
+        "Discounts never exceed 25 % of the subtotal",
+        "Discounts added together never exceed 25 % of the order's subtotal.",
+        "shop/discounts.py", "min(percentage, MAXIMUM_DISCOUNT)",
+        ("there are customer and coupon discounts",), ("at most 25 % is applied",),
+        "The shop's minimum margin.",
     ),
     _Example(
         "01950000-0000-7000-8000-000000000003",
-        "Un cupón solo vale en pedidos de 30 EUR o más",
-        "Un cupón de descuento solo se aplica si el subtotal es de 30 EUR o más.",
-        "tienda/descuentos.py", "if cupon is not None and subtotal >= PEDIDO_MINIMO_CUPON",
-        ("hay cupón", "el subtotal es de 30 EUR o más"),
-        ("se suma el descuento del cupón",),
-        "Los cupones no deben usarse en pedidos pequeños.",
+        "A coupon only applies to orders of 30 EUR or more",
+        "A discount coupon only applies if the subtotal is 30 EUR or more.",
+        "shop/discounts.py", "if coupon is not None and subtotal >= COUPON_MINIMUM_ORDER",
+        ("there is a coupon", "the subtotal is 30 EUR or more"),
+        ("the coupon discount is added",),
+        "Coupons should not be used on small orders.",
     ),
 )  # fmt: skip
 
@@ -111,18 +111,18 @@ def _rule(repo: Path, example: _Example) -> RuleFile:
 
 def prepare(repo: Path) -> list[RuleFile]:
     """The example with its verified rules on `main`, and the campaign change on a branch."""
-    seed_repository(repo)
+    seed_repository(repo, english=True)
     rules = [_rule(repo, example) for example in _RULES]
     write_all(repo / RULES_DIR, rules)
     git(repo, "add", "-A")
-    git(repo, "commit", "-q", "-m", "Reglas verificadas", date=_RULES_COMMIT_DATE)
+    git(repo, "commit", "-q", "-m", "Verified rules", date=_RULES_COMMIT_DATE)
     git(repo, "checkout", "-q", "-b", BRANCH)
-    shipping = repo / "tienda/envios.py"
+    shipping = repo / "shop/shipping.py"
     shipping.write_text(
         shipping.read_text(encoding="utf-8").replace('Decimal("40")', 'Decimal("60")'),
         encoding="utf-8",
     )
-    git(repo, "commit", "-q", "-am", "Envio gratis desde 60 EUR en verano", date=_CHANGE_DATE)
+    git(repo, "commit", "-q", "-am", "Free shipping from 60 EUR in summer", date=_CHANGE_DATE)
     return rules
 
 
@@ -149,7 +149,7 @@ def demo(folder: Path) -> int:
         print(f"   - {rule.title}  ({anchor.path}:{anchor.start_line})")
 
     _step(3, f"On the branch {BRANCH}, someone moves free shipping from 40 to 60 EUR:")
-    print('   tienda/envios.py: ENVIO_GRATIS_DESDE = Decimal("60")')
+    print('   shop/shipping.py: FREE_SHIPPING_FROM = Decimal("60")')
 
     _step(4, f"scrinium check --base main  (on the branch {BRANCH})")
     result = check(Repository.at(repo), "main")
@@ -166,8 +166,8 @@ def demo(folder: Path) -> int:
     _step(5, "What the documents say against the code (on main):")
     conflicts = _doc_conflicts(repo, rules)
     for conflict in conflicts:
-        print(f"   - {conflict.document}:{conflict.line}: «{conflict.sentence}»")
-        print(f"     says {', '.join(conflict.says)}; the rule «{conflict.title}» decides with "
+        print(f'   - {conflict.document}:{conflict.line}: "{conflict.sentence}"')
+        print(f"     says {', '.join(conflict.says)}; the rule \"{conflict.title}\" decides with "
               f"{', '.join(conflict.code)} ({conflict.place})")  # fmt: skip
     if not conflicts:
         print("   No document contradicts the code.")
@@ -200,5 +200,5 @@ def _doc_conflicts(repo: Path, rules: list[RuleFile]) -> list[DocConflict]:
                     enclosing_code(anchor.path, text, found),
                 )
             )
-    documents = [("docs/politicas.md", reader.read("docs/politicas.md") or "")]
+    documents = [("docs/policies.md", reader.read("docs/policies.md") or "")]
     return doc_conflicts(known, documents)

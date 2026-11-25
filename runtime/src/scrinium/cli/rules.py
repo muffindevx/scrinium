@@ -372,6 +372,9 @@ def _pick(names: dict[str, str], wanted: str | None, what: str) -> str | None:
 
 def main(argv: Sequence[str]) -> int:
     """The light commands alone, without importing the server."""
+    from scrinium.core.language import use_english
+
+    use_english()
     parser = argparse.ArgumentParser(prog="scrinium")
     add_commands(parser.add_subparsers(dest="command", required=True))
     return run(parser.parse_args(argv))

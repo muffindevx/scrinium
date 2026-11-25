@@ -16,7 +16,7 @@ def test_the_demo_breaks_a_rule_and_check_says_so(tmp_path: Path) -> None:
     result = check(Repository.at(repo), "main")
     assert result.failed
     assert [finding.title for finding in result.findings] == [
-        "Envío gratis desde 40 EUR en la península"
+        "Free shipping from 40 EUR on the mainland"
     ]
     # On main, nothing changed: the check passes.
     subprocess.run(["git", "-C", str(repo), "checkout", "-q", "main"], check=True)
@@ -50,7 +50,7 @@ def test_the_demo_command_runs_without_a_model(tmp_path: Path) -> None:
              "HOME": str(tmp_path)},
     )  # fmt: skip
     assert result.returncode == 0, result.stderr
-    assert "Cambia la regla" in result.stdout and "code 1" in result.stdout
+    assert "Rule changes" in result.stdout and "code 1" in result.stdout
     # It never touched the data directory.
     assert not (tmp_path / "data").exists()
 

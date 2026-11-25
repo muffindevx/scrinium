@@ -48,16 +48,16 @@ def test_writing_twice_touches_nothing(tmp_path: Path) -> None:
 
 def test_a_rule_file_must_be_named_by_its_id(tmp_path: Path) -> None:
     (tmp_path / "0193a5c2-0000-7000-8000-000000000002.md").write_text(render(RULE))
-    with pytest.raises(RuleFileError, match="debe llamarse"):
+    with pytest.raises(RuleFileError, match="must be named"):
         load(tmp_path)
 
 
 @pytest.mark.parametrize(
     ("change", "line", "message"),
     [
-        (("scrinium: 1", "scrinium: 2"), 2, "versión"),
-        (("lines: [3, 4]", "lines: [4, 3]"), 12, "fuera de rango"),
-        (('shape: "ef56"', 'shape: "no-hex"'), 13, "huella"),
+        (("scrinium: 1", "scrinium: 2"), 2, "format version"),
+        (("lines: [3, 4]", "lines: [4, 3]"), 12, "out of range"),
+        (('shape: "ef56"', 'shape: "no-hex"'), 13, "fingerprint"),
         (("title: ", "title: [x] "), 4, "no admitido"),
     ],
 )

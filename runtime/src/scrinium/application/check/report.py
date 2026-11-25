@@ -15,11 +15,11 @@ from scrinium.application.check.tickets import TicketRef
 SARIF_SCHEMA: Final = "https://json.schemastore.org/sarif-2.1.0.json"
 _KINDS: Final = {"error": "fail", "warning": "review", "note": "informational"}
 _LEVEL_TITLES: Final = {
-    "changed": "Cambia la regla",
-    "review": "Revisar",
-    "removed": "Retirada",
-    "updated": "Actualizada en este cambio",
-    "moved": "Movida",
+    "changed": "Rule changes",
+    "review": "Review",
+    "removed": "Retired",
+    "updated": "Updated in this change",
+    "moved": "Moved",
 }
 
 
@@ -85,7 +85,7 @@ def _ticket_note(finding: Finding) -> str:
     if finding.tickets:
         return "Tickets: " + ", ".join(ref.key for ref in finding.tickets) + "."
     if finding.needs_ticket:
-        return "Ningún commit ni la rama nombran un ticket para este cambio de regla."
+        return "Neither a commit nor the branch names a ticket for this rule change."
     return ""
 
 
@@ -166,55 +166,55 @@ def _count(number: int, one: str, many: str) -> str:
 
 
 def to_markdown(result: CheckResult) -> str:
-    lines = ["## Scrinium: reglas verificadas", ""]
+    lines = ["## Scrinium: verified rules", ""]
     failing = [f for f in result.findings if f.level == CHANGED]
     warnings = [f for f in result.findings if f.level in {REVIEW, REMOVED}]
     if result.errors:
-        lines.append("**Error al leer las reglas:**")
+        lines.append("**Error reading the rules:**")
         lines += [f"- `{error}`" for error in result.errors]
         lines.append("")
     if not result.findings:
         lines.append(
-            f"Ninguna regla verificada cambia ({_count(result.rules, 'regla', 'reglas')}, "
-            f"{_count(result.changed_files, 'archivo cambiado', 'archivos cambiados')})."
+            f"No verified rule changes ({_count(result.rules, 'rule', 'rules')}, "
+            f"{_count(result.changed_files, 'changed file', 'changed files')})."
         )
     else:
-        verdict = "falla" if result.failed else "pasa"
+        verdict = "fails" if result.failed else "passes"
         lines.append(
-            f"El check **{verdict}**: {_count(len(failing), 'regla cambia', 'reglas cambian')}, "
-            f"{len(warnings)} para revisar ({_count(result.rules, 'regla', 'reglas')}, "
-            f"{_count(result.changed_files, 'archivo cambiado', 'archivos cambiados')})."
+            f"The check **{verdict}**: {_count(len(failing), 'rule changes', 'rules change')}, "
+            f"{len(warnings)} to review ({_count(result.rules, 'rule', 'rules')}, "
+            f"{_count(result.changed_files, 'changed file', 'changed files')})."
         )
-        lines += ["", "| Nivel | Regla | Dónde | Tickets |", "|---|---|---|---|"]
+        lines += ["", "| Level | Rule | Where | Tickets |", "|---|---|---|---|"]
         for finding in result.findings:
             path, start, end = _where(result, finding)
             title = finding.title.replace("|", "\\|")
             keys = ", ".join(ref.key for ref in finding.tickets)
             if not keys:
-                keys = "**sin ticket**" if finding.needs_ticket else "—"
+                keys = "**no ticket**" if finding.needs_ticket else "—"
             lines.append(
                 f"| {_LEVEL_TITLES[finding.level]} | {title} | `{path}:{start}-{end}` | {keys} |"
             )
         missing = result.without_ticket
         if missing:
-            verb = "falla por eso" if result.require_ticket else "aviso"
+            verb = "fails because of it" if result.require_ticket else "warning"
             lines += [
                 "",
-                f"**{_count(len(missing), 'regla cambia', 'reglas cambian')} sin ticket** "
-                f"({verb}): ningún commit del cambio que toca su archivo ni la rama "
-                f"`{result.branch or '—'}` nombra uno.",
+                f"**{_count(len(missing), 'rule changes', 'rules change')} without a ticket** "
+                f"({verb}): neither a commit of the change touching its file nor the branch "
+                f"`{result.branch or '—'}` names one.",
             ]
         explained = [
             (f, result.explanations[f.key]) for f in result.findings if f.key in result.explanations
         ]
         if explained:
-            lines += ["", "**Explicación (modelo, solo orientativa):**", ""]
+            lines += ["", "**Explanation (model, for guidance only):**", ""]
             lines += [f"- *{f.title}*: {text}" for f, text in explained]
     if result.stale:
         lines += [
             "",
-            f"{_count(result.stale, 'ancla antigua no se pudo', 'anclas antiguas no se pudieron')} "
-            "recalcular: exporta las reglas de nuevo (`scrinium rules export`).",
+            f"{_count(result.stale, 'old anchor could not be', 'old anchors could not be')} "
+            "recalculated: export the rules again (`scrinium rules export`).",
         ]
     lines += [
         "",

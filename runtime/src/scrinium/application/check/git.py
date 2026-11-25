@@ -34,10 +34,10 @@ def git(cwd: Path, *args: str) -> str:
             cwd=cwd, capture_output=True, check=False, timeout=60,
         )  # fmt: skip
     except (OSError, subprocess.TimeoutExpired) as error:
-        raise GitError(f"git no está disponible: {type(error).__name__}") from None
+        raise GitError(f"git is not available: {type(error).__name__}") from None
     if done.returncode != 0:
         message = done.stderr.decode("utf-8", "replace").strip().splitlines()
-        raise GitError(message[-1] if message else f"git {args[0]} falló")
+        raise GitError(message[-1] if message else f"git {args[0]} failed")
     return done.stdout.decode("utf-8", "replace")
 
 
@@ -71,7 +71,7 @@ class Repository:
             return git(self.top, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}").strip()
         except GitError:
             raise GitError(
-                f"la base «{ref}» no está en este clon (en CI, clona con fetch-depth: 0)"
+                f'the base "{ref}" is not in this clone (in CI, clone with fetch-depth: 0)'
             ) from None
 
     def default_base(self) -> str:
@@ -81,7 +81,7 @@ class Repository:
             except GitError:
                 continue
             return ref
-        raise GitError("no se encontró una rama base: indícala con --base")
+        raise GitError("no base branch was found: give one with --base")
 
     def merge_base(self, base: str) -> str:
         try:

@@ -18,6 +18,7 @@ from scrinium.application.ai.service import LlmService
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion.sources import IngestionRunner
 from scrinium.application.retrieval.indexing import Indexer
+from scrinium.core import language
 from scrinium.core.config import RuntimeConfig
 from scrinium.core.session import LocalSessionManager
 from scrinium.infrastructure.llm.base import ChatMessage, Completion
@@ -29,6 +30,15 @@ from scrinium.infrastructure.vector_index.sqlite_vec import SqliteVecIndex
 from scrinium.main import create_app, open_runtime
 
 TEST_PORT = 48123
+
+
+@pytest.fixture(autouse=True)
+def _spanish_console() -> Iterator[None]:
+    """A command run in the test process switches its messages to English: undo it after."""
+    yield
+    language._english = False
+
+
 ORIGIN = f"http://127.0.0.1:{TEST_PORT}"
 
 

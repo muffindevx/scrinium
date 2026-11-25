@@ -1,7 +1,8 @@
 """The example shop: a small Git repository with business rules, the same on every machine.
 
-Used by `scrinium demo` (phase 5.3) and by `make demo`. Fixed authors and dates, so the
-commits have the same ids everywhere.
+Used by `scrinium demo` (phase 5.3), in English like the rest of the command line, and by
+`make demo`, in Spanish like the console. Fixed authors and dates, so the commits have the same
+ids everywhere.
 """
 
 import os
@@ -99,6 +100,90 @@ _COMMITS: Final = [
     ),
 ]
 
+# The same shop in English, for `scrinium demo`: same rules, same values, same two commits.
+_ENGLISH_FIRST_COMMIT: Final = {
+    "README.md": (
+        "# Example shop\n\nA toy project to try Scrinium: orders, discounts, shipping and stock.\n"
+    ),
+    "docs/policies.md": (
+        "# Shop policies\n\n"
+        "Shipping is free from 50 EUR on the mainland; the islands always pay shipping.\n\n"
+        "An order never reserves more than 10 units of a product.\n\n"
+        "- Discounts added together never exceed 30 % of the subtotal.\n"
+        "- A coupon only applies to orders of 30 EUR or more.\n"
+    ),
+    "shop/__init__.py": "",
+    "shop/discounts.py": '''"""Discounts applied to an order."""
+
+from decimal import Decimal
+
+VIP_CUSTOMER_DISCOUNT = Decimal("0.10")
+MAXIMUM_DISCOUNT = Decimal("0.25")
+COUPON_MINIMUM_ORDER = Decimal("30")
+
+
+def total_discount(subtotal: Decimal, is_vip: bool, coupon: Decimal | None) -> Decimal:
+    """VIP customers get 10 %; a coupon only applies to orders of 30 EUR or more.
+
+    Discounts add up, but never exceed 25 % of the subtotal.
+    """
+    percentage = Decimal("0")
+    if is_vip:
+        percentage += VIP_CUSTOMER_DISCOUNT
+    if coupon is not None and subtotal >= COUPON_MINIMUM_ORDER:
+        percentage += coupon
+    return subtotal * min(percentage, MAXIMUM_DISCOUNT)
+''',
+    "shop/shipping.py": '''"""Shipping cost."""
+
+from decimal import Decimal
+
+FREE_SHIPPING_FROM = Decimal("50")
+MAINLAND_RATE = Decimal("4.90")
+ISLANDS_RATE = Decimal("9.90")
+
+
+def shipping_cost(subtotal: Decimal, destination: str) -> Decimal:
+    """Free shipping from 50 EUR on the mainland; the islands always pay."""
+    if destination == "islands":
+        return ISLANDS_RATE
+    if subtotal >= FREE_SHIPPING_FROM:
+        return Decimal("0")
+    return MAINLAND_RATE
+''',
+    "shop/stock.py": '''"""Stock reservations when an order is confirmed."""
+
+MAXIMUM_PER_ORDER = 10
+
+
+class OutOfStock(Exception):
+    pass
+
+
+def reserve(available: int, requested: int) -> int:
+    """No more than 10 units of a product per order, and no more than there are."""
+    if requested <= 0:
+        raise ValueError("at least one unit must be ordered")
+    if requested > MAXIMUM_PER_ORDER:
+        raise ValueError(f"at most {MAXIMUM_PER_ORDER} units per order")
+    if requested > available:
+        raise OutOfStock(f"only {available} left")
+    return available - requested
+''',
+}
+_ENGLISH_COMMITS: Final = [
+    (_ENGLISH_FIRST_COMMIT, "First version of the shop", "2026-01-10T10:00:00+01:00"),
+    (
+        {
+            "shop/shipping.py": _ENGLISH_FIRST_COMMIT["shop/shipping.py"]
+            .replace('FREE_SHIPPING_FROM = Decimal("50")', 'FREE_SHIPPING_FROM = Decimal("40")')
+            .replace("from 50 EUR", "from 40 EUR"),
+        },
+        "Free shipping from 40 EUR for the spring campaign",
+        "2026-03-02T09:30:00+01:00",
+    ),
+]
+
 
 def git(repo: Path, *args: str, date: str | None = None) -> None:
     """git with the example's fixed author, no user configuration, and an optional date."""
@@ -116,12 +201,12 @@ def git(repo: Path, *args: str, date: str | None = None) -> None:
     subprocess.run(["git", "-C", str(repo), *args], check=True, env=env, capture_output=True)  # noqa: S603, S607
 
 
-def seed_repository(repo: Path) -> None:
+def seed_repository(repo: Path, english: bool = False) -> None:
     if (repo / ".git").is_dir():
         return
     repo.mkdir(parents=True, exist_ok=True)
     git(repo, "init", "-q", "-b", "main")
-    for files, message, date in _COMMITS:
+    for files, message, date in _ENGLISH_COMMITS if english else _COMMITS:
         for name, text in files.items():
             path = repo / name
             path.parent.mkdir(parents=True, exist_ok=True)

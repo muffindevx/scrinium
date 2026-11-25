@@ -71,9 +71,9 @@ def test_a_rule_changed_without_a_ticket_is_flagged_and_can_fail(repo: Path) -> 
     plain = check(Repository.at(repo), "main")
     assert [f.level for f in plain.findings] == [REVIEW] and not plain.failed
     assert [f.rule_id for f in plain.without_ticket] == [RULE_ID]
-    assert "sin ticket" in to_markdown(plain)
+    assert "without a ticket" in to_markdown(plain)
     required = check(Repository.at(repo), "main", require_ticket=True)
-    assert required.failed and "falla por eso" in to_markdown(required)
+    assert required.failed and "fails because of it" in to_markdown(required)
     assert cli(["check", "--base", "main", "--root", str(repo), "--require-ticket"]) == 1
     assert cli(["check", "--base", "main", "--root", str(repo)]) == 0
 

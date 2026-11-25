@@ -31,6 +31,7 @@ from scrinium.application.check.yaml_subset import (
     parse,
     text_of,
 )
+from scrinium.core.language import pick
 
 DOMAINS_FILE: Final = Path(".scrinium") / "domains.yaml"
 ROOT_DOMAIN: Final = ""
@@ -79,7 +80,9 @@ def load_domains(root: Path) -> Domains:
         lines = path.read_text(encoding="utf-8").splitlines()
         entries = parse(lines, DOMAINS_FILE)
         if optional(entries, "scrinium") != "1":
-            raise FileFormatError(DOMAINS_FILE, 1, "falta «scrinium: 1»")
+            raise FileFormatError(
+                DOMAINS_FILE, 1, pick("falta «scrinium: 1»", "«scrinium: 1» is missing")
+            )
         declared = []
         for fields in items(entries, "domains", DOMAINS_FILE)[:MAX_ENTRIES]:
             at = min(number for number, _ in fields.values())
@@ -87,7 +90,9 @@ def load_domains(root: Path) -> Domains:
             prefix = text_of(optional(fields, "path"), DOMAINS_FILE, at, "path").strip()
             prefix = prefix.removeprefix("./")
             if not name or not prefix or prefix.startswith("/") or ".." in prefix.split("/"):
-                raise FileFormatError(DOMAINS_FILE, at, "ruta o nombre no válidos")
+                raise FileFormatError(
+                    DOMAINS_FILE, at, pick("ruta o nombre no válidos", "invalid path or name")
+                )
             declared.append((prefix, name[:100]))
     except FileFormatError as error:
         return Domains(error=str(error))

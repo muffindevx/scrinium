@@ -137,7 +137,7 @@ def test_three_products_never_cross(tmp_path: Path) -> None:
 def test_the_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _product(tmp_path, "tienda", FRONTEND.replace("< 30", "< 50"))
     assert cli(["mirrors", "--root", str(tmp_path / "tienda/backend")]) == 1
-    assert "50 en ui" in capsys.readouterr().out
+    assert "50 in ui" in capsys.readouterr().out
     assert cli(["mirrors", "--root", str(tmp_path)]) == 2
 
 

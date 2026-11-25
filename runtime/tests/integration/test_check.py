@@ -79,7 +79,7 @@ def test_a_changed_threshold_fails_until_its_rule_file_changes_too(repo: Path) -
     assert found["ruleId"] == RULE_ID and found["level"] == "error"
     assert found["locations"][0]["physicalLocation"]["artifactLocation"]["uri"] == "src/pagos.py"
     assert json.loads(to_json(result))["failed"] is True
-    assert "falla" in to_markdown(result)
+    assert "**fails**" in to_markdown(result)
 
     # The same change updates the rule's file: acknowledged, not failing.
     write(
@@ -147,7 +147,7 @@ def test_a_broken_rule_file_is_an_error_not_a_pass(
     write(repo, f"{RULES_DIR}/{RULE_ID}.md", "---\nid: x\n")
     os.chdir(repo)
     assert cli(["check", "--base", "main", "--include-local", "--format", "json"]) == 2
-    assert "cierra la cabecera" in capsys.readouterr().out
+    assert "closing the header is missing" in capsys.readouterr().out
 
 
 def test_the_command_exit_codes(repo: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -158,7 +158,7 @@ def test_the_command_exit_codes(repo: Path, capsys: pytest.CaptureFixture[str]) 
     assert cli(["check", *root, "--format", "sarif", "--output", str(out)]) == 1
     assert json.loads(out.read_text())["version"] == "2.1.0"
     assert cli(["check", "--root", str(repo), "--base", "no-existe"]) == 2
-    assert "no está en este clon" in capsys.readouterr().err
+    assert "is not in this clone" in capsys.readouterr().err
 
 
 def _run_hook(repo: Path) -> int:
@@ -204,7 +204,7 @@ def test_a_hook_in_another_language_is_not_edited(repo: Path) -> None:
     path.write_text("#!/usr/bin/env python3\nprint('hola')\n")
     from scrinium.application.check.hooks import HookError
 
-    with pytest.raises(HookError, match="no es un script de shell"):
+    with pytest.raises(HookError, match="is not a shell script"):
         install(Repository.at(repo), ["scrinium"])
     assert path.read_text() == "#!/usr/bin/env python3\nprint('hola')\n"
 

@@ -72,7 +72,7 @@ def install(repository: Repository, command: list[str]) -> str:
     lines = current.splitlines()
     if lines and lines[0].startswith("#!") and not _SHELL.match(lines[0]):
         raise HookError(
-            f"{path} no es un script de shell. Añade tú esta línea donde corresponda: "
+            f"{path} is not a shell script. Add this line where it belongs yourself: "
             + shlex.join([*command, "check", "--base", "HEAD", "--staged"])
         )
     head = [lines[0]] if lines and lines[0].startswith("#!") else []

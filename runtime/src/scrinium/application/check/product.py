@@ -84,7 +84,9 @@ def load_manifest(folder: Path) -> Manifest | None:
         return None
     entries = parse(path.read_text(encoding="utf-8").splitlines(), path)
     if optional(entries, "scrinium") != "1":
-        raise FileFormatError(path, entries.get("scrinium", (1, None))[0], "falta «scrinium: 1»")
+        raise FileFormatError(
+            path, entries.get("scrinium", (1, None))[0], "«scrinium: 1» is missing"
+        )
     product = text_of(optional(entries, "product"), path, 1, "product")
     sources = []
     for fields in items(entries, "sources", path):
@@ -93,7 +95,7 @@ def load_manifest(folder: Path) -> Manifest | None:
         relative = text_of(optional(fields, "path"), path, at, "path")
         sources.append(ProductSource(name, (folder / relative).resolve()))
     if len({s.name for s in sources}) != len(sources):
-        raise FileFormatError(path, entries["sources"][0], "dos fuentes con el mismo nombre")
+        raise FileFormatError(path, entries["sources"][0], "two sources with the same name")
     mirrors = []
     for fields in items(entries, "mirrors", path):
         at = min(number for number, _ in fields.values())
@@ -178,8 +180,8 @@ def compare_mirrors(manifest: Manifest) -> MirrorReport:
         missing = [rule_id for rule_id in (mirror.rule, mirror.mirror) if rule_id not in owners]
         if missing:
             report.errors.append(
-                f"{MANIFEST}:{mirror.line}: {', '.join(missing)} no es una regla verificada de "
-                f"ninguna fuente de {manifest.product}"
+                f"{MANIFEST}:{mirror.line}: {', '.join(missing)} is not a verified rule of "
+                f"any source of {manifest.product}"
             )
             continue
         report.pairs += 1
@@ -192,12 +194,12 @@ def compare_mirrors(manifest: Manifest) -> MirrorReport:
 
 
 def describe(first: Side, second: Side) -> str:
-    """«la regla dice 0.3 en ui y 0.25 en backend», with the places."""
+    """ "the rule says 0.3 in ui and 0.25 in backend", with the places."""
 
     def shown(side: Side) -> str:
-        values = ", ".join(side.values) or "sin valores"
+        values = ", ".join(side.values) or "no values"
         where = ", ".join(f"{path}:{line}" for path, line in side.places)
-        return f"{values} en {side.source} ({where})"
+        return f"{values} in {side.source} ({where})"
 
     title = first.rule.title or first.rule.id
-    return f"«{title}»: {shown(first)}; {shown(second)}"
+    return f'"{title}": {shown(first)}; {shown(second)}'
