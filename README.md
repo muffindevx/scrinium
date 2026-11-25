@@ -95,7 +95,7 @@ Tried on Linux. On macOS and on Windows (WSL) the steps are the same, but nobody
 
 5. **The first time, choose who writes the rules.** Home asks. Read [Which model writes the rules](#which-model-writes-the-rules) first: in the container, not every choice is available.
 
-6. **Add your project.** In Projects, create a project and add a source with the path the script printed in step 3, for example `/repos/shop`. That is where your folder is inside the container. Scrinium can read it, never change it.
+6. **Add your project.** On Home, or later in **Integraciones › Añadir una fuente**, give the path the script printed in step 3, for example `/repos/shop`. That is where your folder is inside the container. Scrinium can read it, never change it.
 
 7. **When you finish:**
 

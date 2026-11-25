@@ -184,7 +184,7 @@ print_link() {
     mounted=$(current_mounts)
     if [ -n "$mounted" ]; then
         say ""
-        say "Tus carpetas, para Proyectos > Anadir fuente (Scrinium solo puede leerlas, no cambiarlas):"
+        say "Tus carpetas, para Integraciones > Anadir una fuente (Scrinium solo puede leerlas, no cambiarlas):"
         printf '%s\n' "$mounted" | while IFS="$tab" read -r src dst; do
             say "  $dst   (tu carpeta $src)"
         done
