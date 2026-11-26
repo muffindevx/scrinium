@@ -13,10 +13,10 @@ It never reads or writes the real database. Ctrl+C stops it; `rm -rf ~/.cache/sc
 starts over (the links do not take the real models with them).
 
 With `--repo` it uses that Git repository instead of the example one (it is only read), and
-`--project` names the project. For example, the reference-c reference set, in its own folder:
+`--project` names the project. For example, a reference project in its own folder:
 
-    SCRINIUM_DEMO_DIR=~/.cache/scrinium-odoo uv run --project runtime python \\
-        runtime/devtools/demo.py --port 47631 --repo ~/.cache/scrinium-odoo/repo --project reference-c
+    SCRINIUM_DEMO_DIR=<folder> uv run --project runtime python \\
+        runtime/devtools/demo.py --port 47631 --repo <repo> --project <name>
 
 Usage: uv run --project runtime python runtime/devtools/demo.py [--port 47630] [--no-browser]
     [--repo PATH] [--project NAME]

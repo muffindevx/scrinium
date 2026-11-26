@@ -4,8 +4,8 @@ No model and no database: each rule's file is read from the repository at the re
 commit, its decisions are parsed, and the rule counts as anchored when some decision overlaps
 its lines. The target is 95 %.
 
-    uv run python benchmarks/anchor_coverage.py --golden benchmarks/golden/reference-b.json \\
-        --repo /path/to/reference-b [--show-missing]
+    uv run python benchmarks/anchor_coverage.py --golden <reference.json> \\
+        --repo <repo> [--show-missing]
 """
 
 import argparse

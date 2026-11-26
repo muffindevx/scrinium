@@ -4,9 +4,10 @@ For each rule of the golden file: a rule written by a person, cited at its lines
 project's current revision of that file, and verified by «Usuario de pruebas». Rules already
 seeded (`golden/<id>`) are left alone. Run it after the project's first sync:
 
-    SCRINIUM_DEMO_DIR=~/.cache/scrinium-odoo uv run --project runtime python \\
-        runtime/devtools/seed_golden.py --project reference-c \\
-        --golden runtime/benchmarks/golden/reference-c.json
+    SCRINIUM_DEMO_DIR=<folder> uv run --project runtime python \\
+        runtime/devtools/seed_golden.py --project <name> --golden <reference.json>
+
+The reference lists are kept outside the repository: the analyzed projects' rules never go in it.
 """
 
 import argparse

@@ -11,8 +11,8 @@ how many batches the whole project would need, and estimates the time from the m
 - It starts its own llama-server with Scrinium's settings and stops it when done.
 - Run it under the resource limit (`make bench`), never at the same time as Scrinium.
 
-Quality (F1): with `--golden benchmarks/golden/reference-a.json` it measures filter recall
-(no model) and extraction recall, and with `--sample golden` the sample is the chunks holding
+Quality (F1): with `--golden <reference.json>`, kept outside the repository, it measures filter
+recall (no model) and extraction recall, and with `--sample golden` the sample is the chunks holding
 those rules. Each rule goes through the `rule_checks` checks (cut title, language, UI,
 evidence) and into `<out>.review.md` for review by hand.
 

@@ -41,3 +41,7 @@ ROADMAP.md
 SESSION.md
 README_DOCUMENTACION.md
 agent-execution-log.md
+
+# Reference rules and baselines of analyzed projects: never in the repository.
+runtime/benchmarks/golden/
+runtime/benchmarks/baseline/

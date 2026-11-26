@@ -6,8 +6,8 @@ lands on the same decision (same first line once the edit's shift is undone). Th
 100 % for refactors that do not change behaviour. A changed threshold must be found with a
 different `value` (drift), never lost.
 
-    uv run python benchmarks/reanchor_refactors.py --golden benchmarks/golden/reference-c.json \\
-        --repo ~/.cache/scrinium-bench/repos/reference-c
+    uv run python benchmarks/reanchor_refactors.py --golden <reference.json> \\
+        --repo <repo>
 """
 
 import argparse

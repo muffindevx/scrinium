@@ -102,8 +102,8 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
 <main>
 <header class="top">
   <p class="eyebrow">Scrinium · business-rule extraction</p>
-  <h1>How Scrinium extracts rules from code, </h1>
-  <p class="lede prose">This page explains the what, when and how of rule extraction. It was checked against the repository code on 11 November 2026. Timing and recall figures were measured with <code>make bench</code> on a 6 GB GTX 1060 with Qwen3-4B, on the pilot project <code>reference-a</code>.</p>
+  <h1>How Scrinium extracts rules from code</h1>
+  <p class="lede prose">This page explains the what, when and how of rule extraction. It was checked against the repository code on 11 November 2026.</p>
   <p class="muted prose" style="font-size:0.9rem">References such as <span class="ref">analysis/extraction.py:533</span> are relative to <code>runtime/src/scrinium/</code>, except those starting with <code>ui/</code>.</p>
   <nav class="toc" aria-label="Sections">
     <a href="#what">1 · What</a><a href="#when">2 · When</a><a href="#how">3 · How</a><a href="#lines">4 · Few lines</a><a href="#limits">5 · What it does not do</a>
@@ -112,7 +112,7 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
 
 <div class="answer prose">
   <h2>The short answer</h2>
-  <p>A rule shows only a few lines because that is all that is stored. Each rule comes from one <strong>group of decision lines</strong>: for example an <code>if (lives &lt;= 0)</code>, plus any decision lines within 3 lines of it. That group is the rule's <strong>only citation</strong>, and the UI shows exactly those lines.</p>
+  <p>A rule shows only a few lines because that is all that is stored. Each rule comes from one <strong>group of decision lines</strong>: for example an <code>if (total &gt;= FREE_SHIPPING_FROM)</code>, plus any decision lines within 3 lines of it. That group is the rule's <strong>only citation</strong>, and the UI shows exactly those lines.</p>
   <p>Scrinium knows where every function starts and ends, and which names it calls. It does not use that knowledge to explain the code or to relate rules to each other. The relationship and flow tables exist, but nothing fills them, so the "Map" screen shows a single column of rules with no arrows.</p>
 </div>
 
@@ -263,17 +263,17 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
       </ul>
       <p>What the model sees (the markers are in Spanish in the real prompt):</p>
 <pre class="sample" aria-label="Example of what the model sees">&lt;&lt;FUENTE 1 9f3a…&gt;&gt;
-ruta: src/game.ts, funcion: Game.loseLife
-41|loseLife() {
-42| this.lives -= 1
-43|<span class="hl">» if (this.lives &lt;= 0) {</span>
-44|<span class="hl">»  this.state = 'over'</span>
-45| }
+ruta: shop/shipping.py, funcion: shipping_cost
+41|def shipping_cost(total):
+42| base = 4.95
+43|<span class="hl">» if total &gt;= FREE_SHIPPING_FROM:</span>
+44|<span class="hl">»  return 0</span>
+45| return base
 &lt;&lt;FIN 9f3a…&gt;&gt;
 
 Decisiones (1; una respuesta por cada una en "d"):
-D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
-      <p>The grammar forces <strong>exactly one answer per decision, in order</strong>: <code>{"i":"D1","r":null}</code> or <code>{"i":"D1","r":{"c":"est","t":"Fin de partida sin vidas"}}</code>. The model can neither skip a decision nor invent one (R1b). <span class="ref">analysis/extraction.py:252-273</span></p>
+D1 (lineas 43-44): if total &gt;= FREE_SHIPPING_FROM:</pre>
+      <p>The grammar forces <strong>exactly one answer per decision, in order</strong>: <code>{"i":"D1","r":null}</code> or <code>{"i":"D1","r":{"c":"cal","t":"Envío gratis desde un importe"}}</code>. The model can neither skip a decision nor invent one (R1b). <span class="ref">analysis/extraction.py:252-273</span></p>
     </div></li>
     <li><div>
       <h3>Citations, validation and storage (F6/F6b)</h3>
@@ -304,7 +304,7 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
   </figure>
 
   <div class="prose" style="display:grid;gap:12px">
-    <p><strong>One citation per rule, on purpose (S2).</strong> Writing is the expensive part on this GPU (about 2.3 s per rule with the earlier format), so everything the model wrote was trimmed. The model no longer writes the citation: it is the decision group, usually one to a few lines. If a chunk has no domain decision at all, the group is the whole chunk, and then the citation is longer. <span class="ref">analysis/candidates.py:346</span></p>
+    <p><strong>One citation per rule, on purpose (S2).</strong> Writing is the expensive part on a modest GPU, so everything the model wrote was trimmed. The model no longer writes the citation: it is the decision group, usually one to a few lines. If a chunk has no domain decision at all, the group is the whole chunk, and then the citation is longer. <span class="ref">analysis/candidates.py:346</span></p>
     <p><strong>±6-line windows.</strong> The model never sees a function over 40 lines in full. It sees cut-outs around each decision, and answers each one separately.</p>
     <p><strong>The batch cap no longer cuts rules.</strong> There used to be a cap of 6 rules per batch, which dropped rules the model had seen. With R1b the cap is 24 <em>decisions</em> per batch, and every decision gets an answer. Today the cap only decides where a batch ends.</p>
     <p><strong>Neither the function nor its relationships are stored.</strong> A rule stores the path and the lines of its group. It does not store the function that contains it, who calls that function, or the other rules in the same function. <code>code_symbols</code> knows all of that, but the rule does not record it.</p>
@@ -316,7 +316,7 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
     <p>The word "map" has two uses in Scrinium, and they should not be mixed up:</p>
     <ul>
       <li><strong>The rule map (phase 1)</strong> is the list of rules with title, category and citation, before they have a statement.</li>
-      <li><strong>The "Mapa" screen was removed.</strong> It drew rule relationships as facts, and a hand review found 14–24 % of them wrong. The relationships stay in <code>entity_relationships</code> and feed the rule detail ("Si cambia esta regla") and Impacto. A map comes back only as processes built without the model from entry points (routes, commands, handlers), and only if it passes its own measurement.</li>
+      <li><strong>The "Mapa" screen was removed.</strong> It drew rule relationships as facts, and a hand review found too many of them wrong. The relationships stay in <code>entity_relationships</code> and feed the rule detail ("Si cambia esta regla") and Impacto. A map comes back only as processes built without the model from entry points (routes, commands, handlers), and only if it passes its own measurement.</li>
     </ul>
   </div>
 </section>
@@ -327,7 +327,7 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
   <ul class="prose">
     <li><strong>It does not understand the flow between functions.</strong>
       <ul>
-        <li>It stores the names each function calls, but only the last part (<code>this.game.end()</code> becomes <code>end</code>). <span class="ref">infrastructure/code_structure.py:120-133, 157-159</span></li>
+        <li>It stores the names each function calls, but only the last part (<code>this.cart.close()</code> becomes <code>close</code>). <span class="ref">infrastructure/code_structure.py:120-133, 157-159</span></li>
         <li>It does not resolve which function a name refers to, and does not read <code>import</code>s.</li>
         <li>Those calls are not used yet.</li>
       </ul></li>
@@ -352,20 +352,6 @@ D1 (lineas 43-44): if (this.lives &lt;= 0) {</pre>
     <figcaption>The solid boxes are already in the database. Calls exist only as bare names. Everything dashed is not built yet; the relationship and flow tables, and their drawing in the UI, already exist.</figcaption>
   </figure>
 
-  <h3>How much it finds, measured</h3>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Measure</th><th><code>reference-a</code> (game)</th><th><code>reference-b</code> (GRC API)</th><th>What it means</th></tr></thead>
-    <tbody>
-      <tr><td>Reference rules</td><td class="num">48</td><td class="num">30</td><td>Reviewed by the owner.</td></tr>
-      <tr><td>Filter recall</td><td class="num">45 (0.938)</td><td class="num">29 (0.967)</td><td>Rules whose lines reach the model. Lost: <code>afterDoor</code>, <code>pack</code> and a crumb echo in the game; the sign-in hook in reference-b.</td></tr>
-      <tr><td><strong>Extraction recall</strong></td><td class="num"><strong>39 of 47 (0.83)</strong></td><td class="num"><strong>23 of 30 (0.77)</strong></td><td>On the reference sample, two-phase setup.</td></tr>
-      <tr><td>Precision</td><td class="num">48 of 50 real (0.96)</td><td class="num">not reviewed</td><td>Reviewed by hand on one sample; 46 of 50 were also well worded.</td></tr>
-      <tr><td>First extraction time</td><td class="num">≈ 27 min</td><td class="num">≈ 4 min</td><td>Map plus statements on the GTX 1060, estimated from the sample. After that, only what changes.</td></tr>
-      <tr><td>1.7B model for the map</td><td class="num">9 of 28</td><td class="num">—</td><td>2.6 times faster, but loses almost two thirds of the rules: rejected.</td></tr>
-      <tr><td>Parallel batches</td><td class="num">−2 % with 2 slots</td><td class="num">—</td><td>The GTX 1060 is already saturated: not worth it.</td></tr>
-    </tbody>
-  </table></div>
-  <p class="muted prose" style="font-size:0.9rem">Reference lists: <code>runtime/benchmarks/golden/reference-a.json</code> and <code>reference-b.json</code>. Before the filter learned business code, reference-b's filter recall was 0.40: guards, SQL in capitals and code outside functions never reached the model.</p>
 </section>
 
 </main>

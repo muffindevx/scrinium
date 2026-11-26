@@ -5,8 +5,8 @@ inbox. The target is at least 95 % of the reference statements anchored. Few ref
 statements carry numbers, so it also changes each number of those (adds 7) and counts how many
 of the altered statements are caught.
 
-    uv run python benchmarks/statement_anchoring.py --golden benchmarks/golden/reference-c.json \\
-        --repo ~/.cache/scrinium-bench/repos/reference-c
+    uv run python benchmarks/statement_anchoring.py --golden <reference.json> \\
+        --repo <repo>
 """
 
 import argparse

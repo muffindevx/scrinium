@@ -18,8 +18,8 @@ reference repository, and each synthetic pull request is one commit on a branch,
 
 It also times each check (target: under 5 s, without GPU or network).
 
-    uv run python benchmarks/check_prs.py --golden benchmarks/golden/reference-c.json \\
-        --repo ~/.cache/scrinium-bench/repos/reference-c --prs 100
+    uv run python benchmarks/check_prs.py --golden <reference.json> \\
+        --repo <repo> --prs 100
 """
 
 import argparse
