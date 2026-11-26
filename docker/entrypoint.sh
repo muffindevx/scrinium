@@ -13,6 +13,9 @@
 #        same port on the host machine (host.docker.internal). This lets a model server
 #        running on the same machine (Ollama, llama-server, vLLM) be used as Scrinium's
 #        "local server" at http://127.0.0.1:<p>. Only the host machine is ever a target.
+#
+# Before Scrinium, the container's keyring (docker/keyring.sh, ADR-016): a private D-Bus
+# session and gnome-keyring, locked until `sh docker/scrinium.sh unlock`.
 set -eu
 
 port="${SCRINIUM_PORT:-47615}"
@@ -27,5 +30,7 @@ for model_port in $(printf '%s' "${SCRINIUM_MODEL_PORTS:-}" | tr ',' ' '); do
     socat "TCP-LISTEN:${model_port},bind=127.0.0.1,reuseaddr,fork" \
         "TCP:host.docker.internal:${model_port}" &
 done
+
+scrinium-keyring start
 
 exec scrinium start --no-browser --port "$port"

@@ -4,6 +4,7 @@ The API key is accepted once, on registration, and never returned: responses car
 whether a key is set and its last four characters.
 """
 
+import os
 import uuid
 from datetime import date
 from typing import Any, Literal
@@ -18,17 +19,28 @@ from scrinium.application.ai.language import read_language, set_language
 from scrinium.application.ai.providers import ProviderError
 from scrinium.application.ai.routing import build_adapter, tokens_spent
 from scrinium.application.ai.setup import (
+    SearchKind,
+    SearchSetup,
     SetupChoice,
     SetupError,
     choose,
+    choose_search,
     clean_local_server,
+    isolation_effects,
     read_setup,
+    set_isolated,
 )
 from scrinium.application.environment import LocalEnvironment
 from scrinium.application.ingestion import sources
+from scrinium.application.ingestion.sources import IngestionRunner
 from scrinium.application.workspaces import record_audit
 from scrinium.domain.enums import AiTask, AuditResult, ProviderKind
+from scrinium.infrastructure.embeddings.base import EmbeddingProvider
+from scrinium.infrastructure.embeddings.openai_compatible import OpenAICompatibleEmbeddings
+from scrinium.infrastructure.embeddings.remote_openai import RemoteOpenAIEmbeddings
 from scrinium.infrastructure.llm.switchable import SwitchableChat, local_server_chat
+from scrinium.infrastructure.local_http import ModelError, ModelStatus
+from scrinium.infrastructure.secret_store import SecretStore
 from scrinium.infrastructure.sqlite.database import Database
 from scrinium.infrastructure.sqlite.models import ModelProvider, Project, utc_now
 
@@ -98,6 +110,23 @@ class SetupBody(BaseModel):
     local_server: LocalServerBody | None = None
 
 
+class IsolationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    on: bool
+
+
+class SearchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: SearchKind
+    url: str | None = Field(default=None, max_length=500)
+    model: str | None = Field(default=None, max_length=200)
+    provider_id: uuid.UUID | None = None
+    # A provider for search receives the indexed text of every project: said, then accepted.
+    sends_all_text: bool = False
+
+
 class LanguageBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -116,6 +145,7 @@ _CODES = {
     "name_taken": status.HTTP_409_CONFLICT,
     "isolated_mode": status.HTTP_403_FORBIDDEN,
     "isolated_managed": status.HTTP_403_FORBIDDEN,
+    "provider_not_found": status.HTTP_404_NOT_FOUND,
 }
 
 
@@ -134,17 +164,47 @@ def _request_id(request: Request) -> str | None:
     return getattr(request.state, "request_id", None)
 
 
-def apply_setup(database: Database, local_chat: SwitchableChat | None) -> None:
-    """Points the local chat model at the chosen local server, or back to the default."""
-    if local_chat is None:
-        return
+def apply_setup(
+    database: Database,
+    local_chat: SwitchableChat | None,
+    runner: IngestionRunner | None = None,
+    store: SecretStore | None = None,
+) -> None:
+    """Points the local chat model at the chosen local server (or back to the default), and the
+    search model at the chosen one. A new search model re-embeds everything in the background."""
     with database.session() as session:
-        server = read_setup(session).local_server
-    local_chat.use(local_server_chat(server.url, server.model) if server else None)
+        setup = read_setup(session)
+        search_provider = (
+            session.get(ModelProvider, uuid.UUID(setup.search.provider_id))
+            if setup.search.kind is SearchKind.PROVIDER and setup.search.provider_id
+            else None
+        )
+        if search_provider is not None:
+            session.expunge(search_provider)
+    if local_chat is not None:
+        server = setup.local_server
+        local_chat.use(local_server_chat(server.url, server.model) if server else None)
+    if runner is None:
+        return
+    embeddings: EmbeddingProvider | None = None
+    search = setup.search
+    if search.kind is SearchKind.LOCAL_SERVER and search.url and search.model:
+        embeddings = OpenAICompatibleEmbeddings(search.url, search.model, provider="local-server")
+    elif search_provider is not None and store is not None and search.model:
+        chosen = search_provider
+        embeddings = RemoteOpenAIEmbeddings(
+            chosen.name, chosen.base_url, search.model,
+            lambda: providers.provider_key(store, chosen, chosen.host),
+        )  # fmt: skip
+    if runner.indexer.use(embeddings):
+        runner.submit_embeddings()
 
 
 def build_ai_router(
-    database: Database, environment: LocalEnvironment, local_chat: SwitchableChat | None = None
+    database: Database,
+    environment: LocalEnvironment,
+    local_chat: SwitchableChat | None = None,
+    runner: IngestionRunner | None = None,
 ) -> APIRouter:
     router = APIRouter()
     store = environment.secret_store
@@ -181,8 +241,62 @@ def build_ai_router(
                 setup, revoked = choose(session, body.choice, server, _request_id(request))
         except SetupError as error:
             raise _error(error) from None
-        apply_setup(database, local_chat)
+        apply_setup(database, local_chat, runner, store)
         return {**setup.as_dict(), "consents_revoked": revoked}
+
+    @router.get("/api/v1/ai-setup/isolation")
+    def isolation_preview() -> dict[str, Any]:
+        """What turning isolated mode on would do, for the confirmation."""
+        with database.session() as session:
+            return isolation_effects(session)
+
+    @router.put("/api/v1/ai-setup/isolation")
+    def put_isolation(body: IsolationBody, request: Request) -> dict[str, Any]:
+        try:
+            with database.session() as session:
+                setup, revoked = set_isolated(session, body.on, _request_id(request))
+        except SetupError as error:
+            raise _error(error) from None
+        apply_setup(database, local_chat, runner, store)
+        return {**setup.as_dict(), "consents_revoked": revoked}
+
+    @router.put("/api/v1/ai-setup/search")
+    def put_search(body: SearchBody, request: Request) -> dict[str, Any]:
+        try:
+            with database.session() as session:
+                if body.kind is SearchKind.PROVIDER:
+                    if not body.sends_all_text:
+                        raise SetupError("search_provider_not_acknowledged")
+                    if session.get(ModelProvider, body.provider_id or uuid.uuid4()) is None:
+                        raise SetupError("provider_not_found")
+                setup = choose_search(
+                    session,
+                    SearchSetup(
+                        body.kind, body.url, body.model,
+                        str(body.provider_id) if body.provider_id else None,
+                    ),
+                    _request_id(request),
+                )  # fmt: skip
+        except SetupError as error:
+            raise _error(error) from None
+        apply_setup(database, local_chat, runner, store)
+        return setup.as_dict()
+
+    @router.post("/api/v1/ai-setup/check-search")
+    def check_search(body: LocalServerBody) -> dict[str, Any]:
+        """Does this loopback server answer with embeddings for that model? Nothing leaves."""
+        try:
+            server = clean_local_server(body.url, body.model)
+        except SetupError as error:
+            raise _error(error) from None
+        embeddings = OpenAICompatibleEmbeddings(server.url, server.model, provider="local-server")
+        status_ = embeddings.status()
+        if status_ is ModelStatus.READY:
+            try:
+                embeddings.embed_query("prueba")
+            except ModelError:
+                return {"status": "not_embeddings"}
+        return {"status": status_.value}
 
     @router.post("/api/v1/ai-setup/check-local")
     def check_local(body: LocalServerBody) -> dict[str, Any]:
@@ -199,6 +313,9 @@ def build_ai_router(
             return {
                 "providers": providers.list_providers(session),
                 "keyring": store.backend_name is not None,
+                # A keyring that exists but cannot be read now: in Docker, until `unlock`.
+                "keyring_usable": store.backend_name is not None and store.usable(),
+                "in_docker": os.environ.get("SCRINIUM_IN_DOCKER") == "1",
             }
 
     @router.post("/api/v1/model-providers", status_code=status.HTTP_201_CREATED)

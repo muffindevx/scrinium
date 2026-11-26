@@ -63,6 +63,20 @@ The answer evaluation is `tests/evaluations/test_rag_eval.py` (about 4 minutes).
 
 With `SCRINIUM_MODEL_PROVIDER=ollama`, Scrinium uses its own Ollama on `127.0.0.1:11435`, with its models in `.models/` (ignored by git). The system Ollama is never touched. Run `make ollama` in one terminal and, the first time, `make models` in another. The variables are `SCRINIUM_OLLAMA_URL` (loopback only), `SCRINIUM_EMBEDDING_MODEL` and `SCRINIUM_LLM_MODEL`.
 
+## A fake provider
+
+`runtime/devtools/mock_provider.py` is a fake OpenAI-compatible provider (chat and embeddings) over HTTPS, for trying the provider flow without a real key or connection: register it, give a project consent, extract rules, use it for search, turn isolated mode on. It answers at `https://mock-provider.localhost:8443/v1` with a certificate it makes; Scrinium must trust it:
+
+```bash
+cd runtime && uv run python devtools/mock_provider.py
+```
+
+```bash
+SSL_CERT_FILE=/tmp/scrinium-mock/mock-provider.pem uv run scrinium start
+```
+
+Then add it in Settings › AI models with any key of 20+ characters; the models are `mock-chat` and `mock-embed`. Its rules are made up. `tests/integration/test_mock_provider.py` runs the same flow. It is not part of the product.
+
 ## Database migrations
 
 Scrinium applies migrations at startup. After changing `runtime/src/scrinium/infrastructure/sqlite/models.py`, run from `runtime/`:

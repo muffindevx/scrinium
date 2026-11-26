@@ -93,6 +93,16 @@ What does **not** change: the per-project consent and its retention notice, keys
 
 **Not measured:** «a stranger reaches their first rules in under 10 minutes with a provider» needs a person; it moves to the pilot (5.4).
 
+## Two models and isolated mode apart (2026-11-25)
+
+Approved by the owner on 2026-11-25. Settings › AI models now sets two models, each on its own:
+
+- **Answer model** (writes rules, answers): a local server, a provider (with each project's consent, as before), or the bundled trial model (`bundled`). There is no default: rules need a model the person provides, and extraction is refused up front (`model_needed`) when none responds.
+- **Search model** (embeddings): bundled (default), a local server that returns embeddings, or a provider. A provider for search receives the indexed text of **every** project, so the API refuses it unless the request says the person accepted that (`sends_all_text`). The choice is recorded in the audit log. Changing the model re-embeds every chunk in the background; search uses words meanwhile.
+- **Isolated mode** is now a flag of its own (`ai_setup.isolated`), not one of the answer choices. A stored `choice: "isolated"` still reads as isolated. Turning it on revokes every consent (as before), drops a provider chosen for either model (the answer model becomes unset, search goes back to bundled) and keeps the providers and their keys. A local server for answers stays allowed. `GET /api/v1/ai-setup/isolation` says what it would do, so the console can ask first.
+
+In Docker the provider path needs the container's keyring ([ADR-016](ADR-016-keyring-in-docker.md)); `GET /api/v1/model-providers` reports `keyring_usable` and `in_docker`, so the console says which command fixes it instead of hiding the form.
+
 ## Revisit when
 
 - The pilot shows people choosing local most of the time.

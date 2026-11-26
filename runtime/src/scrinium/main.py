@@ -169,7 +169,7 @@ def create_app(
     # Remote models only for the tasks a project consented to (ADR-010).
     # The local model can be pointed at another loopback server from the first run (ADR-013).
     local_chat = SwitchableChat(llm or local_llm)
-    apply_setup(database, local_chat if llm is None else None)
+    apply_setup(database, local_chat if llm is None else None, runner, environment.secret_store)
     llm_service = LlmService(local_chat, memory, Router(database, environment.secret_store))
     app.state.questions = QuestionRunner(database, runner.indexer, llm_service, question_executor)
     app.state.analyses = AnalysisRunner(database, llm_service, question_executor)
@@ -219,7 +219,7 @@ def create_app(
     app.include_router(build_changes_router(database))
     app.include_router(build_tickets_router(database, environment, runner))
     app.include_router(build_privacy_router(config, database, runner, environment))
-    app.include_router(build_ai_router(database, environment, local_chat))
+    app.include_router(build_ai_router(database, environment, local_chat, runner))
     app.include_router(build_control_router(config, sessions, database, llm_service))
 
     if config.web_dist.is_dir():

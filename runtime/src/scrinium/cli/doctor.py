@@ -238,9 +238,12 @@ def _ai_setup(data_dir: Path) -> Check:
     except Exception:
         return Check(Level.WARN, "Could not read the model choice from the database.")
     if setup.choice is None:
-        return Check(Level.OK, "Where the model writes is not chosen yet: the console asks")
-    if setup.choice is SetupChoice.ISOLATED:
-        return Check(Level.OK, "Isolated mode: no provider can be registered or used")
+        if setup.isolated:
+            return Check(Level.WARN, "Isolated mode, with no answer model: rules cannot be written",
+                         "Choose a local server in Settings > AI models.")  # fmt: skip
+        return Check(Level.OK, "The answer model is not chosen yet: the console asks")
+    if setup.choice is SetupChoice.BUNDLED:
+        return Check(Level.OK, "Answer model: the bundled trial model")
     if setup.choice is SetupChoice.PROVIDER:
         return Check(Level.OK, "Model: your provider, with each project's consent")
     server = setup.local_server

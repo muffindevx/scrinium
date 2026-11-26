@@ -88,7 +88,7 @@ def test_isolated_mode_revokes_every_consent_and_refuses_providers(client: Clien
     assert client.send("GET", "/api/v1/privacy/data-flow")["ai_mode"] == "isolated"
     with client.runtime.database.session() as session:
         actions = list(session.scalars(select(AuditEvent.action)))
-        assert "ai_setup.choose" in actions
+        assert "ai_setup.isolated" in actions
         assert session.scalars(select(AiConsent).where(AiConsent.revoked_at.is_(None))).all() == []
 
 

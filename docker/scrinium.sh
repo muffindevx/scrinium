@@ -7,6 +7,8 @@
 #        read-only at /repos/<its name>. Run it again at any time: it reuses what exists and
 #        adds new folders to the ones it already had.
 #   sh docker/scrinium.sh link      a new one-time entry link
+#   sh docker/scrinium.sh unlock    opens the keyring that holds provider keys (ADR-016);
+#        creates it the first time. --reset deletes it and every key in it.
 #   sh docker/scrinium.sh stop      stops the container; the data stays in its volume
 #   sh docker/scrinium.sh logs      what Scrinium prints, live (Ctrl+C leaves it running)
 #   sh docker/scrinium.sh update    the latest Scrinium: git pull, rebuild, restart
@@ -38,6 +40,7 @@ Usage: sh docker/scrinium.sh <command>
 
   start [folder...] [--model-port N]    start Scrinium and print the entry link
   link                                  a new entry link
+  unlock [--reset]                      opens the keyring that holds provider keys
   stop                                  stop Scrinium (your data stays)
   logs                                  what Scrinium prints, live (Ctrl+C to leave)
   update                                the latest version: pull, rebuild and restart
@@ -152,6 +155,123 @@ add_folder() {
     mounts="$mounts$folder$tab$target"
 }
 
+# The container's keyring (docker/keyring.sh, ADR-016). Its password is read here with echo
+# off and handed to gnome-keyring on the container's stdin: never an argument, a variable of
+# the container, a label or a file. printf is a shell builtin, so ps never shows it either.
+keyring_state() {
+    tries=0
+    while :; do
+        state=$(docker exec "$name" scrinium-keyring status 2>/dev/null || echo unavailable)
+        if [ "$state" != unavailable ] || [ "$tries" -ge 20 ]; then
+            printf '%s' "$state"
+            return
+        fi
+        tries=$((tries + 1))
+        sleep 0.5
+    done
+}
+
+read_secret() {
+    printf '%s' "$1" >/dev/tty
+    trap 'stty echo </dev/tty; exit 130' INT TERM
+    stty -echo </dev/tty
+    IFS= read -r secret </dev/tty || secret=''
+    stty echo </dev/tty
+    trap - INT TERM
+    printf '\n' >/dev/tty
+}
+
+send_secret() {
+    result=$(printf '%s' "$secret" | docker exec -i "$name" scrinium-keyring unlock || true)
+    secret=''
+    [ "$result" = unlocked ]
+}
+
+create_keyring() {
+    say "Scrinium keeps your providers' API keys (DeepSeek, GLM, Claude...) in an encrypted"
+    say "keyring inside its volume. Choose its password: at least 12 characters."
+    say "It is not stored anywhere: you type it each time Scrinium starts."
+    say "If you forget it you lose the stored keys, not your data."
+    while :; do
+        read_secret "New keyring password: "
+        first=$secret
+        if [ "${#first}" -lt 12 ]; then
+            say "It has ${#first} characters; use at least 12."
+            continue
+        fi
+        read_secret "Repeat it: "
+        if [ "$secret" != "$first" ]; then
+            first=''
+            say "They do not match. Again."
+            continue
+        fi
+        first=''
+        break
+    done
+    send_secret || fail "Could not create the keyring. See: sh docker/scrinium.sh logs"
+    say "Keyring created and open. Reload the console and add your provider in Settings > AI models."
+}
+
+# $1 = optional: Enter skips it.
+open_keyring() {
+    tries=0
+    while [ "$tries" -lt 3 ]; do
+        if [ "$1" = optional ]; then
+            read_secret "Keyring password (Enter to leave it locked): "
+            if [ -z "$secret" ]; then
+                say "Keyring locked: your providers will not work until 'sh docker/scrinium.sh unlock'."
+                return 0
+            fi
+        else
+            read_secret "Keyring password: "
+        fi
+        if send_secret; then
+            say "Keyring open."
+            return 0
+        fi
+        say "Wrong password."
+        tries=$((tries + 1))
+    done
+    say "The keyring is still locked. Try again with: sh docker/scrinium.sh unlock"
+    say "If you forgot the password: sh docker/scrinium.sh unlock --reset (deletes the stored keys)."
+    return 1
+}
+
+# At start: if a keyring exists and is locked, offer to open it.
+offer_unlock() {
+    [ "$(keyring_state)" = locked ] || return 0
+    if [ -t 0 ] && [ -t 1 ]; then
+        say ""
+        say "Your keyring is locked: Scrinium cannot use your providers' keys."
+        open_keyring optional || true
+    else
+        say "Your keyring is locked. To use your providers: sh docker/scrinium.sh unlock"
+    fi
+}
+
+unlock() {
+    running || fail "Scrinium is not running. Start it with: sh docker/scrinium.sh start"
+    [ -t 0 ] && [ -t 1 ] || fail "The keyring password is typed in a terminal: run this in one."
+    if [ "${1:-}" = --reset ]; then
+        say "This deletes the keyring and every provider and connector key it holds."
+        say "Your projects and rules are not touched; you will have to add the providers again."
+        printf 'Type DELETE to continue: '
+        IFS= read -r answer || answer=''
+        [ "$answer" = DELETE ] || fail "Cancelled: nothing was deleted."
+        docker exec "$name" scrinium-keyring reset >/dev/null
+        say "Keyring deleted. Create a new one with: sh docker/scrinium.sh unlock"
+        return
+    fi
+    [ $# -eq 0 ] || { usage >&2; exit 2; }
+    case "$(keyring_state)" in
+        unlocked) say "The keyring is already open." ;;
+        none) create_keyring ;;
+        locked) open_keyring required || exit 1 ;;
+        *) fail "The container's keyring does not answer. Restart Scrinium: sh docker/scrinium.sh stop
+and then start." ;;
+    esac
+}
+
 print_link() {
     waited=0
     until answer=$(docker exec "$name" scrinium link 2>&1); do
@@ -242,6 +362,7 @@ start() {
             docker start "$name" >/dev/null
             say "Scrinium started again."
         fi
+        offer_unlock
         print_link
         return
     fi
@@ -272,6 +393,7 @@ EOF
         || fail "Docker could not start the container. If it says port $port is in use,
 pick another: SCRINIUM_PORT=47620 sh docker/scrinium.sh start"
     say "Scrinium started."
+    offer_unlock
     print_link
 }
 
@@ -317,6 +439,7 @@ case "$command" in
         exists || fail "Scrinium has never been started: sh docker/scrinium.sh start"
         docker logs --tail 100 --follow "$name" ;;
     update) need_docker; update ;;
+    unlock) need_docker; unlock "$@" ;;
     run)
         need_docker
         running || fail "Scrinium is not running. Start it with: sh docker/scrinium.sh start"

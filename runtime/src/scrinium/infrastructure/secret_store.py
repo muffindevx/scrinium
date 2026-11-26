@@ -51,6 +51,9 @@ class SecretStore(Protocol):
 
     def delete(self, ref: str) -> None: ...
 
+    def usable(self) -> bool:
+        """Whether a key can be read now (a locked keyring cannot)."""
+
 
 class KeyringSecretStore:
     def __init__(
@@ -80,6 +83,15 @@ class KeyringSecretStore:
     @property
     def backend_name(self) -> str | None:
         return self._backend_name
+
+    def usable(self) -> bool:
+        """Whether a key can be read now: False without a backend, and also when the keyring
+        exists but is locked (in Docker, until `sh docker/scrinium.sh unlock`)."""
+        try:
+            self._call(lambda backend: backend.get_password(self._service, "scrinium-probe"))
+        except SecretStoreUnavailableError:
+            return False
+        return True
 
     def put(self, value: str) -> str:
         if not value or len(value) > MAX_SECRET_LENGTH:

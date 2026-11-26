@@ -37,7 +37,7 @@ export function ModelNeeded() {
       <div className="grid gap-2">
         <h4 className="font-medium">{t("2. Tu propio proveedor")}</h4>
         <p className="text-muted-foreground">
-          {t("DeepSeek, GLM, Claude o cualquier API compatible con OpenAI. Añádelo con su clave en Ajustes › Modelos y permite al proyecto usarlo para escribir reglas. El código sale de tu máquina hacia ese proveedor. Con Docker no está disponible: instala Scrinium sin Docker.")}
+          {t("DeepSeek, GLM, Claude o cualquier API compatible con OpenAI. Añádelo con su clave en Ajustes › Modelos y permite al proyecto usarlo para escribir reglas. El código sale de tu máquina hacia ese proveedor. Con Docker, antes abre el llavero: sh docker/scrinium.sh unlock.")}
         </p>
       </div>
     </div>

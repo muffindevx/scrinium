@@ -27,10 +27,8 @@ import { CODE_THEMES, type CodeThemeId, setCodeTheme } from "@/lib/highlight"
 import { type ThemePreference, setTheme, storedTheme } from "@/lib/theme"
 import { useCodeTheme } from "@/lib/use-code-theme"
 import { PrivacyCard } from "@/screens/PrivacyCard"
-import { setupLabel } from "@/lib/labels"
 import { DownloadsSection } from "@/screens/DownloadsSection"
-import { ModelSetup } from "@/screens/ModelSetup"
-import { ModelCatalog } from "@/screens/RemoteAiSection"
+import { ModelSettings } from "@/screens/ModelSettings"
 import { useErrors } from "@/screens/hooks"
 import { ErrorText, Eyebrow, Muted } from "@/screens/shared"
 
@@ -496,16 +494,17 @@ export function SettingsScreen({
       )}
       {current === "modelos" && (
         <>
-          {setup && (
-            <Section
-              title={t("Qué modelo escribe las reglas")}
-              description={t("Ahora: {0}. La búsqueda por significado siempre es local.", setupLabel(setup))}
-            >
-              <ModelSetup setup={setup} onChosen={onSetupChosen} onSessionLost={onSessionLost} />
-            </Section>
+          {setup ? (
+            <ModelSettings
+              setup={setup}
+              status={status}
+              onChanged={onSetupChosen}
+              onSessionLost={onSessionLost}
+              engine={<EngineSection status={status} />}
+            />
+          ) : (
+            <EngineSection status={status} />
           )}
-          <EngineSection status={status} />
-          <ModelCatalog onSessionLost={onSessionLost} />
           <p className="text-sm text-muted-foreground">
             {t("Qué modelo usa cada tarea de un proyecto se elige en")}{" "}
             <Link to="/ia" className="font-medium text-foreground underline-offset-4 hover:underline">

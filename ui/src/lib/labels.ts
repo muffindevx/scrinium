@@ -192,6 +192,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
 const SETUP_LABELS: Record<SetupChoice, string> = {
   provider: t("Tu proveedor"),
   local_server: t("Un servidor local"),
+  bundled: t("El modelo de prueba incluido"),
   isolated: t("Modo aislado"),
 }
 

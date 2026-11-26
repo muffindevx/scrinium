@@ -89,9 +89,20 @@ class Indexer:
     ) -> None:
         self.database = database
         self.provider = provider
+        # The model Scrinium ships with: what `use(None)` goes back to.
+        self.bundled = provider
         self.vector_index = vector_index
         self._status_cache: tuple[float, ModelStatus] | None = None
         self._lock = threading.Lock()
+
+    def use(self, provider: EmbeddingProvider | None) -> bool:
+        """Switches the search model (None: the bundled one). True if it changed: then every
+        chunk is embedded again by the next `embed_pending`, and search uses words meanwhile."""
+        chosen = provider or self.bundled
+        changed = chosen.model_id != self.provider.model_id
+        self.provider = chosen
+        self._status_cache = None
+        return changed
 
     def provider_status(self) -> ModelStatus:
         """With a short cache: the status screen must not wait for the model on every load."""

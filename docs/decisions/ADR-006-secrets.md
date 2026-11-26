@@ -52,5 +52,5 @@ It rejects the rest, including the plain-text backends in `keyrings.alt`.
 
 ## Revisit when
 
-- Scrinium must run headless (servers, CI) where no keyring exists; or
+- Scrinium must run headless (servers, CI) where no keyring exists — done for Docker in [ADR-016](ADR-016-keyring-in-docker.md); or
 - hybrid mode needs secrets shared between machines.

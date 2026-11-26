@@ -76,7 +76,7 @@ The easiest way. You install only Docker; [`docker/scrinium.sh`](docker/scrinium
 
    The first time it builds the image and downloads the search tools (a few minutes). Your folder becomes a project and Scrinium starts reading it right away. The script prints a one-time link.
 
-4. Open the link in your browser. The first time, choose the model that writes the rules (see [Choose the model](#choose-the-model)).
+4. Open the link in your browser. To extract rules you need an answer model: see [Choose the model](#choose-the-model).
 
 A folder that is not a Git repository is read too, without Changes, rule history or `scrinium check`, which need Git. To add another project, run `start` again with its folder. Scrinium only sees the folders given to `start`, mounted read-only. Projects and rules stay in the Docker volume `scrinium-data` when you stop Scrinium.
 
@@ -92,7 +92,7 @@ Leave it open and open the link in your computer's browser. Do not expose Scrini
 
 ## Install without Docker
 
-Needed to use **your own model provider**, because Scrinium keeps its API key in the operating system's keyring, which a container does not have. Download the release zip, unzip it and run:
+For running Scrinium straight on your computer, with its keyring and its GPU. Download the release zip, unzip it and run:
 
 ```bash
 sh install.sh
@@ -112,11 +112,80 @@ scrinium start
 
 ## Choose the model
 
-The first time, Scrinium asks which model writes the rules:
+Scrinium uses two models:
 
-- **A local server** (llama.cpp, Ollama, vLLM) on this machine. With Docker, start Scrinium with the server's port, for Ollama `sh docker/scrinium.sh start --model-port 11434`. The container does not use the GPU, so the model must run outside it. On Linux the server must also listen on Docker's address (for Ollama, `OLLAMA_HOST=172.17.0.1:11434`).
-- **Your own provider**, without Docker only. Each project chooses which tasks it may send, after you consent.
-- **Isolated mode**: no model writes rules and nothing leaves the machine.
+| Model | What it does | Where it comes from |
+|---|---|---|
+| **Answer model** | Reads the code and writes the rules. Without it, no rule is extracted. | **You provide it**: a large coding model on your GPU (see [Requirements](#requirements)), or a provider. |
+| **Search model** | Finds code and documents by meaning. | Included: `start` downloads it (0.6 GB) and it runs without a GPU. You can change it. |
+
+Set both in **Settings › AI models**, under **1 · Answer model** and **2 · Search model**. Each can be a model server on your machine, a provider, or the included model. Any model works; the names below are examples. If you change the search model, Scrinium indexes the text again in the background and searches by words meanwhile.
+
+### A model server on your machine
+
+Run a model server (Ollama, llama.cpp or vLLM) on your computer, with its GPU, and download a model. With [Ollama](https://ollama.com), for example:
+
+```bash
+ollama pull gemma3:27b
+```
+
+For the search model, download an embedding model instead, for example `ollama pull nomic-embed-text`.
+
+**With Docker.** The server runs outside the container. On Linux, make it listen on Docker's address (on macOS and Windows, skip this):
+
+```bash
+OLLAMA_HOST=172.17.0.1:11434 ollama serve
+```
+
+Then start Scrinium with the server's port:
+
+```bash
+sh docker/scrinium.sh start --model-port 11434
+```
+
+For llama.cpp, use its own port, for example `llama-server -m <model>.gguf --host 172.17.0.1 --port 8080` and `--model-port 8080`.
+
+**Installed on your machine.** Start the server as usual, for example `ollama serve`, or `llama-server -m <model>.gguf --port 8080`.
+
+**Then, in both cases:** in **Settings › AI models**, choose **A server on your computer** and type the address and the model's name as the server lists it. Even with Docker the address stays `http://127.0.0.1:11434`. Press **Test connection**, then **Use this server**, or **Use for search** for the search model.
+
+### A provider
+
+Any OpenAI-compatible API, Claude, DeepSeek or GLM, with your API key. Your code is sent to that provider. Scrinium keeps the key in a keyring and sends nothing until each project gives its consent in its **AI** page.
+
+**With Docker.** The key goes into a keyring inside the container, encrypted with a password you choose and never stored ([ADR-016](docs/decisions/ADR-016-keyring-in-docker.md)). Open it first; the first time, this creates it:
+
+```bash
+sh docker/scrinium.sh unlock
+```
+
+After every restart the keyring is locked again: run `unlock` again, or type the password when `start` asks.
+
+**Installed on your machine.** The key goes into the operating system's keyring, with nothing to open first.
+
+**Then, in both cases:** in **Settings › AI models**, choose **A provider on the internet** and add it with its key. A provider can also be the search model. Then the indexed text of every project is sent to it, and the console asks you to accept that first.
+
+### The included models
+
+The search model is included and already installed. For the answer model, Scrinium can download a small trial model (2.5 GB) that runs without a GPU. It is slow and misses rules, so use it only to see how Scrinium works.
+
+**With Docker:**
+
+```bash
+sh docker/scrinium.sh run tools install local
+```
+
+**Installed on your machine:**
+
+```bash
+scrinium tools install local
+```
+
+Then choose **The included trial model** in **Settings › AI models**.
+
+### Isolated mode
+
+It works the same with Docker and installed on your machine. Turn it on in **Settings › AI models**, and Scrinium itself refuses to register or use any provider, for either model. Models on your machine, search, rules and change alerts keep working. Providers are blocked, and every project's consent is withdrawn. Your providers and their keys are kept, unused. If your answer model was a provider, choose a model server on your machine afterwards.
 
 ## Commands
 
@@ -126,6 +195,7 @@ With Docker:
 |---|---|
 | `sh docker/scrinium.sh start [folder...]` | Starts Scrinium, adds each folder as a project and reads it, prints the entry link |
 | `sh docker/scrinium.sh link` | Prints a new entry link |
+| `sh docker/scrinium.sh unlock` | Opens the keyring that holds provider keys (creates it the first time) |
 | `sh docker/scrinium.sh stop` | Stops Scrinium; your data stays |
 | `sh docker/scrinium.sh logs` | Shows what Scrinium is doing |
 | `sh docker/scrinium.sh update` | Updates the code, rebuilds the image and restarts |
@@ -141,6 +211,7 @@ Scrinium:
 | `scrinium doctor` | Checks the machine and says how to fix what is missing |
 | `scrinium demo` | Tries Scrinium in five minutes, without a model or network |
 | `scrinium tools install` | Downloads the search tools and model |
+| `scrinium tools install local` | Also downloads a small answer model, only for trying Scrinium |
 | `scrinium attach` | Streams everything the running Scrinium does |
 | `scrinium rules export` / `import` | Writes verified rules to `.scrinium/rules/`, or reads them back |
 | `scrinium check --base main` | Fails when a change moves a verified rule without updating it |

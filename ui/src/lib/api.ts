@@ -29,15 +29,34 @@ export interface SecurityStatus {
 
 export type AiMode = "local_only" | "remote_allowed" | "isolated"
 
-/** Where the writing model lives, chosen on the first run (ADR-013). */
-export type SetupChoice = "provider" | "local_server" | "isolated"
+/** The answer model (ADR-013). "isolated" is still accepted: it turns isolated mode on. */
+export type SetupChoice = "provider" | "local_server" | "bundled" | "isolated"
+
+export type SearchKind = "bundled" | "local_server" | "provider"
+
+export interface SearchSetup {
+  kind: SearchKind
+  url: string | null
+  model: string | null
+  provider_id: string | null
+}
 
 export interface AiSetup {
+  /** The answer model; null until chosen. Isolated mode is `isolated`, apart from it. */
   choice: SetupChoice | null
   isolated: boolean
   managed: boolean
   local_server: { url: string; model: string } | null
   local_model?: string
+  search: SearchSetup
+}
+
+/** What turning isolated mode on would do, said before it is done. */
+export interface IsolationEffects {
+  answer_model_lost: boolean
+  search_model_reset: boolean
+  consents: number
+  projects: string[]
 }
 
 export interface DataFlow {
@@ -1138,6 +1157,30 @@ export async function chooseAiSetup(
   return (await mutate("/api/v1/ai-setup", body, "PUT")).json()
 }
 
+export const getIsolationEffects = () => getJson<IsolationEffects>("/api/v1/ai-setup/isolation")
+
+export async function setIsolation(on: boolean): Promise<AiSetup & { consents_revoked: number }> {
+  return (await mutate("/api/v1/ai-setup/isolation", { on }, "PUT")).json()
+}
+
+export async function chooseSearch(search: {
+  kind: SearchKind
+  url?: string
+  model?: string
+  provider_id?: string
+  sends_all_text?: boolean
+}): Promise<AiSetup> {
+  return (await mutate("/api/v1/ai-setup/search", search, "PUT")).json()
+}
+
+/** Does this loopback server return embeddings for that model? */
+export async function checkSearchServer(
+  url: string,
+  model: string,
+): Promise<{ status: EmbeddingStatus | "not_embeddings" }> {
+  return (await mutate("/api/v1/ai-setup/check-search", { url, model })).json()
+}
+
 export async function checkLocalServer(url: string, model: string): Promise<{ status: EmbeddingStatus }> {
   return (await mutate("/api/v1/ai-setup/check-local", { url, model })).json()
 }
@@ -1268,7 +1311,9 @@ export interface AiRequestRecord {
 }
 
 export const listModelProviders = () =>
-  getJson<{ providers: ModelProvider[]; keyring: boolean }>("/api/v1/model-providers")
+  getJson<{ providers: ModelProvider[]; keyring: boolean; keyring_usable: boolean; in_docker: boolean }>(
+    "/api/v1/model-providers",
+  )
 export const registerModelProvider = async (provider: {
   name: string
   kind: ProviderKind

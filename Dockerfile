@@ -39,14 +39,24 @@ COPY --from=ui /src/runtime/src/scrinium/web_dist src/scrinium/web_dist
 RUN uv sync --frozen --no-dev --no-editable \
     && test -f /opt/scrinium/lib/python3.12/site-packages/scrinium/web_dist/index.html
 
-# 3. What runs: Python, the runtime, git (to read repositories), socat (the two doors, see
-# docker/entrypoint.sh) and libgomp (llama.cpp's CPU build). No model inside: the tools and
-# models are downloaded into the data volume on first start.
+# 3. gnome-keyring-daemon for the container's keyring (ADR-016). The package pulls in GTK for
+# its password window, about 130 MB that a container without a display never uses: only the
+# daemon and its GSettings schemas are taken from here. The password arrives on stdin.
+FROM ${PYTHON_IMAGE} AS keyring
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends gnome-keyring \
+    && rm -rf /var/lib/apt/lists/*
+
+# 4. What runs: Python, the runtime, git (to read repositories), socat (the two doors, see
+# docker/entrypoint.sh), libgomp (llama.cpp's CPU build), and dbus with the libraries of
+# gnome-keyring-daemon (the container's keyring for provider keys, ADR-016). No model inside:
+# the tools and models are downloaded into the data volume on first start.
 FROM ${PYTHON_IMAGE}
 ARG UID=1000
 ARG GID=1000
 RUN apt-get update \
-    && apt-get install --yes --no-install-recommends ca-certificates git libgomp1 socat \
+    && apt-get install --yes --no-install-recommends ca-certificates dbus git libgck-1-0 \
+        libgcr-base-3-1 libgomp1 socat \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid "${GID}" scrinium \
     && useradd --uid "${UID}" --gid "${GID}" --create-home --shell /usr/sbin/nologin scrinium \
@@ -54,11 +64,17 @@ RUN apt-get update \
     && chown "${UID}:${GID}" /data \
     && chmod 700 /data
 COPY --from=build /opt/scrinium /opt/scrinium
+COPY --from=keyring /usr/bin/gnome-keyring-daemon /usr/bin/gnome-keyring-daemon
+COPY --from=keyring /usr/share/glib-2.0/schemas /usr/share/glib-2.0/schemas
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/scrinium-container
+COPY --chmod=755 docker/keyring.sh /usr/local/bin/scrinium-keyring
 ENV PATH=/opt/scrinium/bin:$PATH \
     SCRINIUM_DATA_DIR=/data \
     SCRINIUM_PORT=47615 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    SCRINIUM_IN_DOCKER=1 \
+    XDG_RUNTIME_DIR=/tmp/scrinium-run \
+    DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/scrinium-run/bus
 LABEL org.opencontainers.image.title="Scrinium" \
       scrinium.uid="${UID}"
 USER scrinium

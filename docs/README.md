@@ -50,6 +50,7 @@ Architecture decision records: what was decided, how, why, and the alternatives 
 | [ADR-013](decisions/ADR-013-own-provider-by-default.md) | Your own provider is the recommended start |
 | [ADR-014](decisions/ADR-014-ticket-connectors.md) | Ticket connectors, read-only, Linear first |
 | [ADR-015](decisions/ADR-015-downloads-folder.md) | Downloads can live outside the data directory, checked before use |
+| [ADR-016](decisions/ADR-016-keyring-in-docker.md) | A keyring inside the container, unlocked by a password you type |
 
 ## Security
 
