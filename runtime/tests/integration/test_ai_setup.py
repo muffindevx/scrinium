@@ -42,11 +42,12 @@ def client(runtime: Runtime) -> Client:
     return Client(runtime)
 
 
-def test_nothing_is_chosen_until_a_person_chooses(client: Client) -> None:
+def test_the_included_models_are_used_until_a_person_chooses(client: Client) -> None:
     setup = client.send("GET", "/api/v1/ai-setup")
-    assert setup["choice"] is None and setup["isolated"] is False and setup["managed"] is False
+    assert setup["choice"] == "bundled" and setup["search"]["kind"] == "bundled"
+    assert setup["isolated"] is False and setup["managed"] is False
     status = client.send("GET", "/api/v1/system/security-status")
-    assert status["ai_setup"] is None and status["profile"] == "standard"
+    assert status["ai_setup"] == "bundled" and status["profile"] == "standard"
     assert status["ai_mode"] == "local_only"
 
 

@@ -230,7 +230,7 @@ def _ai_setup(data_dir: Path) -> Check:
     if managed_isolated():
         return Check(Level.OK, "Isolated mode, set by SCRINIUM_PROFILE: nothing leaves the machine")
     if not (data_dir / DATABASE_FILENAME).is_file():
-        return Check(Level.OK, "First run: the console asks where the model writes")
+        return Check(Level.OK, "First run: the included models are used until you choose others")
     try:
         database = Database.open(data_dir)
         with database.session() as session:

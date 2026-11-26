@@ -42,6 +42,7 @@ import {
   type ExtractionEstimate,
   getExtractionEstimate,
   getSecurityStatus,
+  getAiSetup,
 } from "@/lib/api"
 import { ASSESSMENT_LABELS, CATEGORY_LABELS, CRITICALITY_LABELS, errorMessage } from "@/lib/labels"
 import { ImpactList, RuleDrawer } from "@/components/rule-impact"
@@ -50,7 +51,7 @@ import { RuleHistory } from "@/screens/RuleHistory"
 import { RuleTickets } from "@/screens/RuleTickets"
 import { useBackTarget, useErrors } from "@/screens/hooks"
 import { ModelPicker } from "@/screens/ModelPicker"
-import { ModelNeeded } from "@/screens/ModelNeeded"
+import { IncludedModelNote, ModelNeeded } from "@/screens/ModelNeeded"
 import { AnalysisDetail, ErrorText, Loading, EvidenceItem, Eyebrow, Muted, type ScreenProps } from "@/screens/shared"
 
 const ORIGIN_LABELS: Record<RuleVersion["origin"], string> = {
@@ -190,9 +191,14 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
   // Whether the local model that writes rules responds: without it, how to set one up.
   const [localReady, setLocalReady] = useState(true)
   const [modelNeeded, setModelNeeded] = useState(false)
+  // The included answer model is small: its rules need more checking, and that is said here.
+  const [included, setIncluded] = useState(false)
   useEffect(() => {
     getSecurityStatus()
       .then((loaded) => setLocalReady(loaded.providers.llm === "ready"))
+      .catch(() => undefined)
+    getAiSetup()
+      .then((setup) => setIncluded((setup.choice ?? "bundled") === "bundled"))
       .catch(() => undefined)
   }, [])
   const loadStatus = useCallback(() => {
@@ -285,6 +291,7 @@ function ExtractionPanel({ project, onSessionLost, onFinished }: ScreenProps & {
         <AnalysisDetail key={analysisId} analysisId={analysisId} onSessionLost={onSessionLost} onFinished={finished} />
       )}
       {!running && (modelNeeded || (!localReady && !shown)) && <ModelNeeded />}
+      {!running && !modelNeeded && localReady && included && !shown && <IncludedModelNote />}
       {!running && (
         <form
           className="grid gap-3"

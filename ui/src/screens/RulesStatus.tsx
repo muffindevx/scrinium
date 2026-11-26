@@ -134,8 +134,8 @@ function Attention({
       key: "llm",
       icon: Cpu,
       tone: "warning",
-      text: t("El modelo que escribe las reglas no responde"),
-      hint: engine.llm_model ? t("{0}: sin él no se extraen ni se redactan reglas", engine.llm_model) : undefined,
+      text: t("El modelo de respuestas no está listo"),
+      hint: t("Sin él no se pueden extraer reglas"),
       to: "/ajustes/modelos",
     })
   if (engine.embeddings !== "ready")

@@ -50,10 +50,9 @@ def test_an_empty_install_says_what_to_run(tmp_path: Path) -> None:
     assert "[ok] Private data directory" in result.stdout
     assert "[fail] llama-server" in result.stdout
     assert "[fail] The model qwen3-embedding-0.6b is missing." in result.stdout
-    # ADR-013: the local chat model is an add-on, never a failure.
-    assert "[fail] The model qwen3-4b-instruct-2507 is missing." not in result.stdout
-    assert "scrinium tools install local" in result.stdout
-    assert "First run: the console asks" in result.stdout
+    # Both included models are part of the default install.
+    assert "[fail] The model qwen3-4b-instruct-2507 is missing." in result.stdout
+    assert "First run: the included models are used" in result.stdout
     assert "scrinium tools install" in result.stdout
     assert "Traceback" not in result.stderr
 

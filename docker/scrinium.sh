@@ -105,11 +105,11 @@ tty_flags() {
 # Downloads gitleaks, llama.cpp (CPU build) and the search model into the data volume, about
 # 0.7 GB the first time. It only fetches what is missing.
 install_tools() {
-    say "Checking the tools and the search model (about 0.7 GB the first time)..."
+    say "Checking the tools and the two included models (about 3.2 GB the first time)..."
     # shellcheck disable=SC2046
     if ! docker run --rm $(tty_flags) --network "$network" -v "$volume:/data" "$image" \
         scrinium tools install --cpu; then
-        say "Not everything could be downloaded. Scrinium starts anyway, without search by meaning."
+        say "Not everything could be downloaded. Scrinium starts anyway, without what is missing."
         say "Run 'sh docker/scrinium.sh start' again to retry."
     fi
 }
@@ -306,15 +306,14 @@ print_link() {
         say ""
         say "Your folders are projects in Scrinium (it can read them, never change them)."
         say "To add another one: sh docker/scrinium.sh start <folder>"
-        say "To extract rules you need a model you provide. With Ollama on Linux:"
-        say "  OLLAMA_HOST=172.17.0.1:11434 ollama serve      # then: ollama pull <coding-model>"
-        say "  sh docker/scrinium.sh start --model-port 11434"
-        say "and choose it in Settings > Models. More in \"Choose the model\" in README.md."
+        say "Both models come included: rules can be extracted now. The answer model is small:"
+        say "its accuracy is limited, so check each rule. For better ones, choose another in"
+        say "Settings > AI models."
         printf '%s\n' "$mounted" | while IFS="$tab" read -r src dst; do
             say "  $src"
             if [ ! -e "$src/.git" ]; then
                 say "    Not a Git repository: Changes, rule history and scrinium check need Git."
-                say "    (Git does not write rules: the model you set up does.) To get them:"
+                say "    Rules are extracted anyway. To get them:"
                 say "      cd $src && git init && git add -A && git commit -m \"First commit\""
                 say "    then remove the source in Integrations and add the folder again."
             fi

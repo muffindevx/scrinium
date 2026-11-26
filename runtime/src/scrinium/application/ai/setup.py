@@ -8,7 +8,7 @@ chooses one of these:
   to it as before (ADR-010).
 - **local_server**: a server on this machine that speaks the OpenAI API (llama-server, Ollama,
   vLLM), at a loopback address. It becomes the local model every project uses by default.
-- **bundled**: the trial model Scrinium can download (`scrinium tools install local`).
+- **bundled** (the default): the small answer model installed with Scrinium, for trying it.
 
 The **search model** turns text into vectors for search by meaning: the bundled one (default),
 a local server that serves embeddings, or a provider. A provider for search receives the indexed
@@ -17,8 +17,8 @@ text of every project, so choosing it is a workspace decision the console confir
 **Isolated mode** is separate from both: a flag with which Scrinium itself refuses providers
 (no network rule, the same with Docker or installed). No provider can be
 registered, consented to or used, for either model, and `security-status` says so. Turning it on
-revokes every consent in force, and a provider chosen for either model is dropped (the answer
-model is then unset, search goes back to the bundled one). The providers and their keys stay.
+revokes every consent in force, and a provider chosen for either model is dropped (both go back
+to the included models). The providers and their keys stay.
 
 An organisation can force isolated mode with `SCRINIUM_PROFILE=isolated`: then the choice
 cannot be changed from the console, and `security-status` reports it as managed.
@@ -95,7 +95,8 @@ BUNDLED_SEARCH: Final = SearchSetup(SearchKind.BUNDLED)
 
 @dataclass(frozen=True)
 class AiSetup:
-    # The answer model: None until a person chooses. Never ISOLATED: that is `isolated`.
+    # The answer model: BUNDLED until a person chooses another. Never ISOLATED: that is
+    # `isolated`. Typed as optional for callers that build one by hand.
     choice: SetupChoice | None
     local_server: LocalServer | None
     # Forced by the environment: the console cannot change it.
@@ -139,7 +140,12 @@ def read_setup(session: Session) -> AiSetup:
     raw = stored.get("choice")
     # Before the two models, isolated mode was one of the answer choices.
     isolated = bool(stored.get("isolated")) or raw == SetupChoice.ISOLATED.value
-    choice = SetupChoice(raw) if raw in set(SetupChoice) - {SetupChoice.ISOLATED} else None
+    # Nothing chosen: the included answer model, installed with Scrinium. Nothing leaves.
+    choice = (
+        SetupChoice(raw)
+        if raw in set(SetupChoice) - {SetupChoice.ISOLATED}
+        else SetupChoice.BUNDLED
+    )
     server = stored.get("local_server")
     local = (
         LocalServer(str(server["url"]), str(server["model"]))
@@ -149,7 +155,7 @@ def read_setup(session: Session) -> AiSetup:
     search = _search(stored)
     if managed_isolated():
         if choice is SetupChoice.PROVIDER:
-            choice = None
+            choice = SetupChoice.BUNDLED
         if search.kind is SearchKind.PROVIDER:
             search = BUNDLED_SEARCH
         return AiSetup(choice, local, managed=True, isolated=True, search=search)

@@ -1,45 +1,56 @@
-import { Link } from "react-router"
 import { t } from "@/lib/i18n"
+import { useEffect, useState } from "react"
+import { Link } from "react-router"
+import { type AiSetup, type SecurityStatus, getAiSetup, getSecurityStatus } from "@/lib/api"
+import { setupLabel } from "@/lib/labels"
 
-function Command({ children }: { children: string }) {
-  return <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 font-mono text-xs">{children}</pre>
+/**
+ * Extraction cannot start because the answer model does not respond. It says which model is set
+ * and why, in the same words as Settings › AI models, and sends there: the steps live in one place.
+ */
+export function ModelNeeded() {
+  const [setup, setSetup] = useState<AiSetup | null>(null)
+  const [status, setStatus] = useState<SecurityStatus | null>(null)
+  useEffect(() => {
+    getAiSetup().then(setSetup).catch(() => undefined)
+    getSecurityStatus().then(setStatus).catch(() => undefined)
+  }, [])
+  const llm = status?.providers.llm
+  const why =
+    llm === "model_missing"
+      ? t("Aún no se ha descargado.")
+      : t("No responde.")
+  return (
+    <div className="grid gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+      <h3 className="font-semibold">{t("El modelo de respuestas no está listo")}</h3>
+      <p className="text-muted-foreground">
+        {setup ? t("Ahora usas: {0}.", setupLabel(setup)) : null} {why}{" "}
+        {t("Sin él no se pueden extraer reglas.")}
+      </p>
+      <div>
+        <Link
+          to="/ajustes/modelos"
+          className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground"
+        >
+          {t("Revisar en Ajustes › Modelos de IA")}
+        </Link>
+      </div>
+    </div>
+  )
 }
 
-/** Rules are written by a model the person provides: how to install one and choose it. */
-export function ModelNeeded() {
+/** The included answer model works, but it is small: said before extracting with it. */
+export function IncludedModelNote() {
   return (
-    <div className="grid gap-3 rounded-lg border border-border p-4 text-sm">
-      <h3 className="font-semibold">{t("Para extraer reglas necesitas un modelo")}</h3>
+    <div className="grid gap-1 rounded-lg border p-3 text-sm">
+      <p className="font-medium">{t("Usas el modelo incluido: su precisión es limitada")}</p>
       <p className="text-muted-foreground">
-        {t("Scrinium no trae el modelo que escribe las reglas: lo pones tú. Sin él no se extrae ninguna regla, tenga o no Git el proyecto. Elige uno de estos dos caminos.")}
+        {t("Es pequeño: se deja reglas y puede equivocarse en alguna. Revisa cada una antes de verificarla. Para mejores reglas, usa un modelo mayor o tu propia API key en")}{" "}
+        <Link to="/ajustes/modelos" className="font-medium text-foreground underline-offset-4 hover:underline">
+          {t("Ajustes › Modelos de IA")}
+        </Link>
+        .
       </p>
-      <div className="grid gap-2">
-        <h4 className="font-medium">{t("1. Un modelo local, en esta máquina")}</h4>
-        <p className="text-muted-foreground">
-          {t("Instala un servidor de modelos (Ollama, llama.cpp o vLLM) y descarga un modelo para código. Con Ollama, desde ollama.com:")}
-        </p>
-        <Command>{"ollama pull <modelo-de-código>"}</Command>
-        <p className="text-muted-foreground">
-          {t("Un modelo pequeño (3–8B) se deja reglas. Para proyectos medianos usa uno de código de 24–32B; el README indica el equipo que necesita cada tamaño.")}
-        </p>
-        <p className="text-muted-foreground">
-          {t("Si usas Docker, el modelo corre fuera del contenedor. En Linux, haz que el servidor escuche en la dirección de Docker y arranca Scrinium con su puerto:")}
-        </p>
-        <Command>{"OLLAMA_HOST=172.17.0.1:11434 ollama serve\nsh docker/scrinium.sh start --model-port 11434"}</Command>
-        <p className="text-muted-foreground">
-          {t("Después elige ese modelo en")}{" "}
-          <Link className="font-medium text-foreground underline underline-offset-4" to="/ajustes/modelos">
-            {t("Ajustes › Modelos")}
-          </Link>
-          .
-        </p>
-      </div>
-      <div className="grid gap-2">
-        <h4 className="font-medium">{t("2. Tu propio proveedor")}</h4>
-        <p className="text-muted-foreground">
-          {t("DeepSeek, GLM, Claude o cualquier API compatible con OpenAI. Añádelo con su clave en Ajustes › Modelos y permite al proyecto usarlo para escribir reglas. El código sale de tu máquina hacia ese proveedor. Con Docker, antes abre el llavero: sh docker/scrinium.sh unlock.")}
-        </p>
-      </div>
     </div>
   )
 }

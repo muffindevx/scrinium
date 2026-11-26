@@ -107,7 +107,7 @@ function ProviderDialog({
     <Dialog
       open={open}
       onOpenChange={(next) => !next && onClose()}
-      title={editing ? t("Editar {0}", provider.name) : t("Añadir proveedor")}
+      title={editing ? t("Editar {0}", provider.name) : t("Añadir API key")}
       description={
         editing
           ? undefined
@@ -448,15 +448,15 @@ function ProvidersSection({
       title={
         <span className="flex items-center gap-2">
           <KeyRound className="size-4" />
-          {t("Proveedores externos")}
+          {t("Tus API keys")}
         </span>
       }
-      description={t("Opcional. Las claves se guardan en el llavero del sistema, nunca en los datos de Scrinium.")}
+      description={t("Cada clave se guarda en el llavero, nunca en los datos de Scrinium.")}
       action={
         keyring ? (
           <Button size="sm" variant="outline" onClick={() => open("new")}>
             <Plus data-icon="inline-start" />
-            {t("Añadir proveedor")}
+            {t("Añadir API key")}
           </Button>
         ) : undefined
       }

@@ -221,6 +221,11 @@ function statusText(status: string): string {
   return t("No responde en esa dirección.")
 }
 
+/** The command that downloads what is missing: it comes with Scrinium, so starting it does it. */
+function downloadCommand(inDocker: boolean) {
+  return inDocker ? "sh docker/scrinium.sh start" : "scrinium tools install"
+}
+
 function AnswerModel({
   setup,
   status,
@@ -234,42 +239,68 @@ function AnswerModel({
   onChanged: (setup: AiSetup) => void
   fail: (caught: unknown) => void
 }) {
-  const [selected, setSelected] = useState<string>(setup.choice ?? "local_server")
+  const choice = setup.choice ?? "bundled"
+  const [selected, setSelected] = useState<string>(choice)
   const blocked = setup.isolated ? t("Bloqueado por el modo aislado") : null
-  const working = setup.choice === "provider" || (setup.choice !== null && status.providers.llm === "ready")
+  const llm = status.providers.llm
   const pill =
-    setup.choice === null
-      ? t("Sin configurar")
-      : setup.choice === "provider"
-        ? t("Con tu proveedor")
-        : status.providers.llm === "ready"
-          ? t("Funcionando")
+    choice === "provider"
+      ? t("Con tu API key")
+      : llm === "ready"
+        ? t("Funcionando")
+        : llm === "model_missing"
+          ? t("Sin descargar")
           : t("No responde")
-  const choose = (choice: "provider" | "bundled") => chooseAiSetup(choice).then(onChanged).catch(fail)
+  const choose = (next: "provider" | "bundled") => chooseAiSetup(next).then(onChanged).catch(fail)
   return (
     <section className="grid gap-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-heading text-base font-medium">{t("1 · Modelo de respuestas")}</h2>
-        <Pill ok={working}>{pill}</Pill>
+        <Pill ok={choice === "provider" || llm === "ready"}>{pill}</Pill>
       </div>
       <ul className="grid gap-2">
         <Choice
           name="answer"
-          value="local_server"
-          selected={selected === "local_server"}
-          current={setup.choice === "local_server"}
+          value="bundled"
+          selected={selected === "bundled"}
+          current={choice === "bundled"}
           onSelect={setSelected}
-          title={t("Un servidor en tu equipo")}
+          title={t("El modelo incluido")}
           tags={
             <>
-              <Tag tone="good">{t("El código no sale de aquí")}</Tag>
-              <Tag>{t("Gratis")}</Tag>
-              <Tag tone="warning">{t("Necesita GPU o Mac con memoria")}</Tag>
+              <Tag>{t("Viene con Scrinium")}</Tag>
+              <Tag tone="warning">{t("Precisión limitada")}</Tag>
             </>
           }
         >
           <p className="text-muted-foreground">
-            {t("Ollama, llama.cpp o vLLM con un modelo para código. Escribe el nombre tal como lo sirve.")}{" "}
+            {t("Funciona sin configurar nada, pero su precisión es limitada: se deja reglas y puede equivocarse en alguna. Para un proyecto real, usa un modelo mayor en tu equipo o tu propia API key.")}
+          </p>
+          {choice === "bundled" && llm === "model_missing" && (
+            <>
+              <p className="text-muted-foreground">{t("Aún no se ha descargado (2,5 GB). Se descarga con:")}</p>
+              <Command>{downloadCommand(Boolean(keyring?.in_docker))}</Command>
+            </>
+          )}
+          {choice !== "bundled" && (
+            <div>
+              <Button size="sm" variant="outline" onClick={() => choose("bundled")}>
+                {t("Usar el modelo incluido")}
+              </Button>
+            </div>
+          )}
+        </Choice>
+        <Choice
+          name="answer"
+          value="local_server"
+          selected={selected === "local_server"}
+          current={choice === "local_server"}
+          onSelect={setSelected}
+          title={t("Un modelo en tu equipo")}
+          tags={<Tag>{t("Necesita GPU o Mac con memoria")}</Tag>}
+        >
+          <p className="text-muted-foreground">
+            {t("Con Ollama, llama.cpp o vLLM y un modelo para código. Escribe el nombre tal como lo sirve.")}{" "}
             <a href={OLLAMA_URL} target="_blank" rel="noreferrer" className="font-medium text-foreground underline-offset-4 hover:underline">
               {t("Cómo instalar Ollama")}
             </a>
@@ -288,16 +319,14 @@ function AnswerModel({
           name="answer"
           value="provider"
           selected={selected === "provider"}
-          current={setup.choice === "provider"}
+          current={choice === "provider"}
           onSelect={setSelected}
           blocked={blocked}
-          title={t("Un proveedor en internet")}
+          title={t("Con tu propia API key")}
           tags={
             <>
-              <Tag tone="warning">{t("El código sale hacia el proveedor")}</Tag>
-              <Tag>{t("Pagas por uso, con tu clave")}</Tag>
-              <Tag>{t("Sin GPU")}</Tag>
-              <Tag>{t("Permiso en cada proyecto")}</Tag>
+              <Tag tone="warning">{t("Tu código se envía al proveedor")}</Tag>
+              <Tag>{t("Pagas por uso")}</Tag>
             </>
           }
         >
@@ -305,45 +334,20 @@ function AnswerModel({
           {keyring?.keyring_usable && (
             <>
               <p className="text-muted-foreground">
-                {t("DeepSeek, GLM, Claude o cualquier API compatible con OpenAI. Añádelo aquí con su clave; después cada proyecto da permiso en")}{" "}
+                {t("DeepSeek, GLM, Claude o cualquier API compatible con OpenAI. Añade la clave abajo; después cada proyecto da permiso en")}{" "}
                 <Link to="/ia" className="font-medium text-foreground underline-offset-4 hover:underline">
                   {t("IA del proyecto")}
                 </Link>
                 {t(". Nada se envía antes.")}
               </p>
-              {setup.choice !== "provider" && (
+              {choice !== "provider" && (
                 <div>
                   <Button size="sm" onClick={() => choose("provider")}>
-                    {t("Usar mi proveedor")}
+                    {t("Usar mi API key")}
                   </Button>
                 </div>
               )}
             </>
-          )}
-        </Choice>
-        <Choice
-          name="answer"
-          value="bundled"
-          selected={selected === "bundled"}
-          current={setup.choice === "bundled"}
-          onSelect={setSelected}
-          title={t("El modelo de prueba incluido")}
-          tags={
-            <>
-              <Tag tone="good">{t("El código no sale de aquí")}</Tag>
-              <Tag>{t("2,5 GB")}</Tag>
-              <Tag tone="warning">{t("Pequeño: se deja reglas")}</Tag>
-            </>
-          }
-        >
-          <p className="text-muted-foreground">{t("Para probar Scrinium, no para un proyecto real. Descárgalo en la terminal:")}</p>
-          <Command>{keyring?.in_docker ? "sh docker/scrinium.sh run tools install local" : "scrinium tools install local"}</Command>
-          {setup.choice !== "bundled" && (
-            <div>
-              <Button size="sm" variant="outline" onClick={() => choose("bundled")}>
-                {t("Usar el modelo de prueba")}
-              </Button>
-            </div>
           )}
         </Choice>
       </ul>
@@ -384,7 +388,9 @@ function SearchModel({
     <section className="grid gap-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="font-heading text-base font-medium">{t("2 · Modelo de búsqueda")}</h2>
-        <Pill ok={ready}>{ready ? t("Funcionando") : t("No responde")}</Pill>
+        <Pill ok={ready}>
+          {ready ? t("Funcionando") : status.providers.embeddings === "model_missing" ? t("Sin descargar") : t("No responde")}
+        </Pill>
       </div>
       <Muted>{t("Al cambiarlo, Scrinium vuelve a indexar el texto en segundo plano; mientras tanto busca por palabras.")}</Muted>
       <ul className="grid gap-2">
@@ -394,19 +400,18 @@ function SearchModel({
           selected={selected === "bundled"}
           current={search.kind === "bundled"}
           onSelect={setSelected}
-          title={t("Incluido")}
+          title={t("El modelo incluido")}
           tags={
             <>
               <Tag tone="good">{t("Recomendado")}</Tag>
-              <Tag tone="good">{t("El código no sale de aquí")}</Tag>
-              <Tag>{t("0,6 GB, ya instalado")}</Tag>
+              <Tag>{t("Viene con Scrinium")}</Tag>
             </>
           }
         >
           {search.kind !== "bundled" && (
             <div>
               <Button size="sm" onClick={() => chooseSearch({ kind: "bundled" }).then(onChanged).catch(fail)}>
-                {t("Usar el incluido")}
+                {t("Usar el modelo incluido")}
               </Button>
             </div>
           )}
@@ -417,13 +422,8 @@ function SearchModel({
           selected={selected === "local_server"}
           current={search.kind === "local_server"}
           onSelect={setSelected}
-          title={t("Un servidor en tu equipo")}
-          tags={
-            <>
-              <Tag tone="good">{t("El código no sale de aquí")}</Tag>
-              <Tag>{t("Un modelo de embeddings")}</Tag>
-            </>
-          }
+          title={t("Un modelo en tu equipo")}
+          tags={<Tag>{t("Un modelo de embeddings")}</Tag>}
         >
           <DockerLocalSteps show={Boolean(keyring?.in_docker)} />
           <LocalServerForm
@@ -442,17 +442,17 @@ function SearchModel({
           current={search.kind === "provider"}
           onSelect={setSelected}
           blocked={blocked}
-          title={t("Un proveedor en internet")}
+          title={t("Con tu propia API key")}
           tags={
             <>
-              <Tag tone="warning">{t("Envía TODO el texto indexado")}</Tag>
+              <Tag tone="warning">{t("Se envía todo el texto indexado")}</Tag>
               <Tag>{t("Pagas por uso")}</Tag>
             </>
           }
         >
           <KeyringNotice keyring={keyring} />
           {keyring?.keyring_usable && providers.length === 0 && (
-            <Muted>{t("Primero añade un proveedor en el modelo de respuestas, más arriba.")}</Muted>
+            <Muted>{t("Primero añade tu API key en el modelo de respuestas, más arriba.")}</Muted>
           )}
           {keyring?.keyring_usable && providers.length > 0 && (
             <div className="grid gap-2">
@@ -514,11 +514,11 @@ function IsolatedMode({
   const turnOn = async () => {
     const effects = await getIsolationEffects()
     const lines = [
-      effects.answer_model_lost && t("Tu modelo de respuestas es un proveedor: te quedas sin modelo de respuestas hasta que elijas uno local."),
+      effects.answer_model_lost && t("Tu modelo de respuestas usa tu API key: vuelve al modelo incluido."),
       effects.search_model_reset && t("La búsqueda vuelve al modelo incluido y se indexa de nuevo."),
       effects.consents > 0 &&
         t("Se retiran {0} permisos de proveedor en: {1}.", effects.consents, effects.projects.join(", ")),
-      t("Tus proveedores y sus claves se conservan, pero no se usan."),
+      t("Tus API keys se conservan, pero no se usan."),
     ].filter(Boolean) as string[]
     const { confirmed } = await Confirm.call({
       title: t("¿Activar el modo aislado?"),
@@ -530,7 +530,7 @@ function IsolatedMode({
           ))}
         </ul>
       ),
-      confirmLabel: t("Activar y configurar modelo local"),
+      confirmLabel: t("Activar el modo aislado"),
     })
     if (!confirmed) return
     const chosen = await setIsolation(true)
@@ -547,7 +547,7 @@ function IsolatedMode({
         <Pill ok={setup.isolated}>{setup.isolated ? t("Activado") : t("Desactivado")}</Pill>
       </div>
       <p className="text-sm">
-        {t("Scrinium se niega a registrar o usar cualquier proveedor, para los dos modelos: tu código no sale de este equipo a través de Scrinium. Igual con Docker que instalado. Para código confidencial o empresas que lo exigen.")}
+        {t("Scrinium no usa ninguna API key externa, para ninguno de los dos modelos: tu código no sale de este equipo. Para código confidencial o empresas que lo exigen.")}
       </p>
       <div className="grid gap-3 text-sm sm:grid-cols-2">
         <div className="grid gap-1">
@@ -562,7 +562,7 @@ function IsolatedMode({
         <div className="grid gap-1">
           <p className="font-medium">{t("Queda bloqueado")}</p>
           <ul className="grid list-disc gap-0.5 pl-5 text-muted-foreground">
-            <li>{t("Proveedores, para los dos modelos")}</li>
+            <li>{t("Tu propia API key, para los dos modelos")}</li>
             <li>{t("Los permisos que dieron los proyectos se retiran")}</li>
           </ul>
         </div>
@@ -623,14 +623,15 @@ export function ModelSettings({
     <div className="grid gap-4">
       <div className="grid gap-3">
         <h2 className="font-heading text-lg font-medium">{t("Scrinium usa dos modelos con trabajos distintos")}</h2>
+        <Muted>{t("Los dos vienen incluidos y funcionan sin configurar nada. Cámbialos si quieres mejores reglas.")}</Muted>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="grid gap-1 rounded-lg border p-3 text-sm">
             <p className="font-medium">{t("Modelo de respuestas")}</p>
-            <p className="text-muted-foreground">{t("Escribe las reglas y responde tus preguntas. Sin él no hay reglas: lo pones tú.")}</p>
+            <p className="text-muted-foreground">{t("Escribe las reglas y responde tus preguntas.")}</p>
           </div>
           <div className="grid gap-1 rounded-lg border p-3 text-sm">
             <p className="font-medium">{t("Modelo de búsqueda")}</p>
-            <p className="text-muted-foreground">{t("Encuentra los fragmentos de código y documentos relacionados. Ya viene incluido.")}</p>
+            <p className="text-muted-foreground">{t("Encuentra los fragmentos de código y documentos relacionados.")}</p>
           </div>
         </div>
       </div>

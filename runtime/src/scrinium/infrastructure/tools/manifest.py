@@ -201,10 +201,12 @@ MAP_MODEL = Model(
 
 MODELS: Mapping[str, Model] = {model.name: model for model in (CHAT_MODEL, EMBEDDING_MODEL)}
 
-# ADR-013: what `scrinium tools install` downloads by default. No chat model: the writing model
-# is the person's provider or a local server. llama-server stays, because it serves the
-# embedding model that makes search by meaning work without sending the repository.
-DEFAULT_INSTALL: tuple[str, ...] = (GITLEAKS.name, LLAMA_SERVER.name, EMBEDDING_MODEL.name)
-# `scrinium tools install local`: the managed local chat model on top.
+# What `scrinium tools install` downloads by default (ADR-013, revised 2026-11-25): both
+# included models, so Scrinium works out of the box: the search model and a small answer model
+# for trying it. For real projects the person sets up a larger model or a provider in Settings.
+DEFAULT_INSTALL: tuple[str, ...] = (
+    GITLEAKS.name, LLAMA_SERVER.name, EMBEDDING_MODEL.name, CHAT_MODEL.name,
+)  # fmt: skip
+# `scrinium tools install local`: kept as a name for the answer model and its server.
 LOCAL_ADDON: Final = "local"
 ADDONS: Mapping[str, tuple[str, ...]] = {LOCAL_ADDON: (LLAMA_SERVER.name, CHAT_MODEL.name)}

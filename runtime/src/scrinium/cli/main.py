@@ -435,8 +435,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         choices=sorted([*TOOLS, *MODELS, *ADDONS]),
         metavar="name",
         help=(
-            "Without names: gitleaks, llama.cpp and the search model. "
-            f"'{LOCAL_ADDON}' adds the local chat model (2.5 GB)."
+            "Without names: gitleaks, llama.cpp and the two included models "
+            f"(search and answers). '{LOCAL_ADDON}' installs only the answer model and llama.cpp."
         ),
     )
     install_parser.add_argument(
