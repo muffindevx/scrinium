@@ -103,10 +103,10 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
 <header class="top">
   <p class="eyebrow">Scrinium · business-rule extraction</p>
   <h1>How Scrinium extracts rules from code</h1>
-  <p class="lede prose">This page explains the what, when and how of rule extraction. It was checked against the repository code on 11 November 2026.</p>
+  <p class="lede prose">This page explains the what, when and how of rule extraction. It was checked against the repository code on 25 November 2026; line references may have moved a little since.</p>
   <p class="muted prose" style="font-size:0.9rem">References such as <span class="ref">analysis/extraction.py:533</span> are relative to <code>runtime/src/scrinium/</code>, except those starting with <code>ui/</code>.</p>
   <nav class="toc" aria-label="Sections">
-    <a href="#what">1 · What</a><a href="#when">2 · When</a><a href="#how">3 · How</a><a href="#lines">4 · Few lines</a><a href="#limits">5 · What it does not do</a>
+    <a href="#model">Model</a><a href="#what">1 · What</a><a href="#when">2 · When</a><a href="#how">3 · How</a><a href="#lines">4 · Few lines</a><a href="#limits">5 · What it does not do</a>
   </nav>
 </header>
 
@@ -115,6 +115,19 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
   <p>A rule shows only a few lines because that is all that is stored. Each rule comes from one <strong>group of decision lines</strong>: for example an <code>if (total &gt;= FREE_SHIPPING_FROM)</code>, plus any decision lines within 3 lines of it. That group is the rule's <strong>only citation</strong>, and the UI shows exactly those lines.</p>
   <p>Scrinium knows where every function starts and ends, and which names it calls. It does not use that knowledge to explain the code or to relate rules to each other. The relationship and flow tables exist, but nothing fills them, so the "Map" screen shows a single column of rules with no arrows.</p>
 </div>
+
+<section id="model">
+  <div class="sec-head"><p class="eyebrow">Model</p><h2>Which model writes the rules</h2></div>
+  <div class="prose" style="display:grid;gap:12px">
+    <p>Extraction uses the <strong>answer model</strong> set in <strong>Settings › AI models</strong>:</p>
+    <ul>
+      <li><strong>The included model</strong> (the default). It comes with Scrinium and works with nothing to set up, but it is small: its accuracy is limited, it misses rules and gets some wrong. The Rules screen says so before extracting.</li>
+      <li><strong>A model on your computer</strong> (Ollama, llama.cpp or vLLM): a larger coding model gives better rules.</li>
+      <li><strong>Your own API key</strong>: the code is sent to that provider, and only for projects that gave their consent.</li>
+    </ul>
+    <p>If the answer model does not respond, extraction does not start: the API answers <code>model_needed</code>, and the Rules screen says which model is set and sends to Settings. <span class="ref">api/analyses.py</span>, <span class="ref">ui/src/screens/ModelNeeded.tsx</span></p>
+  </div>
+</section>
 
 <!-- 1 -->
 <section id="what">
@@ -171,6 +184,7 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
       <ul>
         <li>Optional folder, and an option to read every function (threshold 0).</li>
         <li>Only one extraction per project at a time; another returns 409.</li>
+        <li>It does not start if the answer model is not ready (<code>model_needed</code>).</li>
       </ul>
       <span class="ref">ui/src/screens/RulesScreen.tsx:132</span>, <span class="ref">api/analyses.py:255-258, 270-278</span></li>
     <li><strong>After a sync.</strong>
@@ -187,7 +201,7 @@ pre.sample { margin: 0; background: var(--code-bg); border-radius: 8px; padding:
 
   <figure>
     <div class="diagram"><img src="diagrams/model-queue.svg" width="960" height="424" alt="Three triggers feed one analysis thread that sends one batch at a time to the single model slot; questions go first and phase 2 yields its turn."></div>
-    <figcaption>Everything goes through a single queue. Questions and an opened rule take priority: background batches wait between one batch and the next. Phase 2 also yields to any other waiting analysis. <span class="ref">analysis/runs.py:109-156</span>, <span class="ref">ai/service.py:36-55, 69-75</span>, <span class="ref">analysis/extraction.py:846-864</span></figcaption>
+    <figcaption>Everything goes through a single queue. With your own API key the slot is the provider's, one request at a time. Questions and an opened rule take priority: background batches wait between one batch and the next. Phase 2 also yields to any other waiting analysis. <span class="ref">analysis/runs.py:109-156</span>, <span class="ref">ai/service.py:36-55, 69-75</span>, <span class="ref">analysis/extraction.py:846-864</span></figcaption>
   </figure>
 
   <h3>Incremental extraction (T5)</h3>

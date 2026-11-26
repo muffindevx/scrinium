@@ -1,16 +1,26 @@
 # How Scrinium extracts rules from code
 
-This page explains the what, when and how of rule extraction. It was checked against the repository code on 11 November 2026.
+This page explains the what, when and how of rule extraction. It was checked against the repository code on 25 November 2026; line references may have moved a little since.
 
 References such as `analysis/extraction.py:533` are relative to `runtime/src/scrinium/`, except those starting with `ui/`.
 
-**Sections:** [1 · What](#1--what-a-rule-is-and-what-is-stored-about-it) · [2 · When](#2--what-triggers-extraction-and-in-what-order-it-runs) · [3 · How](#3--the-path-step-by-step) · [4 · Few lines](#4--why-only-a-few-lines-are-shown) · [5 · What it does not do](#5--what-it-does-not-do)
+**Sections:** [Model](#which-model-writes-the-rules) · [1 · What](#1--what-a-rule-is-and-what-is-stored-about-it) · [2 · When](#2--what-triggers-extraction-and-in-what-order-it-runs) · [3 · How](#3--the-path-step-by-step) · [4 · Few lines](#4--why-only-a-few-lines-are-shown) · [5 · What it does not do](#5--what-it-does-not-do)
 
 > **The short answer**
 >
 > A rule shows only a few lines because that is all that is stored. Each rule comes from one **group of decision lines**: for example an `if (total >= FREE_SHIPPING_FROM)`, plus any decision lines within 3 lines of it. That group is the rule's **only citation**, and the UI shows exactly those lines.
 >
 > Scrinium knows where every function starts and ends, and which names it calls. It does not use that knowledge to explain the code or to relate rules to each other. The relationship and flow tables exist, but nothing fills them, so the "Map" screen shows a single column of rules with no arrows.
+
+## Which model writes the rules
+
+Extraction uses the **answer model** set in **Settings › AI models**:
+
+- **The included model** (the default). It comes with Scrinium and works with nothing to set up, but it is small: its accuracy is limited, it misses rules and gets some wrong. The Rules screen says so before extracting.
+- **A model on your computer** (Ollama, llama.cpp or vLLM): a larger coding model gives better rules.
+- **Your own API key**: the code is sent to that provider, and only for projects that gave their consent.
+
+If the answer model does not respond, extraction does not start: the API answers `model_needed`, and the Rules screen says which model is set and sends to Settings. `api/analyses.py`, `ui/src/screens/ModelNeeded.tsx`
 
 ## 1 · What a rule is, and what is stored about it
 
@@ -57,6 +67,7 @@ References such as `analysis/extraction.py:533` are relative to `runtime/src/scr
 - **The "Extraer reglas automáticamente" button** on the Rules screen.
   - Optional folder, and an option to read every function (threshold 0).
   - Only one extraction per project at a time; another returns 409.
+  - It does not start if the answer model is not ready (`model_needed`).
 
   `ui/src/screens/RulesScreen.tsx:132`, `api/analyses.py:255-258, 270-278`
 - **After a sync.**
@@ -71,7 +82,7 @@ References such as `analysis/extraction.py:533` are relative to `runtime/src/scr
 
 ![Three triggers feed one analysis thread that sends one batch at a time to the single model slot; questions go first and phase 2 yields its turn.](diagrams/model-queue.svg)
 
-*Everything goes through a single queue. Questions and an opened rule take priority: background batches wait between one batch and the next. Phase 2 also yields to any other waiting analysis.* `analysis/runs.py:109-156`, `ai/service.py:36-55, 69-75`, `analysis/extraction.py:846-864`
+*Everything goes through a single queue. With your own API key the slot is the provider's, one request at a time. Questions and an opened rule take priority: background batches wait between one batch and the next. Phase 2 also yields to any other waiting analysis.* `analysis/runs.py:109-156`, `ai/service.py:36-55, 69-75`, `analysis/extraction.py:846-864`
 
 ### Incremental extraction (T5)
 
