@@ -11,7 +11,7 @@ const install = `${repo}#install-with-docker`
 
 // Only what Scrinium does today, each a fact the reader can check in the repository.
 const promises = [
-  { title: "Nada sale de tu equipo", text: "Escucha solo en 127.0.0.1, con un enlace de entrada de un solo uso. Un proveedor externo solo se usa si das permiso en cada proyecto." },
+  { title: "Tu código, donde tú decidas", text: "Con un modelo en tu equipo, el código no sale de él. Si eliges un proveedor externo, el código va a ese proveedor, y solo en los proyectos que lo permitan. El modo aislado lo impide del todo." },
   { title: "Cualquier modelo", text: "Local (llama.cpp, Ollama, vLLM) o tu propio proveedor. Sin modelo también funcionan la búsqueda por palabras, la cobertura, los procesos y los cambios." },
   { title: "Nada sin cita", text: "Cada regla apunta a la línea que la aplica. Si su número no está en el código, la propuesta no entra en la bandeja." },
   { title: "Tú decides", text: "El modelo propone; una persona confirma. Solo lo confirmado cuenta como regla verificada y se exporta al repositorio." },
@@ -46,7 +46,7 @@ const promises = [
           <a class="btn" href={install}>Instalar en tu equipo</a>
         </div>
         <ul class="ticks">
-          <li>Local y privado</li><li>Con cita a la línea</li><li>Sin cuenta ni nube</li>
+          <li>Local por defecto</li><li>Con cita a la línea</li><li>Sin cuenta ni nube</li>
         </ul>
       </div>
       <RuleCard />
